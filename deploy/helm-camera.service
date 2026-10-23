@@ -1,0 +1,26 @@
+# systemd-Dienst ohne Docker:
+#   sudo cp deploy/helm-camera.service /etc/systemd/system/
+#   sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
+[Unit]
+Description=Helm Camera Streams
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+User=helmcam
+WorkingDirectory=/opt/helm-camera
+Environment=PORT=8080
+Environment=BIND=127.0.0.1
+Environment=PUBLIC_URL=https://cam.example.com
+Environment=ADMIN_HOST=admin.example.com
+Environment=DATA_DIR=/var/lib/helm-camera
+ExecStart=/usr/bin/node server.js
+Restart=always
+RestartSec=3
+StateDirectory=helm-camera
+NoNewPrivileges=true
+ProtectSystem=strict
+ReadWritePaths=/var/lib/helm-camera
+
+[Install]
+WantedBy=multi-user.target

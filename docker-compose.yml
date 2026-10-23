@@ -1,0 +1,27 @@
+# Startet Server + Caddy (holt automatisch HTTPS-Zertifikate).
+# Vorher in deploy/Caddyfile und unten die Domains eintragen, dann:  docker compose up -d
+services:
+  helmcam:
+    build: .
+    restart: unless-stopped
+    environment:
+      PUBLIC_URL: https://cam.example.com
+      ADMIN_HOST: admin.example.com
+    volumes:
+      - helmcam-data:/data
+
+  caddy:
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - helmcam
+
+volumes:
+  helmcam-data:
+  caddy-data:
