@@ -540,19 +540,34 @@
     $('droneSrvRow').classList.toggle('hidden', list.length < 2);
     $('droneBox').classList.toggle('hidden', !list.length);
   }
-  $('droneBox').addEventListener('toggle', fillDroneServers);
-  document.addEventListener('eud-popup', e => { if (e.detail === 'video') fillDroneServers(); });
+  const droneUrl = (host, user, pw) => {
+    const slug = String(profile.callsign || user).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
+    const path = 'drone-' + slug;
+    $('droneUrl').value = `rtmp://${host}:1935/${path}?user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pw)}`;
+    $('dronePath').textContent = path;
+    $('droneOut').classList.remove('hidden');
+  };
+  // Über die Zugangsseite angemeldet: Zugangsdaten kennt dieser Server schon – kein Passwort eintippen
+  async function droneFromAccess() {
+    let token = '';
+    try { token = localStorage.getItem('tak.access') || ''; } catch (e) { /* privat */ }
+    if (!token) return false;
+    const me = await fetch('/api/access/me', { headers: { 'X-Access-Token': token } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!me || me.status !== 'active' || !me.password || !me.host) return false;
+    droneUrl(me.host, me.username, me.password);
+    $('droneAsk').classList.add('hidden');
+    $('droneBox').classList.remove('hidden');
+    return true;
+  }
+  $('droneBox').addEventListener('toggle', () => { fillDroneServers(); if ($('droneBox').open) droneFromAccess(); });
+  document.addEventListener('eud-popup', e => { if (e.detail === 'video') { fillDroneServers(); droneFromAccess(); } });
   $('droneMake').addEventListener('click', () => {
     const srv = window.eud.getServers().find(x => x.id === $('droneSrv').value) || window.eud.getServers().find(x => x.host);
     if (!srv) return toast('Add a TAK server first.');
     const user = srv.username || (srv.certInfo && srv.certInfo.cn) || '';
     const pw = $('dronePw').value;
     if (!user || !pw) return toast('TAK user and password are needed (user from the server settings).');
-    const slug = String(profile.callsign || user).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
-    const path = 'drone-' + slug;
-    $('droneUrl').value = `rtmp://${srv.host}:1935/${path}?user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pw)}`;
-    $('dronePath').textContent = path;
-    $('droneOut').classList.remove('hidden');
+    droneUrl(srv.host, user, pw);
     $('dronePw').value = '';
   });
   $('droneCopy').addEventListener('click', () => {

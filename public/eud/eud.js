@@ -2225,6 +2225,8 @@ updateStatus();
   let handled = false;
   if (hash && new URLSearchParams(hash).has('host')) {
     history.replaceState(null, '', location.pathname);
+    const t = new URLSearchParams(hash).get('t');
+    if (t) try { localStorage.setItem('tak.access', t); } catch (e) { /* privat */ }
     try {
       const cfg = parseQr(location.origin + location.pathname + '#' + hash);
       if (!servers.some(s => s.host === cfg.host)) { await applyConfig(cfg, true); handled = true; }

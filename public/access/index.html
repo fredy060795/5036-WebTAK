@@ -262,6 +262,7 @@ async function load() {
     $('droneSrt').textContent = `srt://${me.host}:8890?streamid=publish:${path}:${u}:${pw}`;
     $('droneCopy').onclick = () => navigator.clipboard.writeText($('droneRtmp').value).then(() => { $('droneCopy').textContent = 'Copied'; }, () => $('droneRtmp').select());
   } else $('droneCard').classList.add('hidden');
+  p.set('t', token); // WebTAK merkt sich den Zugang (z. B. für die Drohnen-Adresse ohne Passwort-Eingabe)
   $('eudLink').href = '/eud/#' + p;
 
 }

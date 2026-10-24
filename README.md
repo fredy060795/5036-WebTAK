@@ -65,7 +65,7 @@ OpenTAKServer prüft den **TAK-Benutzer und das Passwort** und legt den Feed bei
 | **PC-Bildschirm** | WebTAK → Video → **🖥 Share screen** (nur Desktop-Browser) |
 | **Helmkamera / Handy als Kamera ohne TAK-Zugang** | Kamera-App `/app/` (QR unter „Links & QR-Codes“) |
 
-Adressen (fertig ausgefüllt auf der Zugangsseite `/access/`, in WebTAK unter Video und als Vorlage im Admin unter Video-Feeds):
+Adressen (fertig ausgefüllt auf der Zugangsseite `/access/` und in WebTAK unter Video – ohne Passwort-Eingabe, wenn WebTAK über die Zugangsseite geöffnet wurde – sowie als Vorlage im Admin unter Video-Feeds):
 
 ```
 rtmp://<TAK-Server>:1935/drone-<rufname>?user=<benutzer>&pass=<passwort>
