@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="robots" content="noindex">
+<title>Helm Camera Admin</title>
+<link rel="stylesheet" href="/assets/style.css">
+<link rel="stylesheet" href="admin.css">
+</head>
+<body>
+
+<!-- Anmeldung, Passwort vergessen, neues Passwort -->
+<div id="authView" class="auth hidden">
+  <form class="card" id="loginForm">
+    <h1>Helm Camera Admin</h1>
+    <label for="lUser">Benutzername</label>
+    <input id="lUser" autocomplete="username" required>
+    <label for="lPass">Passwort</label>
+    <input id="lPass" type="password" autocomplete="current-password" required>
+    <button class="pri wide" type="submit">Anmelden</button>
+    <p class="msg" id="loginMsg"></p>
+    <a href="#" id="forgotLink" class="small">Passwort vergessen?</a>
+  </form>
+
+  <form class="card hidden" id="forgotForm">
+    <h1>Passwort vergessen</h1>
+    <p class="mut small">Benutzername oder E-Mail-Adresse eingeben. Ist SMTP eingerichtet, kommt ein Link zum Zurücksetzen an die hinterlegte Admin-E-Mail.</p>
+    <label for="fUser">Benutzername oder E-Mail</label>
+    <input id="fUser" required>
+    <button class="pri wide" type="submit">Link senden</button>
+    <p class="msg" id="forgotMsg"></p>
+    <a href="#" class="small backLink">Zurück zur Anmeldung</a>
+  </form>
+
+  <form class="card hidden" id="resetForm">
+    <h1>Neues Passwort</h1>
+    <label for="rPass">Neues Passwort (mind. 8 Zeichen)</label>
+    <input id="rPass" type="password" autocomplete="new-password" required minlength="8">
+    <label for="rPass2">Wiederholen</label>
+    <input id="rPass2" type="password" autocomplete="new-password" required minlength="8">
+    <button class="pri wide" type="submit">Speichern</button>
+    <p class="msg" id="resetMsg"></p>
+    <a href="#" class="small backLink">Zurück zur Anmeldung</a>
+  </form>
+
+  <form class="card hidden" id="firstForm">
+    <h1>Zugang festlegen</h1>
+    <p class="mut small">Erster Start: Bitte Benutzernamen und ein eigenes Passwort festlegen. Die E-Mail-Adresse wird für „Passwort vergessen“ gebraucht.</p>
+    <div id="xCurWrap" class="hidden">
+      <label for="xCur">Aktuelles Passwort</label>
+      <input id="xCur" type="password" autocomplete="current-password">
+    </div>
+    <label for="xUser">Benutzername</label>
+    <input id="xUser" autocomplete="username" required>
+    <label for="xMail">E-Mail (für Passwort-Reset)</label>
+    <input id="xMail" type="email" autocomplete="email">
+    <label for="xPass">Neues Passwort (mind. 8 Zeichen)</label>
+    <input id="xPass" type="password" autocomplete="new-password" required minlength="8">
+    <label for="xPass2">Wiederholen</label>
+    <input id="xPass2" type="password" autocomplete="new-password" required minlength="8">
+    <button class="pri wide" type="submit">Speichern</button>
+    <p class="msg" id="firstMsg"></p>
+  </form>
+</div>
+
+<!-- Übersicht -->
+<div id="appView" class="hidden">
+  <header class="top">
+    <h1>Helm Camera Streams</h1>
+    <div class="row">
+      <span class="mut small" id="summary"></span>
+      <button id="settingsBtn">Einstellungen</button>
+      <button id="logoutBtn">Abmelden</button>
+    </div>
+  </header>
+
+  <main class="wrap">
+    <section class="card">
+      <form class="row" id="createForm">
+        <div class="grow"><label for="cUser">Benutzer</label><input id="cUser" placeholder="z. B. mueller" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,31}"></div>
+        <div class="grow"><label for="cLabel">Bezeichnung (optional)</label><input id="cLabel" placeholder="z. B. Trupp 2 Helm" maxlength="60"></div>
+        <div class="actions-end"><button class="pri" type="submit">Neuer Stream</button></div>
+      </form>
+      <p class="msg" id="createMsg"></p>
+    </section>
+
+    <section class="card">
+      <div class="row between">
+        <h2>Streams</h2>
+        <div class="row">
+          <input id="filter" placeholder="Suchen …" class="filter">
+          <button class="danger pri" id="stopAllBtn">Alle Streams stoppen</button>
+        </div>
+      </div>
+      <p class="mut small hidden" id="noFfmpeg">ffmpeg ist auf dem Server nicht installiert – nur der MJPEG-Link ist verfügbar.</p>
+      <div class="table-wrap">
+        <table class="streams">
+          <thead>
+            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Drehung</th><th>Link</th><th></th></tr>
+          </thead>
+          <tbody id="rows"></tbody>
+        </table>
+      </div>
+      <p class="mut" id="empty">Noch keine Streams. Oben einen Benutzer eintragen und „Neuer Stream“ klicken.</p>
+    </section>
+  </main>
+</div>
+
+<!-- Dialog (QR-Code, Einstellungen, Bestätigungen) -->
+<div id="modal" class="modal hidden">
+  <div class="card modal-box">
+    <div class="row between"><h2 id="modalTitle"></h2><button class="sm" id="modalClose" aria-label="Schließen">✕</button></div>
+    <div id="modalBody"></div>
+  </div>
+</div>
+
+<!-- Fenster zum Ansehen -->
+<div id="windows"></div>
+
+<template id="settingsTpl">
+  <form id="credForm">
+    <h3>Admin-Zugang</h3>
+    <label>Benutzername</label><input name="username" autocomplete="username" required>
+    <label>E-Mail (für Passwort-Reset)</label><input name="email" type="email" autocomplete="email">
+    <label>Neues Passwort (leer = unverändert)</label><input name="password" type="password" autocomplete="new-password" minlength="8">
+    <label>Aktuelles Passwort (zur Bestätigung)</label><input name="current" type="password" autocomplete="current-password" required>
+    <button class="pri" type="submit">Zugang speichern</button>
+    <p class="msg" data-msg></p>
+  </form>
+  <form id="defaultsForm">
+    <h3>Bild drehen (Standard für neue Streams)</h3>
+    <p class="mut small">Grundwinkel für neue Streams, z. B. 90°, wenn die Kamera quer im Gehäuse liegt. Den genauen Winkel
+      pro Helm stellst du danach im Ansehen-Fenster unter „∠ Ausrichten“ ein. Das Handy dreht jedes Bild, bevor es
+      gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
+    <label>Drehung in Grad (0–359,5, im Uhrzeigersinn)</label>
+    <input name="rotate" type="number" min="0" max="359.5" step="0.5" value="0">
+    <label>Bei schrägen Winkeln</label>
+    <span data-fit></span>
+    <label class="check"><input type="checkbox" name="mirror"> Spiegeln</label>
+    <label class="check"><input type="checkbox" name="applyAll"> Auch auf alle bestehenden Streams anwenden</label>
+    <button class="pri" type="submit">Speichern</button>
+    <p class="msg" data-msg></p>
+  </form>
+  <form id="smtpForm">
+    <h3>SMTP (E-Mail-Versand)</h3>
+    <div class="row">
+      <div class="grow"><label>Server</label><input name="host" placeholder="smtp.example.com"></div>
+      <div style="width:110px"><label>Port</label><input name="port" type="number" min="1" max="65535"></div>
+    </div>
+    <label class="check"><input type="checkbox" name="secure"> SSL/TLS (meist Port 465; aus = STARTTLS, meist 587)</label>
+    <label>Benutzer</label><input name="user" autocomplete="off">
+    <label>Passwort <span class="mut" data-haspass></span></label><input name="pass" type="password" autocomplete="new-password" placeholder="leer = unverändert">
+    <label>Absender</label><input name="from" placeholder="Helm Camera &lt;noreply@example.com&gt;">
+    <div class="row" style="margin-top:12px">
+      <button class="pri" type="submit">SMTP speichern</button>
+      <button type="button" data-test>Test-Mail senden</button>
+    </div>
+    <p class="msg" data-msg></p>
+  </form>
+</template>
+
+<script src="admin.js"></script>
+</body>
+</html>

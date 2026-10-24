@@ -1,0 +1,64 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f3f4f6;
+  --fg: #15181d;
+  --card: #ffffff;
+  --mut: #5c6370;
+  --acc: #0b6bcb;
+  --acc-fg: #ffffff;
+  --bd: #d8dbe0;
+  --ok: #1e7f3c;
+  --warn: #9a6700;
+  --err: #b3261e;
+  --shadow: 0 10px 30px rgba(0, 0, 0, .18);
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #101317;
+    --fg: #e7e9ed;
+    --card: #1a1e24;
+    --mut: #98a0ac;
+    --acc: #4ea1ff;
+    --acc-fg: #08111c;
+    --bd: #2c3139;
+    --ok: #6fcf8a;
+    --warn: #e3b341;
+    --err: #ff8a80;
+    --shadow: 0 10px 30px rgba(0, 0, 0, .5);
+  }
+}
+* { box-sizing: border-box; }
+html, body { margin: 0; }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; background: var(--bg); color: var(--fg); }
+a { color: var(--acc); }
+h1 { font-size: 22px; margin: 0; }
+h2 { font-size: 17px; margin: 0 0 12px; }
+code { font-size: 13px; }
+.card { background: var(--card); border: 1px solid var(--bd); border-radius: 12px; padding: 16px; margin-bottom: 14px; }
+.mut { color: var(--mut); }
+.small { font-size: 13px; }
+.hidden { display: none !important; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.grow { flex: 1 1 200px; min-width: 0; }
+label { display: block; font-size: 13px; color: var(--mut); margin: 10px 0 4px; }
+input, select, button {
+  font: inherit; padding: 9px 12px; border-radius: 8px; border: 1px solid var(--bd);
+  background: var(--card); color: var(--fg); max-width: 100%;
+}
+input:not([type=checkbox]), select { width: 100%; }
+input[type=checkbox] { width: auto; }
+button { cursor: pointer; white-space: nowrap; }
+button:disabled { opacity: .5; cursor: default; }
+button.pri { background: var(--acc); border-color: var(--acc); color: var(--acc-fg); font-weight: 600; }
+button.danger { color: var(--err); border-color: var(--err); }
+button.danger.pri { background: var(--err); color: #fff; }
+button.sm { padding: 5px 9px; font-size: 13px; }
+.msg { min-height: 1.4em; font-weight: 600; margin: 8px 0 0; }
+.msg.ok { color: var(--ok); }
+.msg.err { color: var(--err); }
+.badge { display: inline-block; font-size: 12px; font-weight: 600; padding: 2px 8px; border-radius: 999px; border: 1px solid currentColor; white-space: nowrap; }
+.badge.live { color: var(--ok); }
+.badge.wait { color: var(--warn); }
+.badge.off { color: var(--mut); }
+.badge.stop { color: var(--err); }
+.check { display: flex; gap: 8px; align-items: center; color: var(--fg); font-size: 15px; }

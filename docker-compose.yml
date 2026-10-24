@@ -1,0 +1,46 @@
+# Helm Camera Streams auf Port 5036.
+#
+# Variante A (Standard): Server direkt auf https://<domain>:5036 mit vorhandenem Zertifikat,
+#   z. B. dem Let's-Encrypt-Zertifikat des TAK-Servers. Pfade unten anpassen, dann:
+#     docker compose up -d
+#
+# Variante B: zusätzlich Caddy auf 80/443 (nur wenn die Ports frei sind), holt Zertifikate selbst:
+#     docker compose --profile caddy up -d
+#   Dann in deploy/Caddyfile die Domains eintragen und TLS_CERT/TLS_KEY unten entfernen.
+services:
+  helmcam:
+    build: .
+    restart: unless-stopped
+    # root, weil der private Schlüssel von Let's Encrypt nur für root lesbar ist
+    user: root
+    ports:
+      - "5036:5036"
+    environment:
+      PORT: 5036
+      PUBLIC_URL: https://tak.example.com:5036
+      # Admin nur unter dieser Adresse erreichbar (optional, sonst Zeile löschen):
+      # ADMIN_HOST: admin.example.com
+      TLS_CERT: /etc/letsencrypt/live/tak.example.com/fullchain.pem
+      TLS_KEY: /etc/letsencrypt/live/tak.example.com/privkey.pem
+    volumes:
+      - helmcam-data:/data
+      # Zertifikate des Servers (Let's Encrypt), nur lesen. Erneuerte Zertifikate
+      # übernimmt der Server automatisch (stündliche Prüfung), ohne Neustart.
+      - /etc/letsencrypt:/etc/letsencrypt:ro
+
+  caddy:
+    profiles: ["caddy"]
+    image: caddy:2.8
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./deploy/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+    depends_on:
+      - helmcam
+
+volumes:
+  helmcam-data:
+  caddy-data:

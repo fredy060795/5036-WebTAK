@@ -1,0 +1,398 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#101317">
+<title>Helm Camera</title>
+<link rel="stylesheet" href="/assets/style.css">
+<style>
+main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
+header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px; }
+.view { position: relative; background: #000; border-radius: 10px; aspect-ratio: 4 / 3; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #98a0ac; }
+.view img { width: 100%; height: 100%; object-fit: contain; }
+.live-dot { position: absolute; top: 10px; left: 10px; background: #c62828; color: #fff; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+.big { width: 100%; padding: 14px; font-size: 17px; margin-top: 12px; }
+.kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
+.kv dt { color: var(--mut); }
+.kv dd { margin: 0; overflow-wrap: anywhere; }
+.steps { display: flex; gap: 6px; margin: 4px 0 14px; }
+.step { flex: 1; text-align: center; font-size: 12px; padding: 6px 4px; border-radius: 8px; border: 1px solid var(--bd); color: var(--mut); }
+.step.done { border-color: var(--ok); color: var(--ok); }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <h1>Helm Camera</h1>
+    <span class="badge off" id="srvBadge">Server …</span>
+  </header>
+
+  <section class="card hidden" id="noLink">
+    <h2>Kein Stream-Link</h2>
+    <p>Bitte den QR-Code scannen, den du vom Admin bekommen hast.</p>
+  </section>
+
+  <section class="card hidden" id="blocked">
+    <h2 id="blockedTitle">Kein Zugang</h2>
+    <p id="blockedText"></p>
+  </section>
+
+  <div id="main" class="hidden">
+    <div class="steps">
+      <div class="step" id="stServer">1 Server</div>
+      <div class="step" id="stCam">2 Kamera</div>
+      <div class="step" id="stLive">3 Live</div>
+    </div>
+
+    <section class="card">
+      <div class="view"><span id="viewText">Noch kein Bild</span><img id="img" class="hidden" alt="Kamerabild"><span id="liveDot" class="live-dot hidden">LIVE</span></div>
+      <button class="pri big" id="camBtn">Kamera verbinden</button>
+      <button class="big hidden" id="liveBtn">Stream starten</button>
+      <p class="msg" id="msg"></p>
+    </section>
+
+    <section class="card">
+      <dl class="kv">
+        <dt>Stream</dt><dd id="streamName">–</dd>
+        <dt>Kamera</dt><dd id="camName">nicht verbunden</dd>
+        <dt>Bildrate</dt><dd id="fps">–</dd>
+        <dt>Zuschauer</dt><dd id="viewers">–</dd>
+        <dt>Drehung</dt><dd id="rotation">–</dd>
+      </dl>
+      <label for="res">Bildgröße</label>
+      <select id="res">
+        <option value="1">160x120 – sehr schnell</option>
+        <option value="5" selected>320x240 – empfohlen</option>
+        <option value="8">640x480 – langsam</option>
+      </select>
+      <p class="mut small">Bildschirm anlassen und die App im Vordergrund lassen, sonst trennt das Handy Bluetooth.
+        iPhone: in der App „Bluefy“ öffnen.</p>
+    </section>
+  </div>
+</main>
+<script>
+// Bluetooth-Protokoll der Kamera: PROTOCOL.md im Repository ESP32-Flash
+const SVC = '7b3c0001-6b1a-4d6e-9c55-3a2f1e0c8a01';
+const STATUS = '7b3c0002-6b1a-4d6e-9c55-3a2f1e0c8a01';
+const COMMAND = '7b3c0003-6b1a-4d6e-9c55-3a2f1e0c8a01';
+const IMAGE = '7b3c0004-6b1a-4d6e-9c55-3a2f1e0c8a01';
+const STORE_KEY = 'helmcam.link';
+
+const $ = id => document.getElementById(id);
+const enc = new TextEncoder();
+
+// ----------------------------------------------------------------------
+// Link aus dem QR-Code (#u=..&s=..&k=..), wird für das nächste Öffnen gemerkt
+// ----------------------------------------------------------------------
+function readLink() {
+  const h = new URLSearchParams(location.hash.slice(1));
+  let link = h.get('u') && h.get('s') && h.get('k') ? { u: h.get('u'), s: h.get('s'), k: h.get('k') } : null;
+  try {
+    if (link) localStorage.setItem(STORE_KEY, JSON.stringify(link));
+    else link = JSON.parse(localStorage.getItem(STORE_KEY) || 'null');
+  } catch (e) { /* privater Modus */ }
+  if (link) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
+  return link;
+}
+
+const link = readLink();
+let ws = null, wsOk = false, wsRetry = 0, wsTimer = null, blockedState = null;
+let device = null, cmdChr = null, camConnected = false;
+let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
+let writeChain = Promise.resolve();
+let lastPreview = 0;
+let rotate = 0, mirror = false, fit = 'fill';  // vom Admin pro Stream eingestellt
+let busy = false;                // gerade wird ein Bild gedreht
+
+// Dreht ein JPEG um einen beliebigen Winkel im Uhrzeigersinn, optional gespiegelt.
+// Das Ausgabeformat (quer/hoch) richtet sich nach dem nächsten 90°-Schritt.
+//   fit = 'fill': so weit vergrößern, dass keine schwarzen Ecken entstehen (Rand wird abgeschnitten)
+//   fit = 'fit':  ganzes Bild sichtbar, Ecken schwarz
+async function rotateJpeg(jpeg, deg, flip, fit = 'fill') {
+  const bmp = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' }));
+  const w = bmp.width, h = bmp.height;
+  const quarter = Math.round(deg / 90) % 4;
+  const W = quarter % 2 ? h : w;
+  const H = quarter % 2 ? w : h;
+  const rad = deg * Math.PI / 180;
+  const c = Math.abs(Math.cos(rad)), si = Math.abs(Math.sin(rad));
+  const scale = fit === 'fit'
+    ? Math.min(W / (w * c + h * si), H / (w * si + h * c))
+    : Math.max((W * c + H * si) / w, (W * si + H * c) / h);
+  const canvas = document.createElement('canvas');
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.translate(W / 2, H / 2);
+  ctx.rotate(rad);
+  ctx.scale(flip ? -scale : scale, scale);
+  ctx.drawImage(bmp, -w / 2, -h / 2);
+  bmp.close();
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+window.rotateJpeg = rotateJpeg; // für Tests
+
+function showRotation() {
+  $('rotation').textContent = (rotate ? String(rotate).replace('.', ',') + '° (vom Admin eingestellt)' : 'keine') + (mirror ? ', gespiegelt' : '');
+}
+
+function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
+
+function setSteps() {
+  $('stServer').classList.toggle('done', wsOk);
+  $('stCam').classList.toggle('done', camConnected);
+  $('stLive').classList.toggle('done', wantLive && camConnected && wsOk);
+  $('srvBadge').textContent = wsOk ? 'Server verbunden' : 'Server getrennt';
+  $('srvBadge').className = 'badge ' + (wsOk ? 'live' : 'wait');
+  $('camBtn').textContent = camConnected ? 'Kamera trennen' : 'Kamera verbinden';
+  $('camBtn').classList.toggle('pri', !camConnected);
+  $('liveBtn').classList.toggle('hidden', !camConnected);
+  $('liveBtn').textContent = wantLive ? 'Stream stoppen' : 'Stream starten';
+  $('liveBtn').className = 'big ' + (wantLive ? 'danger' : 'pri') + (camConnected ? '' : ' hidden');
+  $('liveDot').classList.toggle('hidden', !(wantLive && camConnected && wsOk));
+}
+
+function block(title, text) {
+  blockedState = title;
+  stopLive();
+  $('main').classList.add('hidden');
+  $('blocked').classList.remove('hidden');
+  $('blockedTitle').textContent = title;
+  $('blockedText').textContent = text;
+}
+
+// ----------------------------------------------------------------------
+// Server (WebSocket)
+// ----------------------------------------------------------------------
+function connectServer() {
+  clearTimeout(wsTimer);
+  const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+  const url = `${proto}//${location.host}/ws/publish?u=${encodeURIComponent(link.u)}&s=${encodeURIComponent(link.s)}&k=${encodeURIComponent(link.k)}`;
+  ws = new WebSocket(url);
+  ws.binaryType = 'arraybuffer';
+  ws.onopen = () => { wsRetry = 0; };
+  ws.onmessage = ev => {
+    const msg = JSON.parse(ev.data);
+    if (msg.type === 'welcome') {
+      wsOk = true;
+      blockedState = null;
+      $('main').classList.remove('hidden');
+      $('blocked').classList.add('hidden');
+      $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + msg.user + '/' + msg.streamId;
+      sendHello();
+      if (resumeLive) {
+        resumeLive = false; // Admin hat wieder freigegeben: dort weitermachen, wo gestoppt wurde
+        startLive();
+      } else if (wantLive && camConnected) {
+        startCameraStream();
+      }
+    } else if (msg.type === 'config') {
+      rotate = msg.rotate || 0;
+      mirror = !!msg.mirror;
+      fit = msg.fit === 'fit' ? 'fit' : 'fill';
+      if (msg.label !== undefined) $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + link.u + '/' + link.s;
+      showRotation();
+    } else if (msg.type === 'stats') {
+      $('viewers').textContent = msg.viewers;
+    } else if (msg.type === 'stopped') {
+      wsOk = false;
+      resumeLive = resumeLive || wantLive;
+      stopLive();
+      setMsg(msg.message || 'Stream wurde vom Admin gestoppt.', 'err');
+      blockedState = 'stopped';
+    } else if (msg.type === 'replaced') {
+      block('Anderes Gerät aktiv', msg.message);
+    } else if (msg.type === 'revoked' || msg.type === 'removed' || msg.type === 'invalid') {
+      try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      block('Kein Zugang', (msg.message || 'Link ungültig.') + ' Bitte beim Admin einen neuen QR-Code holen.');
+    }
+    setSteps();
+  };
+  ws.onclose = () => {
+    wsOk = false;
+    setSteps();
+    if (blockedState && blockedState !== 'stopped') return; // kein erneuter Versuch
+    // Gestoppt: alle 15 s prüfen, ob der Admin wieder freigegeben hat; sonst schneller neu verbinden
+    const delay = blockedState === 'stopped' ? 15000 : Math.min(15000, 1000 * 2 ** wsRetry++);
+    wsTimer = setTimeout(connectServer, delay);
+  };
+}
+
+function sendHello() {
+  if (ws && ws.readyState === 1) {
+    ws.send(JSON.stringify({
+      type: 'hello',
+      camera: device ? device.name || 'Kamera' : '',
+      phone: navigator.userAgent,
+      resolution: $('res').selectedOptions[0].textContent.split(' ')[0],
+    }));
+  }
+}
+
+// ----------------------------------------------------------------------
+// Kamera (Bluetooth)
+// ----------------------------------------------------------------------
+function camSend(obj) {
+  writeChain = writeChain.then(() => cmdChr && cmdChr.writeValueWithResponse(enc.encode(JSON.stringify(obj)))).catch(e => console.warn(e));
+  return writeChain;
+}
+
+async function setupGatt() {
+  const server = await device.gatt.connect();
+  const svc = await server.getPrimaryService(SVC);
+  cmdChr = await svc.getCharacteristic(COMMAND);
+  const img = await svc.getCharacteristic(IMAGE);
+  img.addEventListener('characteristicvaluechanged', onImagePacket);
+  await img.startNotifications();
+  camConnected = true;
+  $('camName').textContent = device.name || 'Kamera';
+  sendHello();
+  setSteps();
+  if (wantLive) startCameraStream();
+}
+
+async function connectCamera() {
+  if (!navigator.bluetooth) {
+    setMsg('Dieser Browser kann kein Bluetooth. Android: Chrome verwenden. iPhone: App „Bluefy“.', 'err');
+    return;
+  }
+  try {
+    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+    device.addEventListener('gattserverdisconnected', onCamDisconnected);
+    setMsg('Verbinde mit ' + (device.name || 'Kamera') + ' …');
+    await setupGatt();
+    setMsg('Kamera verbunden.', 'ok');
+  } catch (e) {
+    if (e.name !== 'NotFoundError') setMsg('Kamera-Verbindung fehlgeschlagen: ' + e.message, 'err');
+  }
+}
+
+async function onCamDisconnected() {
+  camConnected = false;
+  cmdChr = null;
+  frame = null;
+  setSteps();
+  if (!device) return;
+  // Automatisch neu verbinden (z. B. kurz außer Reichweite)
+  setMsg('Kamera getrennt – verbinde neu …', 'err');
+  for (let i = 0; i < 30 && device && !camConnected; i++) {
+    try {
+      await setupGatt();
+      setMsg('Kamera wieder verbunden.', 'ok');
+      return;
+    } catch (e) {
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  if (!camConnected) setMsg('Kamera nicht erreichbar. Bitte erneut „Kamera verbinden“.', 'err');
+}
+
+function disconnectCamera() {
+  const d = device;
+  device = null;
+  stopLive();
+  if (d && d.gatt.connected) d.gatt.disconnect();
+  camConnected = false;
+  $('camName').textContent = 'nicht verbunden';
+  setSteps();
+}
+
+function onImagePacket(ev) {
+  const dv = ev.target.value;
+  const type = dv.getUint8(0);
+  if (type === 1) {
+    frame = { buf: new Uint8Array(dv.getUint32(1, true)), got: 0 };
+  } else if (type === 2 && frame) {
+    const part = new Uint8Array(dv.buffer, dv.byteOffset + 5, dv.byteLength - 5);
+    frame.buf.set(part, dv.getUint32(1, true));
+    frame.got += part.length;
+  } else if (type === 3 && frame) {
+    if (frame.got === frame.buf.length) onJpeg(frame.buf);
+    frame = null;
+  } else if (type === 4) {
+    setMsg('Kamera: ' + new TextDecoder().decode(new Uint8Array(dv.buffer, dv.byteOffset + 1, dv.byteLength - 1)), 'err');
+  }
+}
+
+async function onJpeg(raw) {
+  let jpeg = raw;
+  if (rotate || mirror) {
+    if (busy) return; // Handy kommt nicht hinterher: Bild auslassen statt Rückstau
+    busy = true;
+    try { jpeg = await rotateJpeg(raw, rotate, mirror, fit); } catch (e) { console.warn(e); return; } finally { busy = false; }
+  }
+  const now = performance.now();
+  if (ws && ws.readyState === 1 && wantLive && ws.bufferedAmount < 512 * 1024) {
+    ws.send(jpeg);
+    sent.push(now);
+  }
+  sent = sent.filter(t => now - t < 5000);
+  $('fps').textContent = (sent.length / 5).toFixed(1) + ' Bilder/s';
+  if (now - lastPreview > 200) { // Vorschau begrenzen, spart Akku
+    lastPreview = now;
+    const img = $('img');
+    const old = img.src;
+    img.src = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
+    if (old) URL.revokeObjectURL(old);
+    img.classList.remove('hidden');
+    $('viewText').classList.add('hidden');
+  }
+}
+
+async function startCameraStream() {
+  await camSend({ cmd: 'cam', framesize: +$('res').value });
+  await camSend({ cmd: 'stream', on: true, interval: 0 });
+}
+
+async function startLive() {
+  wantLive = true;
+  setSteps();
+  await requestWakeLock();
+  if (camConnected) await startCameraStream();
+  setMsg(wsOk ? 'Stream läuft.' : 'Stream startet, sobald der Server verbunden ist.', 'ok');
+}
+
+function stopLive() {
+  wantLive = false;
+  if (camConnected) camSend({ cmd: 'stream', on: false });
+  releaseWakeLock();
+  $('fps').textContent = '–';
+  setSteps();
+}
+
+// Bildschirm anlassen, solange gestreamt wird
+async function requestWakeLock() {
+  try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* nicht erlaubt */ }
+}
+function releaseWakeLock() {
+  if (wakeLock) wakeLock.release().catch(() => {});
+  wakeLock = null;
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible' && wantLive) requestWakeLock();
+});
+
+$('camBtn').onclick = () => (camConnected ? disconnectCamera() : connectCamera());
+$('liveBtn').onclick = () => (wantLive ? stopLive() : startLive());
+$('res').onchange = () => {
+  if (camConnected) camSend({ cmd: 'cam', framesize: +$('res').value });
+  sendHello();
+};
+
+if (!link) {
+  $('noLink').classList.remove('hidden');
+  $('srvBadge').classList.add('hidden');
+} else {
+  $('main').classList.remove('hidden');
+  $('streamName').textContent = link.u + '/' + link.s;
+  setSteps();
+  connectServer();
+}
+</script>
+</body>
+</html>
