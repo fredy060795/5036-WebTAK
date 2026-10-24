@@ -58,11 +58,17 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 1. Im Admin-Fenster oben den **QR-Code für alle Nutzer** groß anzeigen oder drucken (ein Code für alle).
 2. Der Nutzer scannt ihn, gibt **Name** und **Einheit** ein → er bekommt automatisch einen eigenen Stream
    (z. B. `https://<domain>:5036/max-mueller/qugzu48s8q`). Das Handy merkt sich die Anmeldung.
-3. **Kamera verbinden** (Helmkamera auswählen) → **Stream starten**.
+3. Quelle wählen: **Handy-Kamera** (Rückkamera) oder **Helmkamera (Bluetooth)** → **Stream starten**.
 4. Der Stream erscheint sofort in der Admin-Liste – dort ausrichten, Link für ATAK/OpenTAKServer kopieren,
    stoppen, rauswerfen oder löschen.
 
-Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst trennt das Handy Bluetooth).
+Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
+
+**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s, Bildgröße
+wählbar bis 1280x720. Die Admin-Drehung gilt nur für die Helmkamera; das Handy-Bild kommt schon aufrecht an.
+
+**Helmkamera (Bluetooth):** Android mit **Chrome** (nicht Samsung Internet/Firefox). Auf dem iPhone kann kein Browser
+Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den Weg („Link für Bluefy kopieren“).
 
 **Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
@@ -92,7 +98,7 @@ sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anle
      CA-Zertifikat → Datei wählen
    - iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter
      Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten
-6. Danach den Stream-QR-Code scannen → Kamera verbinden → Stream starten.
+6. Danach den QR-Code für alle Nutzer scannen → anmelden → Kamera wählen → Stream starten.
 
 Lädt die Seite am Handy nicht: Handy im selben WLAN (kein Gäste-WLAN, keine mobilen Daten)? start.bat legt eine
 Windows-Firewall-Regel für Port 5036 an (fragt einmal nach Administrator-Rechten); zeigt das Fenster weitere
@@ -110,7 +116,7 @@ verwenden (Let's Encrypt, siehe unten).
 
 ### Mit Docker (empfohlen) – Port 5036
 
-Der Server läuft auf **Port 5036** mit HTTPS (nötig für Bluetooth im Handy-Browser). Am einfachsten mit dem
+Der Server läuft auf **Port 5036** mit HTTPS (nötig für Kamera und Bluetooth im Handy-Browser). Am einfachsten mit dem
 Zertifikat, das auf dem Server schon vorhanden ist (z. B. Let's Encrypt des TAK-Servers):
 
 1. In `docker-compose.yml` `tak.example.com` durch die eigene Domain ersetzen (bei `PUBLIC_URL` und den
