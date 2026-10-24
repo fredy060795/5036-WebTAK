@@ -126,7 +126,13 @@ Home-Bildschirm“). Aufbau wie ATAK:
   einmal ab, dazu Overlays und Chat; auf Wunsch werden eigene Marker auch beim TAK-Server gelöscht.
 - **Links:** Kompass (antippen = Blickrichtung oben „HDG“, erneut = Nord oben „N“; ohne Sensor nach
   GPS-Kurs), darunter „auf mich zoomen“.
-- **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
+- **Rechts:** Schieberegler zum Kippen (Doppeltippen = flach). Gekippt zeigt WebTAK eine **echte 3D-Karte** wie
+  WinTAK (MapLibre GL): Gelände mit Höhen, Himmel und Horizont, Neigung bis **88°**, Symbole stehen aufrecht mit
+  Namen, Routen/Flächen liegen auf dem Gelände, eigene Marker lassen sich auch in 3D verschieben und antippen.
+  Bei 0° geht es zurück zur flachen Karte (zum Zeichnen, Messen, Korridor) – mit gleichem Ausschnitt und gleicher
+  Drehung. **3D ist Standard** (Karte → 3D MAP: abschaltbar, „Start in 3D view“, Geländehöhe 1–3×). Höhendaten:
+  frei nutzbare *AWS Terrain Tiles* (Terrarium) über den eigenen Kachel-Zwischenspeicher; „Save for offline use“
+  speichert sie mit. Ohne WebGL 2 oder ohne Höhendaten: flach gekippt (bis 60°) bzw. 3D ohne Gelände.
 - **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
   Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
 - **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK; Zugehörigkeit (Unbekannt/Neutral/Feind/
@@ -148,7 +154,9 @@ Home-Bildschirm“). Aufbau wie ATAK:
    startet sofort (auch wenn im Admin „Admin schaltet live“ eingestellt ist – der Admin bekommt einen
    Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt. Eigene Vorschau
    minimieren oder ausblenden (Stream läuft weiter). **Streams ansehen:** alle Streams im Lagebild und die
-   Feeds des TAK-Servers im Viewer (minimieren, Vollbild, schließen; MJPEG/HLS; RTSP wird kopiert).
+   Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
+   angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
+   Video und Chat stapeln sich, statt sich zu überdecken.
 
 **TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
 Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte

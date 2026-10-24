@@ -58,7 +58,7 @@ const hub = new StreamHub({
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.json': 'application/json', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -227,6 +227,10 @@ const VENDOR = {
   'leaflet-rotate.js': 'leaflet-rotate/dist/leaflet-rotate.js',
   'milsymbol.js': 'milsymbol/dist/milsymbol.js',
   'jsQR.js': 'jsqr/dist/jsQR.js',
+  // 3D-Karte (ES-Module; der Worker wird relativ zum Modul geladen)
+  'maplibre-gl.mjs': 'maplibre-gl/dist/maplibre-gl.mjs',
+  'maplibre-gl-worker.mjs': 'maplibre-gl/dist/maplibre-gl-worker.mjs',
+  'maplibre-gl.css': 'maplibre-gl/dist/maplibre-gl.css',
 };
 
 function serveVendor(res, name) {

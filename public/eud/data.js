@@ -208,12 +208,13 @@
 
   function showOverlay(ov) {
     if (layers.has(ov.id)) { layers.get(ov.id).remove(); layers.delete(ov.id); }
-    if (!ov.visible) return;
+    if (!ov.visible) { if (window.view3d) view3d.dirtyOverlays(); return; }
     try {
       const l = kmlLayer(ov);
       l.addTo(map);
       layers.set(ov.id, l);
     } catch (e) { toast(`Overlay "${ov.name}": ${e.message}`); }
+    if (window.view3d) view3d.dirtyOverlays();
   }
 
   async function saveOverlays(list, source, zoomTo) {
@@ -580,7 +581,34 @@
   });
 
   // Für "Clear Content" in eud.js
+  // Für die 3D-Karte: sichtbare Overlays als Linien/Flächen, Punkte und Rasterbilder
+  function for3d() {
+    const out = { features: [], points: [], images: [] };
+    const walk = l => {
+      if (l instanceof L.ImageOverlay) {
+        const b = l.getBounds();
+        out.images.push({ url: l._url, bounds: [[b.getSouth(), b.getWest()], [b.getNorth(), b.getEast()]] });
+      } else if (l instanceof L.Polyline) {
+        const o = l.options;
+        out.features.push({ type: 'Feature', geometry: l.toGeoJSON().geometry, properties: {
+          stroke: o.color || '#ffd400', width: Number(o.weight) || 2, opacity: o.opacity == null ? 1 : o.opacity,
+          fill: o.fillColor || o.color || '#ffd400', fillOpacity: l instanceof L.Polygon ? (o.fillOpacity == null ? 0.2 : o.fillOpacity) : 0,
+        } });
+      } else if (l instanceof L.Marker || l instanceof L.CircleMarker) {
+        const p = l.getLatLng();
+        const tip = l.getTooltip && l.getTooltip();
+        const icon = l.options.icon && l.options.icon.options && l.options.icon.options.iconUrl;
+        out.points.push({ lat: p.lat, lon: p.lng, name: tip ? String(tip.getContent() || '') : '', icon: icon || '', color: l.options.fillColor || '' });
+      } else if (l.eachLayer) {
+        l.eachLayer(walk);
+      }
+    };
+    for (const l of layers.values()) walk(l);
+    return out;
+  }
+
   window.eud.overlayApi = {
+    for3d,
     list: () => overlays,
     clear: async () => {
       const n = overlays.length;

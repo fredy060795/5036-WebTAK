@@ -412,7 +412,7 @@
   $('vwClose').addEventListener('click', () => { stopViewer(); $('viewer').classList.add('hidden'); $('viewer').classList.remove('full', 'min'); });
   $('vwMin').addEventListener('click', () => { $('viewer').classList.remove('full'); $('viewer').classList.toggle('min'); });
   document.querySelector('.vw-head').addEventListener('click', e => { if (!e.target.closest('button')) $('viewer').classList.remove('min'); });
-  $('vwFull').addEventListener('click', () => $('viewer').classList.toggle('full'));
+  $('vwFull').addEventListener('click', () => { $('viewer').classList.remove('min'); $('viewer').classList.toggle('full'); });
 
   function renderStreams() {
     const box = $('streamList');

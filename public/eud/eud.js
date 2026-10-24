@@ -100,6 +100,7 @@ function setTiles(id) {
   baseLayer.addTo(map);
   profile.tiles = id;
   saveProfile();
+  if (window.view3d) view3d.baseChanged();
 }
 setTiles(profile.tiles);
 map.on('moveend', () => { const c = map.getCenter(); store.set('eud.view', [c.lat, c.lng, map.getZoom()]); });
@@ -401,6 +402,7 @@ function removeItem(uid) {
   if (it.layer) it.layer.remove();
   items.delete(uid);
   persistSoon();
+  if (window.view3d) view3d.dirty();
 }
 
 function drawItem(it) {
@@ -426,6 +428,7 @@ function drawItem(it) {
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
+  if (window.view3d) view3d.dirty();
 }
 
 function handleCot(xml, { local = false, own = false, srv = null } = {}) {
@@ -786,6 +789,7 @@ function drawMe() {
     meCircle.setLatLng(ll).setRadius(me.acc || 0);
     if (follow) map.panTo(ll, { animate: true });
   }
+  if (window.view3d) view3d.dirty();
 }
 
 if ('geolocation' in navigator) {
@@ -911,27 +915,28 @@ function placeMarker(latlng) {
 }
 
 
-map.on('popupopen', e => {
-  const play = e.popup.getElement().querySelector('[data-play]');
-  if (play) play.addEventListener('click', () => { map.closePopup(); window.eudPlay(play.dataset.name, play.dataset.play); });
-  const ren = e.popup.getElement().querySelector('[data-ren]');
+// Knöpfe im Marker-Popup (Video, Umbenennen, Löschen) – für die 2D- und die 3D-Karte
+function wirePopup(root, close) {
+  const play = root.querySelector('[data-play]');
+  if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
+  const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
     if (!it) return;
     const name = prompt('New name:', it.c.callsign || '');
     if (name == null || !name.trim()) return;
-    map.closePopup();
+    close();
     updateOwn(it, { name: name.trim().slice(0, 40) });
   });
-  const btn = e.popup.getElement().querySelector('[data-del]');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
+  const btn = root.querySelector('[data-del]');
+  if (btn) btn.addEventListener('click', () => {
     const uid = btn.getAttribute('data-del');
     removeItem(uid);
     sendCot(deleteXml(uid), true);
-    map.closePopup();
+    close();
   });
-});
+}
+map.on('popupopen', e => wirePopup(e.popup.getElement(), () => map.closePopup()));
 
 // ======================================================================
 // Kontakte
@@ -1013,6 +1018,7 @@ function listRow(it) {
     closePopup();
     follow = false;
     $('btnLocate').classList.remove('active');
+    if (window.view3d && view3d.active) return view3d.focus(it, pos);
     map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
     if (it.layer) it.layer.openPopup();
   });
@@ -1582,6 +1588,14 @@ let wakeSentinel = null;
 async function wakeLock() {
   try { if ('wakeLock' in navigator && !wakeSentinel) { wakeSentinel = await navigator.wakeLock.request('screen'); wakeSentinel.onrelease = () => { wakeSentinel = null; }; } } catch (e) { /* nicht erlaubt */ }
 }
+$('f3d').addEventListener('change', () => {
+  setPitch(0);
+  profile.map3d = $('f3d').checked;
+  saveProfile();
+  pitchUi(0);
+});
+$('fStart3d').addEventListener('change', () => { profile.start3d = $('fStart3d').checked; saveProfile(); });
+$('fExag').addEventListener('change', () => { profile.exag = Number($('fExag').value) || 1; saveProfile(); if (window.view3d) view3d.baseChanged(); });
 $('fWake').addEventListener('change', () => {
   profile.wake = $('fWake').checked;
   saveProfile();
@@ -1612,6 +1626,11 @@ function fillMap() {
   $('fCustom').value = profile.customUrl || '';
   $('customBox').classList.toggle('hidden', profile.tiles !== 'custom');
   $('fWake').checked = !!profile.wake;
+  $('f3d').checked = profile.map3d !== false;
+  $('f3d').disabled = !(window.view3d && view3d.supported);
+  $('fStart3d').checked = profile.start3d !== false;
+  $('fExag').value = String(profile.exag || 1);
+  $('no3d').classList.toggle('hidden', !!(window.view3d && view3d.supported));
   fillZoom();
   renderAreas();
   updateEstimate();
@@ -1723,7 +1742,10 @@ function updateEstimate() {
   if (!area) { $('estimate').textContent = 'Draw a corridor, then choose zoom levels.'; return; }
   const [a, b] = zoomRange();
   const list = areaTiles(area, a, b, 20000);
-  $('estimate').textContent = list ? `≈ ${list.length} tiles, approx. ${Math.max(1, Math.round(list.length * 0.02))} MB` : 'Too many tiles (over 20,000) – lower "zoom to" or use a smaller area.';
+  const dem = list && use3d() ? (areaTiles(area, a, Math.min(b, 15), 20000) || []).length : 0;
+  $('estimate').textContent = list
+    ? `≈ ${list.length} tiles${dem ? ` + ${dem} terrain tiles (3D)` : ''}, approx. ${Math.max(1, Math.round(list.length * 0.02 + dem * 0.04))} MB`
+    : 'Too many tiles (over 20,000) – lower "zoom to" or use a smaller area.';
 }
 map.on('moveend', updateEstimate);
 
@@ -1819,8 +1841,15 @@ $('prefetchBtn').addEventListener('click', async () => {
       renderAreas();
     }
   };
-  setMsg(msg, `Saving … 0 / ${keys.length}`, true);
-  sw.postMessage({ type: 'prefetch', urls: keys.map(k => tileUrl(profile.tiles, k)) }, [ch.port2]);
+  // Mit 3D-Karte auch die Höhendaten (bis Zoom 15) speichern, damit das Gelände offline da ist
+  const urls = keys.map(k => tileUrl(profile.tiles, k));
+  if (use3d()) {
+    const dem = areaTiles(area, zmin, Math.min(zmax, 15), 20000) || [];
+    for (const k of dem) urls.push(tileUrl('dem', k));
+  }
+  rec.count = urls.length;
+  setMsg(msg, `Saving … 0 / ${urls.length}`, true);
+  sw.postMessage({ type: 'prefetch', urls }, [ch.port2]);
 });
 $('prefetchStop').addEventListener('click', async () => {
   const sw = await swReady();
@@ -1872,6 +1901,7 @@ function renderAreas() {
 
 // Winkel (Grad, im Uhrzeigersinn), in dem Norden gerade auf dem Bildschirm liegt (= Drehung der Karte)
 function northAngle() {
+  if (window.view3d && view3d.active) return view3d.northAngle(); // 3D-Karte dreht selbst
   const b = map.getBearing ? map.getBearing() : 0;
   return ((b % 360) + 360) % 360;
 }
@@ -1959,22 +1989,34 @@ updateCompass();
 // ---------------- Kippen (0–60°) ----------------
 
 let pitch = 0;
-const PITCH_MAX = 60;
-function setPitch(p) {
-  p = Math.max(0, Math.min(PITCH_MAX, Math.round(p)));
+// Mit 3D-Karte (WebGL) wie WinTAK bis knapp an den Horizont, sonst flache Karte schräg gestellt (CSS)
+const use3d = () => profile.map3d !== false && window.view3d && view3d.supported;
+const pitchMax = () => (use3d() ? 88 : 60);
+function pitchUi(p) {
+  const max = pitchMax();
+  const box = $('pitchBox').clientHeight || 96;
+  $('pitchThumb').style.top = (4 + (1 - Math.min(p, max) / max) * (box - 14)) + 'px';
+  $('pitchText').textContent = Math.round(p) + '°';
+  $('pitchFill').style.opacity = String(0.3 + 0.7 * Math.min(p, max) / max);
+  $('pitchBox').title = `Tilt map (0°–${max}°)` + (use3d() ? ' – 3D terrain' : '');
+}
+function setPitch(p, fromView) {
+  p = Math.max(0, Math.min(pitchMax(), Math.round(p)));
   const was = pitch;
   pitch = p;
   const el = $('map');
-  if ((was > 0) !== (p > 0)) {
-    el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
-    map.invalidateSize({ pan: true, animate: false });
+  if (use3d()) {
+    if (el.style.transform) { el.style.transform = ''; el.classList.remove('tilted'); map.invalidateSize({ pan: true, animate: false }); }
+    if (!fromView) { if (p > 0) view3d.show(p); else view3d.hide(); }
+  } else {
+    if ((was > 0) !== (p > 0)) {
+      el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
+      map.invalidateSize({ pan: true, animate: false });
+    }
+    el.style.transform = p ? `rotateX(${p}deg)` : '';
   }
-  el.style.transform = p ? `rotateX(${p}deg)` : '';
-  const box = $('pitchBox').clientHeight || 96;
-  $('pitchThumb').style.top = (4 + (1 - p / PITCH_MAX) * (box - 14)) + 'px';
-  $('pitchText').textContent = p + '°';
-  $('pitchFill').setAttribute('points', `12,2 22,2 32,86 2,86`);
-  $('pitchFill').style.opacity = String(0.3 + 0.7 * p / PITCH_MAX);
+  if (p > 0) { profile.pitch = p; saveProfile(); }
+  pitchUi(p);
 }
 (() => {
   const box = $('pitchBox');
@@ -1982,7 +2024,7 @@ function setPitch(p) {
   const fromEvent = e => {
     const r = box.getBoundingClientRect();
     const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    setPitch((1 - y / r.height) * PITCH_MAX);
+    setPitch((1 - y / r.height) * pitchMax());
   };
   box.addEventListener('pointerdown', e => { dragging = true; box.setPointerCapture(e.pointerId); fromEvent(e); });
   box.addEventListener('pointermove', e => { if (dragging) fromEvent(e); });
@@ -1991,6 +2033,8 @@ function setPitch(p) {
   box.addEventListener('dblclick', () => setPitch(0));
 })();
 setPitch(0);
+// 3D als Standard: mit der zuletzt benutzten Neigung starten
+if (use3d() && profile.start3d !== false) setTimeout(() => setPitch(Math.max(45, profile.pitch || 60)), 300);
 
 // ---------------- Entfernung messen ----------------
 
