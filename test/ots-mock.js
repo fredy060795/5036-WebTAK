@@ -100,7 +100,14 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
         state.members = state.members.filter(m => m.group !== n);
         return send(200, { success: true });
       }
-      if (u.pathname === '/api/missions' && req.method === 'GET') return send(200, { results: Object.values(state.missions).map(m => ({ ...m, password_protected: !!m.password, uids: [], contents: [] })) });
+      const groupList = () => [...state.groups].map((name, i) => ({ name, id: i + 1 }));
+      if (u.pathname === '/api/missions' && req.method === 'GET') return send(200, { results: Object.values(state.missions).map(m => ({ ...m, password_protected: !!m.password, uids: [], contents: [], groups: groupList().filter(g => m.groups.includes(g.id)) })) });
+      if (u.pathname === '/api/missions' && req.method === 'PUT') {
+        const m = state.missions[json.name];
+        if (!m || !json.creator_uid) return fail(400, 'Please provide a mission name and creator UID');
+        if (json.groups && json.groups.length) m.groups = json.groups;
+        return send(200, { success: true });
+      }
       if (u.pathname === '/api/missions' && req.method === 'POST') {
         if (!json.name || !json.creator_uid) return fail(400, 'Please provide a mission name and creator UID');
         if (!state.euds.some(e => e.uid === json.creator_uid)) return fail(400, 'Invalid UID: ' + json.creator_uid);

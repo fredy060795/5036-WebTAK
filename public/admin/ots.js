@@ -239,16 +239,35 @@
     if (!r) return;
     const tb = $('omTable').querySelector('tbody');
     tb.replaceChildren();
-    if (!r.missions.length) empty(tb, 5, 'Keine Missionen.');
+    if (!r.missions.length) empty(tb, 6, 'Keine Missionen.');
     for (const m of r.missions) {
+      // OTS: Nutzer mit Gruppen sehen nur Missionen ihrer IN-Gruppen – ohne Gruppe ist die Mission für sie unsichtbar
+      const grp = m.groups && m.groups.length
+        ? el('span', { class: 'small', text: m.groups.length >= groups.length && groups.length > 1 ? 'alle' : m.groups.join(', ') })
+        : el('span', { class: 'small', style: 'color:var(--warn,#e0a020)', text: '⚠ keine – in ATAK/WebTAK unsichtbar' });
       tb.append(el('tr', {}, td('Mission', el('b', { text: m.name + (m.password ? ' 🔒' : '') })), td('Beschreibung', el('span', { class: 'small', text: m.description })),
+        td('Gruppen', grp),
         td('Inhalt', el('span', { class: 'small', text: `${m.items} Punkte · ${m.files} Dateien` })), td('Erstellt', el('span', { class: 'small', text: fmt(m.created) })),
-        td('', btn('Löschen', 'danger', async () => {
+        td('', el('div', { class: 'row' }, btn(m.groups && m.groups.length ? 'Gruppen' : 'Für alle freigeben', m.groups && m.groups.length ? '' : 'pri', () => missionGroups(m)), btn('Löschen', 'danger', async () => {
           if (!confirm(`Mission „${m.name}“ mit allen Inhalten löschen?`)) return;
           await guard($('omMsg'), () => oapi('missions/' + enc(m.name), { method: 'DELETE' }), 'Gelöscht.');
           loadMissions();
-        }))));
+        })))));
     }
+  }
+  // Gruppen einer Mission setzen (keine Auswahl = alle Gruppen)
+  function missionGroups(m) {
+    const box = el('div', { class: 'row' }, ...groups.map(x => el('label', { class: 'check' },
+      el('input', { type: 'checkbox', value: x.name, ...((m.groups || []).includes(x.name) ? { checked: '' } : {}) }), ' ' + x.name)));
+    const out = el('p', { class: 'msg' });
+    const save = el('button', { class: 'pri', type: 'button', text: 'Speichern', onclick: async () => {
+      const sel = [...box.querySelectorAll('input:checked')].map(x => x.value);
+      const ok = await guard(out, () => oapi('missions/' + enc(m.name) + '/groups', { method: 'PUT', body: { groups: sel } }), 'Gespeichert.');
+      if (ok) { closeModal(); loadMissions(); }
+    } });
+    openModal('Gruppen: ' + m.name,
+      el('p', { class: 'mut small', text: 'Nur Nutzer mit einer dieser Gruppen (IN) sehen die Mission in ATAK/WebTAK. Keine Auswahl = alle Gruppen.' }),
+      box, el('div', { class: 'row', style: 'margin-top:10px' }, save), out);
   }
   $('omForm').addEventListener('submit', async e => {
     e.preventDefault();

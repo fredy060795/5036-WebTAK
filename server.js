@@ -502,10 +502,18 @@ async function handleOtsAdmin(req, res, route) {
     return json(res, 200, { euds: euds.map(e => ({ uid: e.uid, callsign: e.callsign, username: e.username || '', lastStatus: e.last_status || '' })) });
   }
 
+  // OTS zeigt Nutzern mit Gruppen nur Missionen ihrer IN-Gruppen; eine Mission ohne Gruppe sieht dann niemand.
+  // Keine Auswahl heißt deshalb: alle Gruppen (wie „für alle sichtbar“)
+  const missionGroupIds = async names => {
+    const all = await ots.allGroups();
+    const pick = Array.isArray(names) && names.length ? all.filter(g => names.includes(g.name)) : all;
+    return pick.map(g => g.id).filter(x => x != null);
+  };
   if (route === 'missions' && method === 'GET') {
     const list = await ots.missions();
     return json(res, 200, { missions: list.map(m => ({ name: m.name, description: m.description || '', creator: m.creator_uid || m.creatorUid || '',
-      created: m.create_time || m.createTime || '', password: !!(m.password_protected || m.passwordProtected), group: m.group || '',
+      created: m.create_time || m.createTime || '', password: !!(m.password_protected || m.passwordProtected),
+      groups: (m.groups || []).map(g => (typeof g === 'string' ? g : g && g.name)).filter(Boolean),
       items: (m.uids || []).length, files: (m.contents || []).length })) });
   }
   if (route === 'missions' && method === 'POST') {
@@ -517,13 +525,16 @@ async function handleOtsAdmin(req, res, route) {
       if (!euds.length) return json(res, 400, { error: 'OTS braucht ein bekanntes Gerät als Ersteller – es war noch keins verbunden.' });
       creatorUid = euds[0].uid;
     }
-    let groupIds = [];
-    if (Array.isArray(body.groups) && body.groups.length) {
-      const all = await ots.allGroups();
-      groupIds = body.groups.map(n => (all.find(g => g.name === n) || {}).id).filter(x => x != null);
-    }
+    const groupIds = await missionGroupIds(body.groups);
     await ots.createMission({ name, description: String(body.description || '').slice(0, 500), password: String(body.password || ''), creatorUid, groups: groupIds });
     log('Admin: Mission angelegt', name);
+    return json(res, 200, { ok: true });
+  }
+  if (seg[0] === 'missions' && seg[1] && seg[2] === 'groups' && method === 'PUT') {
+    const m = (await ots.missions()).find(x => x.name === seg[1]);
+    if (!m) return json(res, 404, { error: 'Mission nicht gefunden.' });
+    await ots.setMissionGroups(m.name, m.creator_uid || m.creatorUid, await missionGroupIds(body.groups));
+    log('Admin: Missions-Gruppen gesetzt', m.name);
     return json(res, 200, { ok: true });
   }
   if (seg[0] === 'missions' && seg[1] && method === 'DELETE') {
