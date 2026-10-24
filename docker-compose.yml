@@ -1,31 +1,31 @@
-# Helm Camera Streams auf Port 5036.
+# WebTAK / Helm Camera Streams on port 5036.
 #
-# Variante A (Standard): Server direkt auf https://<domain>:5036 mit vorhandenem Zertifikat,
-#   z. B. dem Let's-Encrypt-Zertifikat des TAK-Servers. Pfade unten anpassen, dann:
+# Option A (default): server directly on https://<domain>:5036 with an existing certificate,
+#   e.g. the Let's Encrypt certificate of the TAK server. Adjust the paths below, then:
 #     docker compose up -d
 #
-# Variante B: zusätzlich Caddy auf 80/443 (nur wenn die Ports frei sind), holt Zertifikate selbst:
+# Option B: additionally Caddy on 80/443 (only if those ports are free), obtains certificates itself:
 #     docker compose --profile caddy up -d
-#   Dann in deploy/Caddyfile die Domains eintragen und TLS_CERT/TLS_KEY unten entfernen.
+#   Then enter the domains in deploy/Caddyfile and remove TLS_CERT/TLS_KEY below.
 services:
   helmcam:
     build: .
     restart: unless-stopped
-    # root, weil der private Schlüssel von Let's Encrypt nur für root lesbar ist
+    # root, because the Let's Encrypt private key is only readable by root
     user: root
     ports:
       - "5036:5036"
     environment:
       PORT: 5036
       PUBLIC_URL: https://tak.example.com:5036
-      # Admin nur unter dieser Adresse erreichbar (optional, sonst Zeile löschen):
+      # Admin reachable only under this address (optional, otherwise delete the line):
       # ADMIN_HOST: admin.example.com
       TLS_CERT: /etc/letsencrypt/live/tak.example.com/fullchain.pem
       TLS_KEY: /etc/letsencrypt/live/tak.example.com/privkey.pem
     volumes:
       - helmcam-data:/data
-      # Zertifikate des Servers (Let's Encrypt), nur lesen. Erneuerte Zertifikate
-      # übernimmt der Server automatisch (stündliche Prüfung), ohne Neustart.
+      # Server certificates (Let's Encrypt), read-only. Renewed certificates
+      # are picked up automatically (hourly check), without a restart.
       - /etc/letsencrypt:/etc/letsencrypt:ro
 
   caddy:

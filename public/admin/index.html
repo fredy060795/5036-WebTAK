@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
@@ -14,291 +14,291 @@
 </head>
 <body>
 
-<!-- Anmeldung, Passwort vergessen, neues Passwort -->
+<!-- Login, forgot password, new password -->
 <div id="authView" class="auth hidden">
   <div class="brand">
     <img src="/assets/brand/webtak-logo.png" alt="WebTAK">
     <div class="brand-sub">Administration</div>
   </div>
   <form class="card" id="loginForm">
-    <h1>Anmelden</h1>
-    <label for="lUser">Benutzername</label>
+    <h1>Sign in</h1>
+    <label for="lUser">Username</label>
     <input id="lUser" autocomplete="username" required>
-    <label for="lPass">Passwort</label>
+    <label for="lPass">Password</label>
     <input id="lPass" type="password" autocomplete="current-password" required>
     <button class="pri wide" type="submit">Login</button>
     <p class="msg" id="loginMsg"></p>
-    <a href="#" id="forgotLink" class="small">Passwort vergessen?</a>
+    <a href="#" id="forgotLink" class="small">Forgot password?</a>
   </form>
 
   <form class="card hidden" id="forgotForm">
-    <h1>Passwort vergessen</h1>
-    <p class="mut small">Benutzername oder E-Mail-Adresse eingeben. Ist SMTP eingerichtet, kommt ein Link zum Zurücksetzen an die hinterlegte Admin-E-Mail.</p>
-    <label for="fUser">Benutzername oder E-Mail</label>
+    <h1>Forgot password</h1>
+    <p class="mut small">Enter your username or e-mail address. If SMTP is set up, a reset link is sent to the stored admin e-mail.</p>
+    <label for="fUser">Username or e-mail</label>
     <input id="fUser" required>
-    <button class="pri wide" type="submit">Link senden</button>
+    <button class="pri wide" type="submit">Send link</button>
     <p class="msg" id="forgotMsg"></p>
-    <a href="#" class="small backLink">Zurück zur Anmeldung</a>
+    <a href="#" class="small backLink">Back to sign in</a>
   </form>
 
   <form class="card hidden" id="resetForm">
-    <h1>Neues Passwort</h1>
-    <label for="rPass">Neues Passwort (mind. 8 Zeichen)</label>
+    <h1>New password</h1>
+    <label for="rPass">New password (min. 8 characters)</label>
     <input id="rPass" type="password" autocomplete="new-password" required minlength="8">
-    <label for="rPass2">Wiederholen</label>
+    <label for="rPass2">Repeat</label>
     <input id="rPass2" type="password" autocomplete="new-password" required minlength="8">
-    <button class="pri wide" type="submit">Speichern</button>
+    <button class="pri wide" type="submit">Save</button>
     <p class="msg" id="resetMsg"></p>
-    <a href="#" class="small backLink">Zurück zur Anmeldung</a>
+    <a href="#" class="small backLink">Back to sign in</a>
   </form>
 
   <form class="card hidden" id="firstForm">
-    <h1>Zugang festlegen</h1>
-    <p class="mut small">Erster Start: Bitte Benutzernamen und ein eigenes Passwort festlegen. Die E-Mail-Adresse wird für „Passwort vergessen“ gebraucht.</p>
+    <h1>Set up access</h1>
+    <p class="mut small">First start: please choose a username and your own password. The e-mail address is needed for "Forgot password".</p>
     <div id="xCurWrap" class="hidden">
-      <label for="xCur">Aktuelles Passwort</label>
+      <label for="xCur">Current password</label>
       <input id="xCur" type="password" autocomplete="current-password">
     </div>
-    <label for="xUser">Benutzername</label>
+    <label for="xUser">Username</label>
     <input id="xUser" autocomplete="username" required>
-    <label for="xMail">E-Mail (für Passwort-Reset)</label>
+    <label for="xMail">E-mail (for password reset)</label>
     <input id="xMail" type="email" autocomplete="email">
-    <label for="xPass">Neues Passwort (mind. 8 Zeichen)</label>
+    <label for="xPass">New password (min. 8 characters)</label>
     <input id="xPass" type="password" autocomplete="new-password" required minlength="8">
-    <label for="xPass2">Wiederholen</label>
+    <label for="xPass2">Repeat</label>
     <input id="xPass2" type="password" autocomplete="new-password" required minlength="8">
-    <button class="pri wide" type="submit">Speichern</button>
+    <button class="pri wide" type="submit">Save</button>
     <p class="msg" id="firstMsg"></p>
   </form>
-  <p class="auth-foot">WebTAK · TAK-Zugänge, Teams und Video-Streams</p>
+  <p class="auth-foot">WebTAK · TAK access, teams and video streams</p>
 </div>
 
-<!-- Übersicht -->
+<!-- Overview -->
 <div id="appView" class="hidden">
   <header class="top">
-    <button class="navtoggle" id="navToggle" aria-label="Menü">☰</button>
+    <button class="navtoggle" id="navToggle" aria-label="Menu">☰</button>
     <img class="logo" src="/assets/brand/webtak-logo-160.png" alt="">
-    <h1>WebTAK <span class="admin-only">Admin</span><span class="helper-only">Helfer</span></h1>
+    <h1>WebTAK <span class="admin-only">Admin</span><span class="helper-only">Helper</span></h1>
     <div class="row topr">
       <span class="small" id="summary"></span>
-      <button id="notifyBtn" class="bell" type="button" title="Hinweise: neue Anfragen, Kameras, Live">🔔<span class="nbadge hidden" id="notifyCount"></span></button>
-      <button id="logoutBtn">Abmelden</button>
+      <button id="notifyBtn" class="bell" type="button" title="Notifications: new requests, cameras, live">🔔<span class="nbadge hidden" id="notifyCount"></span></button>
+      <button id="logoutBtn">Sign out</button>
     </div>
   </header>
 
   <div class="shell">
   <nav class="side" id="side">
     <div class="side-h">TAK</div>
-    <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
-    <a href="#teams" data-nav="teams" class="admin-only"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
-    <a href="#links" data-nav="links"><span class="ic">🔗</span>Links &amp; QR-Codes</a>
-    <div class="side-h">TAK-Server</div>
-    <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
-    <a href="#otsgroups" data-nav="otsgroups" class="admin-only"><span class="ic">◫</span>Gruppen</a>
-    <a href="#missions" data-nav="missions" class="admin-only"><span class="ic">⟳</span>Missionen (Data Sync)</a>
+    <a href="#users" data-nav="users"><span class="ic">👥</span>Users &amp; requests <span class="badge nb" id="navPending"></span></a>
+    <a href="#teams" data-nav="teams" class="admin-only"><span class="ic">⬢</span>Teams &amp; visibility</a>
+    <a href="#links" data-nav="links"><span class="ic">🔗</span>Links &amp; QR codes</a>
+    <div class="side-h">TAK server</div>
+    <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS users</a>
+    <a href="#otsgroups" data-nav="otsgroups" class="admin-only"><span class="ic">◫</span>Groups</a>
+    <a href="#missions" data-nav="missions" class="admin-only"><span class="ic">⟳</span>Missions (Data Sync)</a>
     <a href="#mesh" data-nav="mesh" class="admin-only"><span class="ic">⌁</span>Meshtastic</a>
     <div class="side-h admin-only">Video</div>
-    <a href="#video" data-nav="video" class="admin-only"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
-    <a href="#create" data-nav="create" class="admin-only"><span class="ic">＋</span>Stream anlegen</a>
-    <div class="side-h">Einstellungen</div>
-    <a href="#ots" data-nav="ots" class="admin-only"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
-    <a href="#webtak" data-nav="webtak" class="admin-only"><span class="ic">⌖</span>WebTAK-App</a>
-    <a href="#system" data-nav="system"><span class="ic">⚙</span><span class="admin-only">System (Admin, E-Mail)</span><span class="helper-only">Mein Passwort</span></a>
+    <a href="#video" data-nav="video" class="admin-only"><span class="ic">📡</span>Video feeds <span class="badge nb live" id="navLive"></span></a>
+    <a href="#create" data-nav="create" class="admin-only"><span class="ic">＋</span>Create stream</a>
+    <div class="side-h">Settings</div>
+    <a href="#ots" data-nav="ots" class="admin-only"><span class="ic">🛰</span>OpenTAKServer &amp; registration</a>
+    <a href="#webtak" data-nav="webtak" class="admin-only"><span class="ic">⌖</span>WebTAK app</a>
+    <a href="#system" data-nav="system"><span class="ic">⚙</span><span class="admin-only">System (admin, e-mail)</span><span class="helper-only">My password</span></a>
   </nav>
 
   <main class="wrap">
     <section class="card" id="takCard" data-view="users teams ots">
       <div class="row between">
-        <h2 id="takTitle">Benutzer &amp; Anfragen</h2>
+        <h2 id="takTitle">Users &amp; requests</h2>
         <div class="row hidden">
-          <button class="sm" type="button" data-takt="users" id="takTabUsers">Benutzer <span class="badge" id="takPending"></span></button>
-          <button class="sm" type="button" data-takt="teams">Teams &amp; Sichtbarkeit</button>
-          <button class="sm" type="button" data-takt="settings">Einstellungen</button>
+          <button class="sm" type="button" data-takt="users" id="takTabUsers">Users <span class="badge" id="takPending"></span></button>
+          <button class="sm" type="button" data-takt="teams">Teams &amp; visibility</button>
+          <button class="sm" type="button" data-takt="settings">Settings</button>
         </div>
       </div>
       <p class="msg" id="takMsg"></p>
 
       <div data-takp="users">
         <div class="row">
-          <input id="takFilter" class="filter" placeholder="Suchen …">
-          <button class="sm" type="button" id="takJoinBtn" title="QR-Code und Link zur Registrierung zeigen/drucken">📱 Registrierungs-QR</button>
+          <input id="takFilter" class="filter" placeholder="Search …">
+          <button class="sm" type="button" id="takJoinBtn" title="Show/print the registration QR code and link">📱 Registration QR</button>
           <select id="takStatus" style="width:auto">
-            <option value="" selected>Alle</option><option value="pending">Offen</option><option value="active">Aktiv</option>
-            <option value="blocked">Gesperrt</option><option value="rejected">Abgelehnt</option><option value="unconfirmed">E-Mail unbestätigt</option>
+            <option value="" selected>All</option><option value="pending">Open</option><option value="active">Active</option>
+            <option value="blocked">Blocked</option><option value="rejected">Declined</option><option value="unconfirmed">E-mail unconfirmed</option>
           </select>
-          <button class="sm admin-only" type="button" id="takSync" title="Gruppen und Rufnamen/Teams nach OTS übertragen">⟳ Mit OTS abgleichen</button>
+          <button class="sm admin-only" type="button" id="takSync" title="Transfer groups and callsigns/teams to OTS">⟳ Sync with OTS</button>
         </div>
         <div class="table-wrap">
           <table class="streams" id="takTable">
-            <thead><tr><th>Status</th><th>Name / Einheit</th><th>Rufname</th><th>Team / Rolle</th><th>OTS-Benutzer</th><th>Geräte</th><th>Angefragt</th><th></th></tr></thead>
+            <thead><tr><th>Status</th><th>Name / unit</th><th>Callsign</th><th>Team / role</th><th>OTS user</th><th>Devices</th><th>Requested</th><th></th></tr></thead>
             <tbody></tbody>
           </table>
         </div>
       </div>
 
       <div data-takp="teams" class="hidden">
-        <p class="mut small">Standard: alle sehen alle – dann bekommen die Nutzer in OTS keine Gruppe (wie von Hand angelegte Benutzer).
-          Haken entfernen = dieses Team sieht das andere nicht. Erst dann legt WebTAK je Team eine OTS-Gruppe an (TEAM_…) und
-          OTS stellt Positionen, Marker und Chats des ausgeblendeten Teams nicht mehr zu. Geräte müssen sich danach neu verbinden.</p>
+        <p class="mut small">Default: everyone sees everyone – users then get no group in OTS (like users created by hand).
+          Untick = this team does not see the other one. Only then does WebTAK create an OTS group per team (TEAM_…) and
+          OTS stops delivering positions, markers and chats of the hidden team. Devices have to reconnect afterwards.</p>
         <div id="takTeams"></div>
         <div class="row" style="margin-top:8px">
           <button class="sm" type="button" id="takAddTeam">+ Team</button>
         </div>
-        <h3 style="margin-top:16px">Wer sieht wen?</h3>
+        <h3 style="margin-top:16px">Who sees whom?</h3>
         <div class="table-wrap"><table class="streams" id="takMatrix"></table></div>
-        <div class="row" style="margin-top:10px"><button class="pri" type="button" id="takSaveTeams">Teams speichern &amp; auf OTS anwenden</button></div>
+        <div class="row" style="margin-top:10px"><button class="pri" type="button" id="takSaveTeams">Save teams &amp; apply to OTS</button></div>
       </div>
 
       <div data-takp="settings" class="hidden">
         <form id="otsForm">
           <h3>OpenTAKServer</h3>
           <div class="row">
-            <div class="grow"><label>Adresse der OTS-Weboberfläche / API</label><input name="url" placeholder="https://ots.example.com" autocomplete="off"></div>
+            <div class="grow"><label>Address of the OTS web UI / API</label><input name="url" placeholder="https://ots.example.com" autocomplete="off"></div>
           </div>
           <div class="row">
-            <div class="grow"><label>OTS-Admin-Benutzer</label><input name="username" autocomplete="off"></div>
-            <div class="grow"><label>Passwort <span class="mut" id="otsHasPass"></span></label><input name="password" type="password" autocomplete="new-password" placeholder="leer = unverändert"></div>
+            <div class="grow"><label>OTS admin user</label><input name="username" autocomplete="off"></div>
+            <div class="grow"><label>Password <span class="mut" id="otsHasPass"></span></label><input name="password" type="password" autocomplete="new-password" placeholder="empty = unchanged"></div>
           </div>
-          <label class="check"><input type="checkbox" name="insecure"> Selbstsigniertes Zertifikat der OTS-Weboberfläche akzeptieren</label>
+          <label class="check"><input type="checkbox" name="insecure"> Accept a self-signed certificate of the OTS web UI</label>
           <div class="row">
-            <div class="grow"><label>Öffentliche TAK-Adresse für die Geräte (leer = aus der OTS-Adresse)</label><input name="host" placeholder="tak.example.com" autocomplete="off"></div>
+            <div class="grow"><label>Public TAK address for devices (empty = from the OTS address)</label><input name="host" placeholder="tak.example.com" autocomplete="off"></div>
             <div style="width:100px"><label>Streaming</label><input name="streamPort" type="number" placeholder="8089"></div>
-            <div style="width:100px"><label>Zertifikat</label><input name="enrollPort" type="number" placeholder="8446"></div>
+            <div style="width:100px"><label>Certificate</label><input name="enrollPort" type="number" placeholder="8446"></div>
             <div style="width:100px"><label>API</label><input name="apiPort" type="number" placeholder="8443"></div>
           </div>
           <div class="row">
-            <div class="grow"><label>Truststore-Passwort von OTS (für das ATAK-Einrichtungspaket)</label><input name="truststorePassword" autocomplete="off" placeholder="atakatak"></div>
+            <div class="grow"><label>OTS truststore password (for the ATAK setup package)</label><input name="truststorePassword" autocomplete="off" placeholder="atakatak"></div>
           </div>
-          <h3>Neue TAK-Konten</h3>
+          <h3>New TAK accounts</h3>
           <div class="row">
-            <div class="grow"><label>Passwort für neue Konten (leer = zufällig je Nutzer)</label><input name="userPassword" autocomplete="off" placeholder="leer lassen = zufällig (empfohlen)"></div>
+            <div class="grow"><label>Password for new accounts (empty = random per user)</label><input name="userPassword" autocomplete="off" placeholder="leave empty = random (recommended)"></div>
           </div>
-          <p class="mut small">Empfohlen: leer lassen – jedes Konto bekommt ein eigenes, zufälliges Passwort. Es steht auf der Zugangsseite und im
-            ATAK-Einrichtungspaket, der Nutzer muss es nicht abtippen. Ein festes Passwort für alle ist unsicher.</p>
-          <label class="check"><input type="checkbox" name="anon"> Bei Team-Sperren trotzdem mit Geräten ohne Gruppe (__ANON__) austauschen</label>
-          <p class="mut small">Solange keine Team-Sperren gesetzt sind, bekommen freigegebene Nutzer in OTS <b>keine Gruppe</b> – wie von Hand angelegte
-            Benutzer. So sehen sich alle gegenseitig (OTS-Standardgruppe __ANON__). Team-Gruppen werden nur für Sperren gebraucht.</p>
+          <p class="mut small">Recommended: leave empty – every account gets its own random password. It is shown on the access page and included in the
+            ATAK setup package, the user does not have to type it. One fixed password for everyone is insecure.</p>
+          <label class="check"><input type="checkbox" name="anon"> With team blocks, still exchange with devices without a group (__ANON__)</label>
+          <p class="mut small">As long as no team blocks are set, approved users get <b>no group</b> in OTS – like users created by
+            hand. That way everyone sees everyone (OTS default group __ANON__). Team groups are only needed for blocks.</p>
           <div class="row" style="margin-top:10px">
-            <button class="pri" type="submit">Speichern</button>
-            <button type="button" id="otsTest">Verbindung testen</button>
+            <button class="pri" type="submit">Save</button>
+            <button type="button" id="otsTest">Test connection</button>
           </div>
         </form>
         <form id="regForm2">
-          <h3>Registrierung</h3>
-          <label class="check"><input type="checkbox" name="open"> Registrierung offen</label>
-          <label class="check"><input type="checkbox" name="emailConfirm"> E-Mail-Adresse bestätigen lassen (braucht SMTP)</label>
-          <label>Codewort (leer = keins)</label><input name="codeword" autocomplete="off">
-          <div class="row" style="margin-top:10px"><button class="pri" type="submit">Speichern</button></div>
+          <h3>Registration</h3>
+          <label class="check"><input type="checkbox" name="open"> Registration open</label>
+          <label class="check"><input type="checkbox" name="emailConfirm"> Require e-mail confirmation (needs SMTP)</label>
+          <label>Code word (empty = none)</label><input name="codeword" autocomplete="off">
+          <div class="row" style="margin-top:10px"><button class="pri" type="submit">Save</button></div>
         </form>
     </section>
 
     <section class="card" data-view="video">
       <div class="row between">
-        <h2>Video-Feeds <span class="mut small">– Kameras aus WebTAK (Handy, Helmkamera)</span></h2>
+        <h2>Video feeds <span class="mut small">– cameras from WebTAK (phone, helmet camera)</span></h2>
         <div class="row">
-          <input id="filter" placeholder="Suchen …" class="filter">
-          <button id="liveOffAllBtn" class="live-only">Alle auf Bereit</button>
-          <button class="danger pri" id="stopAllBtn">Alle Streams sperren</button>
+          <input id="filter" placeholder="Search …" class="filter">
+          <button id="liveOffAllBtn" class="live-only">All to ready</button>
+          <button class="danger pri" id="stopAllBtn">Block all streams</button>
         </div>
       </div>
       <div class="takvideo">
-        <label class="check"><input type="checkbox" id="regToggle"> Video aus WebTAK/Kamera-App erlaubt</label>
-        <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
-        <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
+        <label class="check"><input type="checkbox" id="regToggle"> Video from WebTAK/camera app allowed</label>
+        <label class="check"><input type="checkbox" id="liveToggle"> Admin puts streams live</label>
+        <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Users may start by themselves</label>
       </div>
       <p class="msg" id="liveMsg"></p>
       <div class="takvideo">
-        <label class="check"><input type="checkbox" id="tvAuto"> Neue Streams automatisch in den TAK-Server</label>
-        <label class="check">Eintragen <select id="tvWhen" class="sm-select">
-          <option value="all">solange freigegeben</option><option value="live">nur solange die Kamera sendet</option></select></label>
-        <label class="check">Pfad-Präfix <input id="tvPrefix" class="sm-input" placeholder="cam" autocomplete="off"></label>
-        <button class="sm" id="tvSync" type="button" title="Alle Streams mit dem OpenTAKServer abgleichen">⟳ Abgleichen</button>
+        <label class="check"><input type="checkbox" id="tvAuto"> Add new streams to the TAK server automatically</label>
+        <label class="check">Register <select id="tvWhen" class="sm-select">
+          <option value="all">while enabled</option><option value="live">only while the camera is sending</option></select></label>
+        <label class="check">Path prefix <input id="tvPrefix" class="sm-input" placeholder="cam" autocomplete="off"></label>
+        <button class="sm" id="tvSync" type="button" title="Sync all streams with OpenTAKServer">⟳ Sync</button>
         <span class="small mut" id="tvStatus"></span>
       </div>
-      <p class="mut small">ATAK findet die Streams unter <b>Video</b> (rtsp://&lt;TAK-Server&gt;:8554/&lt;Pfad&gt;). Der Pfad wird automatisch
-        aus dem Namen gebildet – nur bei Bedarf ändern. Grüner Punkt = eingetragen.</p>
-      <p class="mut small hidden" id="noFfmpeg">ffmpeg ist auf dem Server nicht installiert – nur der MJPEG-Link ist verfügbar.</p>
+      <p class="mut small">ATAK finds the streams under <b>Video</b> (rtsp://&lt;TAK server&gt;:8554/&lt;path&gt;). The path is built
+        automatically from the name – only change it if needed. Green dot = registered.</p>
+      <p class="mut small hidden" id="noFfmpeg">ffmpeg is not installed on the server – only the MJPEG link is available.</p>
       <div class="table-wrap">
         <table class="streams">
           <thead>
-            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Drehung</th><th>Bildgröße</th><th>TAK-Pfad</th><th></th></tr>
+            <tr><th>Status</th><th>Stream</th><th>Camera</th><th>FPS</th><th>Viewers</th><th>Last image</th><th>Rotation</th><th>Image size</th><th>TAK path</th><th></th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
       </div>
-      <p class="mut" id="empty">Noch keine Streams. Nutzer melden sich über den QR-Code unter „Kamera-Anmeldung“ an.</p>
+      <p class="mut" id="empty">No streams yet. Users start video in WebTAK or sign up with the camera app QR code under "Links &amp; QR codes".</p>
     </section>
 
 
     <section class="card" data-view="links">
-      <h2>Links &amp; QR-Codes</h2>
+      <h2>Links &amp; QR codes</h2>
       <form id="baseForm" class="admin-only">
-        <label for="baseUrl">Adresse dieses Servers – gilt für <b>alle</b> Links und QR-Codes unten (und für die Video-Feeds, die OTS abholt)</label>
+        <label for="baseUrl">Address of this server – applies to <b>all</b> links and QR codes below (and to the video feeds OTS pulls)</label>
         <div class="link">
-          <input id="baseUrl" placeholder="automatisch" autocomplete="off">
-          <button class="sm pri" type="submit">Speichern</button>
-          <button class="sm" type="button" id="baseAuto">Automatisch</button>
+          <input id="baseUrl" placeholder="automatic" autocomplete="off">
+          <button class="sm pri" type="submit">Save</button>
+          <button class="sm" type="button" id="baseAuto">Automatic</button>
         </div>
       </form>
       <p class="msg" id="regMsg"></p>
       <div class="linkgrid">
         <div class="lcard">
-          <h3>Registrierung <span class="mut small">– neue Nutzer</span></h3>
-          <img id="joinQr" class="qr-mid" alt="QR-Code zur Registrierung" style="cursor:pointer" title="Groß anzeigen / Drucken">
-          <p class="mut small">Nutzer stellen hier eine Anfrage; du gibst sie unter „Benutzer &amp; Anfragen“ frei. Danach bekommen sie
-            Zugangsdaten, QR-Codes und Anleitung.</p>
-          <div class="link"><input id="joinUrl" readonly><button class="sm" id="joinCopy" type="button">Kopieren</button></div>
+          <h3>Registration <span class="mut small">– new users</span></h3>
+          <img id="joinQr" class="qr-mid" alt="Registration QR code" style="cursor:pointer" title="Show large / print">
+          <p class="mut small">Users send a request here; you approve it under "Users &amp; requests". They then get
+            login details, QR codes and a guide.</p>
+          <div class="link"><input id="joinUrl" readonly><button class="sm" id="joinCopy" type="button">Copy</button></div>
         </div>
         <div class="lcard">
-          <h3>WebTAK-App <span class="mut small">– Karte, Chat, Video im Browser</span></h3>
-          <img id="eudQr" class="qr-mid" alt="QR-Code zu WebTAK" style="cursor:pointer" title="Groß anzeigen / Drucken">
-          <p class="mut small">Für Nutzer mit Zugang. Video (Handy-/Helmkamera) startet direkt in WebTAK und landet automatisch als Feed im TAK-Server.</p>
-          <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Kopieren</button></div>
+          <h3>WebTAK app <span class="mut small">– map, chat, video in the browser</span></h3>
+          <img id="eudQr" class="qr-mid" alt="WebTAK QR code" style="cursor:pointer" title="Show large / print">
+          <p class="mut small">For users with access. Video (phone/helmet camera) starts right in WebTAK and appears as a feed in the TAK server automatically.</p>
+          <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Copy</button></div>
         </div>
       </div>
       <div class="lcard" style="margin-top:14px">
-        <h3>Kamera-App <span class="mut small">– reine Kamera ohne TAK-Zugang (Helmkamera, Handy als Kamera)</span></h3>
+        <h3>Camera app <span class="mut small">– camera only, without TAK access (helmet camera, phone as camera)</span></h3>
         <div class="appqr">
-          <img id="appQr" class="qr-small" alt="QR-Code zur Kamera-App">
+          <img id="appQr" class="qr-small" alt="Camera app QR code">
           <div class="grow">
-            <p class="mut small">Für Kameras ohne eigenen TAK-Zugang: scannen, Name und Einheit eingeben, Kamera verbinden, Stream starten –
-              der Feed landet automatisch im TAK-Server. Nutzer mit Zugang starten Video direkt in WebTAK.</p>
-            <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
-            <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
+            <p class="mut small">For cameras without their own TAK access: scan, enter name and unit, connect the camera, start the stream –
+              the feed appears in the TAK server automatically. Users with access start video right in WebTAK.</p>
+            <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Copy</button></div>
+            <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Show large / print</button></div>
           </div>
         </div>
       </div>
     </section>
 
     <section class="card" data-view="create">
-      <h2>Stream anlegen</h2>
-      <p class="mut small">Optional – für eine feste Helmkamera mit eigenem QR-Code. Normalerweise melden sich Nutzer selbst an.</p>
+      <h2>Create stream</h2>
+      <p class="mut small">Optional – for a fixed helmet camera with its own QR code. Usually users sign up themselves.</p>
       <form class="row" id="createForm">
-        <div class="grow"><label for="cUser">Benutzer</label><input id="cUser" placeholder="z. B. mueller" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,31}"></div>
-        <div class="grow"><label for="cLabel">Bezeichnung (optional)</label><input id="cLabel" placeholder="z. B. Trupp 2 Helm" maxlength="60"></div>
-        <div class="actions-end"><button type="submit">Anlegen</button></div>
+        <div class="grow"><label for="cUser">User</label><input id="cUser" placeholder="e.g. miller" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,31}"></div>
+        <div class="grow"><label for="cLabel">Label (optional)</label><input id="cLabel" placeholder="e.g. Squad 2 helmet" maxlength="60"></div>
+        <div class="actions-end"><button type="submit">Create</button></div>
       </form>
       <p class="msg" id="createMsg"></p>
     </section>
 
     <section class="card" data-view="webtak">
-      <h2>WebTAK-App <span class="mut small">(Einstellungen – Link und QR-Code unter „Links &amp; QR-Codes“)</span></h2>
+      <h2>WebTAK app <span class="mut small">(settings – link and QR code under "Links &amp; QR codes")</span></h2>
       <div>
         <div class="grow">
-          <p class="mut small">Nutzer verbinden sich mit ihren eigenen TAK-Zugangsdaten (Zertifikat anfordern, .p12 / Datenpaket oder QR-Code vom
-            TAK-Server). Dieser Server reicht die Daten nur durch – Zertifikate bleiben auf dem Handy und werden hier nicht gespeichert.</p>
+          <p class="mut small">Users connect with their own TAK credentials (certificate enrollment, .p12 / data package or QR code from the
+            TAK server). This server only relays the data – certificates stay on the phone and are not stored here.</p>
           <form id="takForm">
-            <label>TAK-Server vorgeben (optional – steckt dann im QR-Code)</label>
+            <label>Preset TAK server (optional – then included in the QR code)</label>
             <div class="row">
               <div class="grow"><input name="host" placeholder="tak.example.com" autocomplete="off"></div>
               <div style="width:90px"><input name="port" type="number" min="1" max="65535" placeholder="8089"></div>
               <div style="width:90px"><select name="proto"><option value="ssl">SSL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
-              <div style="width:110px"><input name="enrollPort" type="number" min="1" max="65535" placeholder="8446" title="Port für Zertifikatsanforderung"></div>
+              <div style="width:110px"><input name="enrollPort" type="number" min="1" max="65535" placeholder="8446" title="Certificate enrollment port"></div>
             </div>
-            <label>Erlaubte TAK-Server (Komma-getrennt, leer = alle) – schützt vor Missbrauch als offene Durchreiche</label>
+            <label>Allowed TAK servers (comma-separated, empty = all) – prevents abuse as an open relay</label>
             <input name="allowedHosts" placeholder="tak.example.com, 10.0.0.5" autocomplete="off">
             <div class="row" style="margin-top:8px">
-              <button class="sm pri" type="submit">Speichern</button>
+              <button class="sm pri" type="submit">Save</button>
             </div>
           </form>
           <p class="msg" id="eudMsg"></p>
@@ -309,147 +309,147 @@
 
     <section class="card" data-view="system" id="systemCard"></section>
 
-    <!-- TAK-Server verwalten (ots.js) -->
+    <!-- Manage the TAK server (ots.js) -->
     <section class="card" data-view="otsusers">
-      <div class="row between"><h2>OTS-Benutzer <span class="mut small">(alle Konten im TAK-Server)</span></h2>
-        <div class="row"><input id="ouFilter" class="filter" placeholder="Suchen …"><button class="pri" id="ouNew" type="button">+ Neuer Benutzer</button><button id="ouReload" type="button">⟳</button></div></div>
-      <p class="mut small">Alle Benutzer aus OpenTAKServer – auch die, die direkt in OTS angelegt wurden. „Übernehmen“ verwaltet einen Benutzer
-        zusätzlich in WebTAK (Rufname, Team, Zugangsseite mit QR-Codes).</p>
+      <div class="row between"><h2>OTS users <span class="mut small">(all accounts in the TAK server)</span></h2>
+        <div class="row"><input id="ouFilter" class="filter" placeholder="Search …"><button class="pri" id="ouNew" type="button">+ New user</button><button id="ouReload" type="button">⟳</button></div></div>
+      <p class="mut small">All users from OpenTAKServer – including those created directly in OTS. "Import" additionally manages a user
+        in WebTAK (callsign, team, access page with QR codes).</p>
       <p class="msg" id="ouMsg"></p>
-      <div class="table-wrap"><table class="streams" id="ouTable"><thead><tr><th>Benutzer</th><th>Rolle</th><th>Aktiv</th><th>Gruppen</th><th>Geräte</th><th>Letzte Anmeldung</th><th>WebTAK</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="ouTable"><thead><tr><th>User</th><th>Role</th><th>Active</th><th>Groups</th><th>Devices</th><th>Last login</th><th>WebTAK</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="otsgroups">
-      <div class="row between"><h2>Gruppen <span class="mut small">(OTS-Kanäle)</span></h2><button id="ogReload" type="button">⟳</button></div>
-      <p class="mut small">Wer in einer Gruppe <b>IN</b> ist, sendet in diese Gruppe; wer <b>OUT</b> ist, empfängt sie. Benutzer ohne Gruppe sind in <b>__ANON__</b>.
-        Mitgliedschaften pflegst du unter „OTS-Benutzer“ → Gruppen.</p>
-      <form class="row" id="ogForm"><div class="grow"><input name="name" placeholder="Neue Gruppe, z. B. ZUG_1" required></div><div class="grow"><input name="description" placeholder="Beschreibung (optional)"></div><button class="pri" type="submit">Anlegen</button></form>
+      <div class="row between"><h2>Groups <span class="mut small">(OTS channels)</span></h2><button id="ogReload" type="button">⟳</button></div>
+      <p class="mut small">Members with <b>IN</b> send into a group; members with <b>OUT</b> receive it. Users without a group are in <b>__ANON__</b>.
+        Manage memberships under "OTS users" → Groups.</p>
+      <form class="row" id="ogForm"><div class="grow"><input name="name" placeholder="New group, e.g. PLT_1" required></div><div class="grow"><input name="description" placeholder="Description (optional)"></div><button class="pri" type="submit">Create</button></form>
       <p class="msg" id="ogMsg"></p>
-      <div class="table-wrap"><table class="streams" id="ogTable"><thead><tr><th>Gruppe</th><th>Beschreibung</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="ogTable"><thead><tr><th>Group</th><th>Description</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="missions">
-      <div class="row between"><h2>Missionen <span class="mut small">(Data Sync)</span></h2><button id="omReload" type="button">⟳</button></div>
+      <div class="row between"><h2>Missions <span class="mut small">(Data Sync)</span></h2><button id="omReload" type="button">⟳</button></div>
       <form id="omForm">
-        <div class="row"><div class="grow"><label>Name</label><input name="name" required maxlength="100"></div><div class="grow"><label>Passwort (optional)</label><input name="password" autocomplete="off"></div></div>
-        <label>Beschreibung</label><input name="description" maxlength="500">
-        <div class="row"><div class="grow"><label>Ersteller (Gerät, OTS verlangt ein bekanntes Gerät)</label><select name="creatorUid" id="omCreator"></select></div></div>
-        <label>Gruppen (leer = alle – nur Nutzer dieser Gruppen sehen die Mission)</label><div id="omGroups" class="row"></div>
-        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Mission anlegen</button></div>
+        <div class="row"><div class="grow"><label>Name</label><input name="name" required maxlength="100"></div><div class="grow"><label>Password (optional)</label><input name="password" autocomplete="off"></div></div>
+        <label>Description</label><input name="description" maxlength="500">
+        <div class="row"><div class="grow"><label>Creator (device – OTS requires a known device)</label><select name="creatorUid" id="omCreator"></select></div></div>
+        <label>Groups (empty = all – only users of these groups see the mission)</label><div id="omGroups" class="row"></div>
+        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Create mission</button></div>
       </form>
       <p class="msg" id="omMsg"></p>
-      <div class="table-wrap"><table class="streams" id="omTable"><thead><tr><th>Mission</th><th>Beschreibung</th><th>Gruppen</th><th>Inhalt</th><th>Erstellt</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="omTable"><thead><tr><th>Mission</th><th>Description</th><th>Groups</th><th>Content</th><th>Created</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="video">
-      <div class="row between"><h2>Alle Feeds im TAK-Server <span class="mut small">(OpenTAKServer/MediaMTX)</span></h2><button id="ofReload" type="button">⟳</button></div>
-      <p class="mut small">Hier stehen alle Feeds, die ATAK/iTAK/WinTAK unter „Video“ sehen – die Kameras aus WebTAK (oben) und weitere Quellen.
-        <b>Weiteren Feed anlegen:</b> OTS/MediaMTX holt das Bild bei Bedarf von der Quelle (Kamera, Drohne, anderer Server) und stellt es als
-        <b>rtsp://&lt;TAK-Server&gt;:8554/&lt;Pfad&gt;</b> bereit. Ohne Quelle wartet der Pfad auf eine Kamera, die selbst dorthin sendet.</p>
-      <form class="row" id="ofForm"><div class="grow"><label>Pfad</label><input name="path" placeholder="z. B. drohne1" required></div>
-        <div class="grow"><label>Quelle (optional)</label><input name="source" placeholder="rtsp://kamera/stream, https://…/index.m3u8"></div>
-        <div class="actions-end"><button class="pri" type="submit">Feed anlegen</button></div></form>
+      <div class="row between"><h2>All feeds in the TAK server <span class="mut small">(OpenTAKServer/MediaMTX)</span></h2><button id="ofReload" type="button">⟳</button></div>
+      <p class="mut small">These are all feeds ATAK/iTAK/WinTAK see under "Video" – the cameras from WebTAK (above) and other sources.
+        <b>Add another feed:</b> OTS/MediaMTX pulls the video on demand from the source (camera, drone, another server) and provides it as
+        <b>rtsp://&lt;TAK server&gt;:8554/&lt;path&gt;</b>. Without a source the path waits for a camera that sends to it itself.</p>
+      <form class="row" id="ofForm"><div class="grow"><label>Path</label><input name="path" placeholder="e.g. drone1" required></div>
+        <div class="grow"><label>Source (optional)</label><input name="source" placeholder="rtsp://camera/stream, https://…/index.m3u8"></div>
+        <div class="actions-end"><button class="pri" type="submit">Create feed</button></div></form>
       <p class="msg" id="ofMsg"></p>
       <details class="fold" id="ofPush">
-        <summary>🚁 Drohne (DJI), OBS oder Bildschirm-App direkt in den TAK-Server senden</summary>
-        <p class="mut small">Kein Anlegen nötig: Wer mit seinem <b>TAK-Benutzer und Passwort</b> an einen Pfad sendet, erscheint sofort als Feed.
-          Nutzer finden ihre fertige Adresse auf ihrer Zugangsseite und in WebTAK unter Video.</p>
+        <summary>🚁 Send a drone (DJI), OBS or screen app directly to the TAK server</summary>
+        <p class="mut small">Nothing to create: whoever sends to a path with their <b>TAK user and password</b> shows up as a feed right away.
+          Users find their ready-made address on their access page and in WebTAK under Video.</p>
         <table class="kv small">
           <tr><th>RTMP (DJI Fly, DJI Pilot 2, OBS, Larix)</th><td><code id="ofRtmp"></code></td></tr>
           <tr><th>RTSP</th><td><code id="ofRtspPush"></code></td></tr>
           <tr><th>SRT</th><td><code id="ofSrt"></code></td></tr>
         </table>
-        <p class="mut small">DJI Fly: ⋯ → Übertragung → Live-Streaming → RTMP. DJI Pilot 2: ⋯ → Livestream → RTMP.
-          Handy-Bildschirm: App „Larix Screencaster“ (Android) mit der RTMP-Adresse – Browser können den Handy-Bildschirm nicht teilen.
-          PC-Bildschirm: in WebTAK unter Video „Share screen“.</p>
+        <p class="mut small">DJI Fly: ⋯ → Transmission → Live Streaming → RTMP. DJI Pilot 2: ⋯ → Livestream → RTMP.
+          Phone screen: the "Larix Screencaster" app (Android) with the RTMP address – browsers cannot share a phone screen.
+          PC screen: in WebTAK under Video "Share screen".</p>
       </details>
-      <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Pfad</th><th>Herkunft</th><th>Quelle</th><th>Für ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Path</th><th>Origin</th><th>Source</th><th>For ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="mesh">
-      <div class="row between"><h2>Meshtastic-Kanäle</h2><button id="omeReload" type="button">⟳</button></div>
+      <div class="row between"><h2>Meshtastic channels</h2><button id="omeReload" type="button">⟳</button></div>
       <form id="omeForm">
         <div class="row">
-          <div class="grow"><label>Kanalname (max. 11 Zeichen)</label><input name="name" maxlength="11"></div>
-          <div class="grow"><label>Funk-Voreinstellung</label><select name="modemPreset">
+          <div class="grow"><label>Channel name (max. 11 characters)</label><input name="name" maxlength="11"></div>
+          <div class="grow"><label>Radio preset</label><select name="modemPreset">
             <option>LONG_FAST</option><option>LONG_SLOW</option><option>VERY_LONG_SLOW</option><option>MEDIUM_SLOW</option><option>MEDIUM_FAST</option>
             <option>SHORT_SLOW</option><option>SHORT_FAST</option><option>LONG_MODERATE</option><option>SHORT_TURBO</option></select></div>
           <div class="grow"><label>Region</label><select name="region"><option>EU_868</option><option>EU_433</option><option>US</option><option>UA_868</option><option>ANZ</option><option>JP</option><option>CN</option><option>KR</option><option>TW</option><option>RU</option><option>IN</option><option>NZ_865</option><option>TH</option><option>LORA_24</option></select></div>
         </div>
-        <div class="row"><div class="grow"><label>Schlüssel (PSK, leer = unverschlüsselt)</label><input name="psk" autocomplete="off"></div>
-          <div class="actions-end"><button type="button" id="omePsk">🔑 Schlüssel erzeugen</button></div></div>
-        <label class="check"><input type="checkbox" name="uplink" checked> Uplink (Funk → TAK)</label>
-        <label class="check"><input type="checkbox" name="downlink" checked> Downlink (TAK → Funk)</label>
-        <label>… oder vorhandenen Kanal übernehmen (Meshtastic-Link https://meshtastic.org/e/#…)</label><input name="url" placeholder="https://meshtastic.org/e/#…">
-        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Kanal anlegen</button></div>
+        <div class="row"><div class="grow"><label>Key (PSK, empty = unencrypted)</label><input name="psk" autocomplete="off"></div>
+          <div class="actions-end"><button type="button" id="omePsk">🔑 Generate key</button></div></div>
+        <label class="check"><input type="checkbox" name="uplink" checked> Uplink (radio → TAK)</label>
+        <label class="check"><input type="checkbox" name="downlink" checked> Downlink (TAK → radio)</label>
+        <label>… or import an existing channel (Meshtastic link https://meshtastic.org/e/#…)</label><input name="url" placeholder="https://meshtastic.org/e/#…">
+        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Create channel</button></div>
       </form>
       <p class="msg" id="omeMsg"></p>
-      <div class="table-wrap"><table class="streams" id="omeTable"><thead><tr><th>Kanal</th><th>Funk</th><th>Up/Down</th><th>Link</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="omeTable"><thead><tr><th>Channel</th><th>Radio</th><th>Up/Down</th><th>Link</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
   </main>
   </div>
 </div>
 
-<!-- Dialog (QR-Code, Einstellungen, Bestätigungen) -->
+<!-- Dialog (QR code, settings, confirmations) -->
 <div id="modal" class="modal hidden">
   <div class="card modal-box">
-    <div class="row between"><h2 id="modalTitle"></h2><button class="sm" id="modalClose" aria-label="Schließen">✕</button></div>
+    <div class="row between"><h2 id="modalTitle"></h2><button class="sm" id="modalClose" aria-label="Close">✕</button></div>
     <div id="modalBody"></div>
   </div>
 </div>
 
-<!-- Fenster zum Ansehen -->
+<!-- Viewer windows -->
 <div id="windows"></div>
 
-<!-- Hinweisliste (🔔 in der Kopfzeile) -->
-<div id="notePanel" class="hidden" role="dialog" aria-label="Hinweise">
-  <div class="np-head"><b>Hinweise</b><button class="sm" type="button" id="noteRead">Alle gelesen</button><button class="sm" type="button" id="noteClose" aria-label="Schließen">✕</button></div>
+<!-- Notification list (🔔 in the header) -->
+<div id="notePanel" class="hidden" role="dialog" aria-label="Notifications">
+  <div class="np-head"><b>Notifications</b><button class="sm" type="button" id="noteRead">Mark all read</button><button class="sm" type="button" id="noteClose" aria-label="Close">✕</button></div>
   <div id="noteList"></div>
   <div class="np-foot">
-    <label class="check"><input type="checkbox" id="noteSound"> Ton bei neuen Hinweisen</label>
-    <label class="check" id="noteDeskWrap"><input type="checkbox" id="noteDesk"> Desktop-Benachrichtigung, wenn dieses Fenster im Hintergrund ist</label>
-    <label class="check"><input type="checkbox" id="notePopup"> Popup rechts oben</label>
+    <label class="check"><input type="checkbox" id="noteSound"> Sound for new notifications</label>
+    <label class="check" id="noteDeskWrap"><input type="checkbox" id="noteDesk"> Desktop notification when this window is in the background</label>
+    <label class="check"><input type="checkbox" id="notePopup"> Popup top right</label>
   </div>
 </div>
 
-<!-- Hinweise (Popups), z. B. "Jan hat die Kamera aktiviert" -->
+<!-- Notifications (popups), e.g. "Jan activated the camera" -->
 <div id="toasts" aria-live="polite"></div>
 
 <template id="settingsTpl">
   <form id="credForm">
-    <h3>Admin-Zugang</h3>
-    <label>Benutzername</label><input name="username" autocomplete="username" required>
-    <label>E-Mail (für Passwort-Reset)</label><input name="email" type="email" autocomplete="email">
-    <label>Neues Passwort (leer = unverändert)</label><input name="password" type="password" autocomplete="new-password" minlength="8">
-    <label>Aktuelles Passwort (zur Bestätigung)</label><input name="current" type="password" autocomplete="current-password" required>
-    <button class="pri" type="submit">Zugang speichern</button>
+    <h3>Admin login</h3>
+    <label>Username</label><input name="username" autocomplete="username" required>
+    <label>E-mail (for password reset and notifications)</label><input name="email" type="email" autocomplete="email">
+    <label>New password (empty = unchanged)</label><input name="password" type="password" autocomplete="new-password" minlength="8">
+    <label>Current password (to confirm)</label><input name="current" type="password" autocomplete="current-password" required>
+    <button class="pri" type="submit">Save login</button>
     <p class="msg" data-msg></p>
   </form>
   <form id="defaultsForm">
-    <h3>Standard für neue Streams (Bild drehen, Bildgröße)</h3>
-    <p class="mut small">Grundwinkel für neue Streams, z. B. 90°, wenn die Kamera quer im Gehäuse liegt. Den genauen Winkel
-      pro Helm stellst du danach im Ansehen-Fenster unter „∠ Ausrichten“ ein. Das Handy dreht jedes Bild, bevor es
-      gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
-    <label>Drehung in Grad (0–359,5, im Uhrzeigersinn)</label>
+    <h3>Defaults for new streams (rotation, image size)</h3>
+    <p class="mut small">Base angle for new streams, e.g. 90° if the camera sits sideways in the housing. You set the exact angle
+      per helmet afterwards in the viewer window under "∠ Align". The phone rotates every image before it is
+      sent – all links (MJPEG, HLS, TS) then deliver the rotated image.</p>
+    <label>Rotation in degrees (0–359.5, clockwise)</label>
     <input name="rotate" type="number" min="0" max="359.5" step="0.5" value="0">
-    <label>Bei schrägen Winkeln</label>
+    <label>For oblique angles</label>
     <span data-fit></span>
-    <label>Bildgröße für neue Streams</label>
+    <label>Image size for new streams</label>
     <span data-size></span>
-    <label class="check"><input type="checkbox" name="mirror"> Spiegeln</label>
-    <label class="check"><input type="checkbox" name="applyAll"> Auch auf alle bestehenden Streams anwenden</label>
-    <button class="pri" type="submit">Speichern</button>
+    <label class="check"><input type="checkbox" name="mirror"> Mirror</label>
+    <label class="check"><input type="checkbox" name="applyAll"> Also apply to all existing streams</label>
+    <button class="pri" type="submit">Save</button>
     <p class="msg" data-msg></p>
   </form>
   <form id="smtpForm">
-    <h3>SMTP (E-Mail-Versand)</h3>
+    <h3>SMTP (sending e-mail)</h3>
     <div class="row">
       <div class="grow"><label>Server</label><input name="host" placeholder="smtp.example.com"></div>
       <div style="width:110px"><label>Port</label><input name="port" type="number" min="1" max="65535"></div>
     </div>
-    <label class="check"><input type="checkbox" name="secure"> SSL/TLS (Port 465 – bei 465/587/25 wird es automatisch richtig gewählt)</label>
-    <label>Benutzer</label><input name="user" autocomplete="off">
-    <label>Passwort <span class="mut" data-haspass></span></label><input name="pass" type="password" autocomplete="new-password" placeholder="leer = unverändert">
-    <label>Absender</label><input name="from" placeholder="WebTAK &lt;noreply@example.com&gt;">
+    <label class="check"><input type="checkbox" name="secure"> SSL/TLS (port 465 – chosen automatically for 465/587/25)</label>
+    <label>User</label><input name="user" autocomplete="off">
+    <label>Password <span class="mut" data-haspass></span></label><input name="pass" type="password" autocomplete="new-password" placeholder="empty = unchanged">
+    <label>Sender</label><input name="from" placeholder="WebTAK &lt;noreply@example.com&gt;">
     <div class="row" style="margin-top:12px">
-      <button class="pri" type="submit">SMTP speichern</button>
-      <button type="button" data-test>Test-Mail senden</button>
+      <button class="pri" type="submit">Save SMTP</button>
+      <button type="button" data-test>Send test mail</button>
     </div>
     <p class="msg" data-msg></p>
   </form>

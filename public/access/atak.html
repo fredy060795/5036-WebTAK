@@ -46,8 +46,8 @@ let token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
 try {
   if (token) localStorage.setItem('tak.access', token);
   else token = localStorage.getItem('tak.access') || '';
-} catch (e) { /* privat */ }
-if (location.hash) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
+} catch (e) { /* private mode */ }
+if (location.hash) history.replaceState(null, '', location.pathname); // do not leave the key in the address bar
 
 (async () => {
   if (!token) { $('msg').textContent = 'No access link. Please use the QR code from your access page.'; return; }

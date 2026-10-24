@@ -1,10 +1,10 @@
-// Videostream aus dem EUD: Handy-Kamera oder Helmkamera (Bluetooth) antippen -> Stream läuft sofort.
-// Nutzt dieselbe Durchreiche wie /app/ (Anmeldung /api/app/register, Bilder über /ws/publish).
+// Video stream from the EUD: tap phone camera or helmet camera (Bluetooth) -> the stream runs right away.
+// Uses the same relay as /app/ (registration /api/app/register, images via /ws/publish).
 'use strict';
 
 (() => {
   const { $, store, profile, toast, setMsg, openPopup } = window.eud;
-  // Bluetooth-Protokoll der Kamera: PROTOCOL.md im Repository ESP32-Flash
+  // the camera's Bluetooth protocol: PROTOCOL.md in the ESP32-Flash repository
   const SVC = '7b3c0001-6b1a-4d6e-9c55-3a2f1e0c8a01';
   const COMMAND = '7b3c0003-6b1a-4d6e-9c55-3a2f1e0c8a01';
   const IMAGE = '7b3c0004-6b1a-4d6e-9c55-3a2f1e0c8a01';
@@ -14,10 +14,10 @@
   const enc = new TextEncoder();
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
-  let link = store.get('eud.video', null); // { u, s, k } vom Server
+  let link = store.get('eud.video', null); // { u, s, k } from the server
   let ws = null, wsTimer = null, wsRetry = 0;
-  let running = false;     // Nutzer will senden
-  let onAir = false;       // Server lässt Bilder durch
+  let running = false;     // user wants to send
+  let onAir = false;       // server lets images through
   let source = null;       // 'phone' | 'ble'
   let mediaStream = null, captureTimer = null, capturing = false;
   let device = null, cmdChr = null, frame = null, writeChain = Promise.resolve();
@@ -43,7 +43,7 @@
     $('btnVideo').classList.toggle('live', live);
     $('bleBtn').disabled = !navigator.bluetooth;
     $('camPickRow').classList.toggle('hidden', source !== 'phone' || $('camSelect').options.length < 2);
-    // Eigene SA bekommt den Video-Link, solange gesendet wird (ATAK zeigt ihn beim Kontakt an)
+    // own SA carries the video link while sending (ATAK shows it on the contact)
     const url = live && streamUrl ? streamUrl + '/stream.ts' : null;
     if (url !== window.eudVideoUrl) {
       window.eudVideoUrl = url;
@@ -51,7 +51,7 @@
     }
   }
 
-  // ---------------- Anmeldung + Server ----------------
+  // ---------------- Registration + server ----------------
 
   async function ensureLink() {
     if (link) return link;
@@ -82,7 +82,7 @@
         streamUrl = m.stream || '';
         sock.send(JSON.stringify({ type: 'hello', camera: $('vidCam').textContent, phone: navigator.userAgent, resolution: RES_NAME[framesize] }));
         sock.send(JSON.stringify({ type: 'state', ready: true }));
-        sock.send(JSON.stringify({ type: 'golive', on: true })); // sofort senden
+        sock.send(JSON.stringify({ type: 'golive', on: true })); // send right away
       } else if (m.type === 'live') {
         const was = onAir;
         onAir = m.mode === 'user' || !!m.on;
@@ -104,7 +104,7 @@
         stop();
         return;
       } else if (m.type === 'removed' || m.type === 'invalid' || m.type === 'revoked') {
-        // Zugang gibt es nicht mehr: beim nächsten Start neu anmelden
+        // access no longer exists: register again on the next start
         link = null;
         store.del('eud.video');
         if (m.type === 'revoked') { msg('Access was revoked by the admin.'); stop(); return; }
@@ -126,7 +126,7 @@
     };
   }
 
-  // ---------------- Bilder ----------------
+  // ---------------- Images ----------------
 
   async function rotateJpeg(jpeg, deg, flip) {
     const bmp = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' }));
@@ -174,7 +174,7 @@
     }
   }
 
-  // Handy-Kamera: Bild aus dem Video holen (die Vorschau ist das Video selbst – iPhone braucht es sichtbar)
+  // phone camera: grab the image from the video (the preview is the video itself – iPhone needs it visible)
   async function captureFrame() {
     const v = $('camVideo');
     if (capturing || !v.videoWidth) return;
@@ -243,13 +243,13 @@
 
   $('camSelect').addEventListener('change', async () => {
     try {
-      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); // viele Handys erlauben nur eine Kamera
+      if (mediaStream) mediaStream.getTracks().forEach(t => t.stop()); // many phones allow only one camera
       await attach(await openPhoneCamera($('camSelect').value));
-      try { localStorage.setItem('eud.camera', $('camSelect').value); } catch (e) { /* privat */ }
+      try { localStorage.setItem('eud.camera', $('camSelect').value); } catch (e) { /* private mode */ }
     } catch (e) { msg(e.message); }
   });
 
-  // Helmkamera über Bluetooth
+  // helmet camera via Bluetooth
   function camSend(obj) {
     writeChain = writeChain.then(() => cmdChr && cmdChr.writeValueWithResponse(enc.encode(JSON.stringify(obj)))).catch(() => {});
     return writeChain;
@@ -290,7 +290,7 @@
     if (running) { msg('Helmet camera not reachable.'); stop(); }
   }
 
-  // ---------------- Start / Stopp ----------------
+  // ---------------- Start / stop ----------------
 
   async function start(kind) {
     if (!profile.callsign) { openPopup('me'); toast('Please enter a callsign first.'); return; }
@@ -299,18 +299,18 @@
     $('phoneBtn').disabled = $('bleBtn').disabled = $('screenBtn').disabled = true;
     try {
       if (kind === 'screen') {
-        // Bildschirm teilen (nur Desktop-Browser; Handy-Browser erlauben das nicht)
+        // share the screen (desktop browsers only; phone browsers do not allow it)
         const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
         source = 'screen';
         await attach(stream);
         $('vidCam').textContent = 'Screen';
         const track = stream.getVideoTracks()[0];
-        if (track) track.addEventListener('ended', () => { if (running) stop(); }); // im Browser „Freigabe beenden“
+        if (track) track.addEventListener('ended', () => { if (running) stop(); }); // "stop sharing" in the browser
         clearInterval(captureTimer);
         captureTimer = setInterval(captureFrame, 1000 / PHONE_FPS);
       } else if (kind === 'phone') {
         let saved = '';
-        try { saved = localStorage.getItem('eud.camera') || ''; } catch (e) { /* privat */ }
+        try { saved = localStorage.getItem('eud.camera') || ''; } catch (e) { /* private mode */ }
         let stream;
         try { stream = await openPhoneCamera(saved || undefined); } catch (e) { if (!saved) throw e; stream = await openPhoneCamera(); }
         source = 'phone';
@@ -331,7 +331,7 @@
       running = true;
       await ensureLink();
       connectServer();
-      try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* nicht erlaubt */ }
+      try { if ('wakeLock' in navigator) wakeLock = await navigator.wakeLock.request('screen'); } catch (e) { /* not allowed */ }
       msg('');
       render();
     } catch (e) {
@@ -360,7 +360,7 @@
     if (ws) {
       const s = ws;
       ws = null;
-      try { if (s.readyState === 1) s.send(JSON.stringify({ type: 'golive', on: false })); } catch (e) { /* egal */ }
+      try { if (s.readyState === 1) s.send(JSON.stringify({ type: 'golive', on: false })); } catch (e) { /* ignore */ }
       s.close();
     }
     if (wakeLock) wakeLock.release().catch(() => {});
@@ -369,12 +369,12 @@
     render();
   }
 
-  // ---------------- Streams ansehen (eigene und fremde) ----------------
+  // ---------------- Watching streams (own and others') ----------------
 
-  // Was der Browser abspielen kann: MJPEG (unsere Streams, als Bild), HLS (.m3u8), MP4/WebM.
-  // RTSP/RTMP/SRT/UDP gehen im Browser nicht -> Adresse kopieren (z. B. für VLC).
-  // Abspielen im Browser: eigene Streams als MJPEG, HLS (auch RTSP-Feeds von MediaMTX/OTS über deren
-  // HLS-Ausgang) mit hls.js über den eigenen Server, MP4/WebM direkt. Sonst klarer Hinweis + Ausweg.
+  // What the browser can play: MJPEG (our streams, as an image), HLS (.m3u8), MP4/WebM.
+  // RTSP/RTMP/SRT/UDP do not work in a browser -> copy the address (e.g. for VLC).
+  // Playback in the browser: own streams as MJPEG, HLS (also RTSP feeds from MediaMTX/OTS through their
+  // HLS output) with hls.js through our own server, MP4/WebM directly. Otherwise a clear message + way out.
   let hls = null;
   let hlsLib = null;
   const mediaProxy = u => '/api/eud/media?u=' + encodeURIComponent(u);
@@ -389,8 +389,8 @@
     });
     return hlsLib;
   }
-  // HLS-Adresse zu einem Feed: .m3u8 direkt; MediaMTX (OTS): rtsp://host:8554/pfad -> http://host:8888/pfad/index.m3u8,
-  // ebenso die Player-Seiten http://host:8888/pfad bzw. :8889/pfad (WebRTC)
+  // HLS address for a feed: .m3u8 directly; MediaMTX (OTS): rtsp://host:8554/path -> http://host:8888/path/index.m3u8,
+  // likewise the player pages http://host:8888/path or :8889/path (WebRTC)
   function hlsUrl(url) {
     let u;
     try { u = new URL(url); } catch (e) { return ''; }
@@ -410,13 +410,13 @@
     $('viewer').classList.remove('hidden');
     say('Loading …');
     const isHttp = /^https?:\/\//i.test(url);
-    // Letzter Ausweg: im neuen Tab öffnen (http) bzw. Adresse für VLC kopieren (rtsp …)
+    // last resort: open in a new tab (http) or copy the address for VLC (rtsp …)
     const giveUp = text => {
       img.classList.add('hidden');
       vid.classList.add('hidden');
       say(text);
       const alt = $('vwAlt');
-      const tab = isHttp && !/\.m3u8(\?|$)/i.test(url); // eine .m3u8 im Tab spielt der Browser meist nicht ab
+      const tab = isHttp && !/\.m3u8(\?|$)/i.test(url); // a browser usually does not play a .m3u8 in a tab
       alt.textContent = tab ? 'Open in new tab' : 'Copy address (VLC)';
       alt.onclick = () => {
         if (tab) window.open(url, '_blank', 'noopener');
@@ -436,17 +436,17 @@
     const asHls = async src => {
       img.classList.add('hidden');
       vid.classList.remove('hidden');
-      const via = mediaProxy(src); // gleiche Herkunft: kein Mixed Content, kein CORS
-      // Woran es liegt (Antwort des Video-Servers über die Durchreiche) – statt nur „nicht erreichbar“
+      const via = mediaProxy(src); // same origin: no mixed content, no CORS
+      // what the problem is (answer of the video server through the relay) – instead of just "not reachable"
       const why = async fallback => {
         const r = await fetch(via, { cache: 'no-store' }).catch(() => null);
         const t = r && !r.ok ? (await r.text().catch(() => '')).slice(0, 160) : '';
         giveUp(t ? `${fallback} (${t})` : fallback);
       };
       let Hls = null;
-      try { Hls = await loadHlsLib(); } catch (e) { /* dann eingebaut */ }
-      // hls.js bevorzugt; den eingebauten Player (Safari/iPhone, neuere Chrome/Edge) nur, wenn hls.js nicht geht –
-      // der eingebaute in Chrome/Edge spielt die MediaMTX-Streams des TAK-Servers oft nicht ab
+      try { Hls = await loadHlsLib(); } catch (e) { /* then built-in */ }
+      // prefer hls.js; the built-in player (Safari/iPhone, newer Chrome/Edge) only when hls.js does not work –
+      // the built-in one in Chrome/Edge often fails on the TAK server's MediaMTX streams
       if (!Hls || !Hls.isSupported()) {
         if (!vid.canPlayType('application/vnd.apple.mpegurl')) return giveUp('This browser cannot play HLS video.');
         vid.onloadeddata = () => say('');
@@ -474,20 +474,20 @@
       return;
     }
     const u = isHttp ? window.eud.browserVideoUrl(url) : url;
-    // Unsere Streams (…/benutzer/id/stream.ts usw.): als MJPEG-Bild, geringe Verzögerung
+    // our streams (…/user/id/stream.ts etc.): as an MJPEG image, low latency
     const mjpeg = !isHttp ? '' : /\/[a-z0-9][a-z0-9_-]*\/[a-z0-9]{4,32}\/?$/i.test(new URL(u).pathname) ? u.replace(/\/$/, '')
       : /\/(stream\.ts|snapshot\.jpg)$/i.test(url) ? url.replace(/\/(stream\.ts|snapshot\.jpg)$/i, '') : '';
     if (mjpeg && !/\.m3u8|\.mp4|\.webm/i.test(u)) {
       img.classList.remove('hidden');
       img.onload = () => say('');
-      img.onerror = () => (h ? asHls(h) : asVideo(url)); // kein MJPEG: als Video versuchen
+      img.onerror = () => (h ? asHls(h) : asVideo(url)); // not MJPEG: try as video
       img.src = mjpeg + (mjpeg.includes('?') ? '&' : '?') + 't=' + Date.now();
     } else if (h) {
       asHls(h);
     } else if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)) {
       asVideo(url);
     } else {
-      // unbekannte http-Adresse (z. B. Player-Seite): kurz als Video versuchen, sonst im Tab öffnen
+      // unknown http address (e.g. a player page): briefly try as video, otherwise open in a tab
       asVideo(url);
     }
   }
@@ -496,7 +496,7 @@
     if (hls) { hls.destroy(); hls = null; }
     $('vwAlt').classList.add('hidden');
     img.onerror = img.onload = null;
-    img.removeAttribute('src'); // MJPEG-Verbindung beenden
+    img.removeAttribute('src'); // end the MJPEG connection
     img.classList.add('hidden');
     vid.onerror = vid.onloadeddata = null;
     vid.pause();
@@ -537,11 +537,11 @@
   $('phoneBtn').addEventListener('click', () => start('phone'));
   $('bleBtn').addEventListener('click', () => start('ble'));
   $('screenBtn').addEventListener('click', () => start('screen'));
-  // Bildschirm teilen nur, wo der Browser es kann (PC); auf dem Handy bleibt der Knopf weg
+  // screen sharing only where the browser supports it (PC); no button on phones
   const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && window.isSecureContext && !/Android|iPhone|iPad/i.test(navigator.userAgent);
   $('screenBtn').classList.toggle('hidden', !canShare);
 
-  // Drohne / externe Kamera: RTMP-Adresse mit dem TAK-Login (MediaMTX im TAK-Server legt den Feed selbst an)
+  // drone / external camera: RTMP address with the TAK login (MediaMTX in the TAK server creates the feed itself)
   function fillDroneServers() {
     const list = window.eud.getServers().filter(x => x.host);
     $('droneSrv').replaceChildren(...list.map(x => new Option(x.name || x.host, x.id)));
@@ -555,10 +555,10 @@
     $('dronePath').textContent = path;
     $('droneOut').classList.remove('hidden');
   };
-  // Über die Zugangsseite angemeldet: Zugangsdaten kennt dieser Server schon – kein Passwort eintippen
+  // signed up via the access page: this server already knows the login – no password to type
   async function droneFromAccess() {
     let token = '';
-    try { token = localStorage.getItem('tak.access') || ''; } catch (e) { /* privat */ }
+    try { token = localStorage.getItem('tak.access') || ''; } catch (e) { /* private mode */ }
     if (!token) return false;
     const me = await fetch('/api/access/me', { headers: { 'X-Access-Token': token } }).then(r => r.ok ? r.json() : null).catch(() => null);
     if (!me || me.status !== 'active' || !me.password || !me.host) return false;

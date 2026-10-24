@@ -89,7 +89,7 @@ const $ = id => document.getElementById(id);
 try {
   const known = localStorage.getItem('tak.access');
   if (known) { $('knownCard').classList.remove('hidden'); $('knownLink').href = '/access/#t=' + known; }
-} catch (e) { /* privat */ }
+} catch (e) { /* private mode */ }
 
 function steps(list) {
   $('doneSteps').replaceChildren(...list.map(([text, state]) => {
@@ -110,7 +110,7 @@ $('form').addEventListener('submit', async e => {
     const res = await fetch('/api/access/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Request failed.');
-    try { localStorage.setItem('tak.access', data.token); } catch (err) { /* privat */ }
+    try { localStorage.setItem('tak.access', data.token); } catch (err) { /* private mode */ }
     $('formCard').classList.add('hidden');
     $('knownCard').classList.add('hidden');
     $('doneCard').classList.remove('hidden');

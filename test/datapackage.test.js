@@ -1,4 +1,4 @@
-// ATAK-Einrichtungspaket: ZIP mit Manifest, config.pref und Truststore – Gegenprobe mit dem eigenen Paket-Leser
+// ATAK setup package: ZIP with manifest, config.pref and truststore – cross-checked with our own package reader
 const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const forge = require('node-forge');
@@ -20,23 +20,23 @@ function truststore(password) {
   return Buffer.from(forge.asn1.toDer(asn1).getBytes(), 'binary');
 }
 
-test('Einrichtungspaket: ATAK findet Server, Login, Rufname, Team und Truststore', () => {
+test('setup package: ATAK finds server, login, callsign, team and truststore', () => {
   const pkg = atakPackage({
-    host: 'tak.example.com', port: 8089, description: 'WebTAK', username: 'mutti', password: 'atakatak',
-    caPassword: 'atakatak', callsign: 'MUTTI & Co', team: 'Blue', role: 'Team Lead', truststore: truststore('atakatak'),
+    host: 'tak.example.com', port: 8089, description: 'WebTAK', username: 'mike', password: 'atakatak',
+    caPassword: 'atakatak', callsign: 'MIKE & Co', team: 'Blue', role: 'Team Lead', truststore: truststore('atakatak'),
   });
-  assert.equal(pkg.filename, 'WebTAK-MUTTI_Co.zip');
+  assert.equal(pkg.filename, 'WebTAK-MIKE_Co.zip');
   const files = tak.unzip(pkg.data);
   assert.deepEqual(Object.keys(files).sort(), ['MANIFEST/manifest.xml', 'certs/config.pref', 'certs/truststore.p12']);
   const manifest = files['MANIFEST/manifest.xml'].toString();
   assert.match(manifest, /zipEntry="certs\/config.pref"/);
   assert.match(manifest, /zipEntry="certs\/truststore.p12"/);
   const pref = files['certs/config.pref'].toString();
-  for (const [k, v] of [['connectString0', 'tak.example.com:8089:ssl'], ['username0', 'mutti'], ['password0', 'atakatak'], ['useAuth0', 'true'],
-    ['enrollForCertificateWithTrust0', 'true'], ['caLocation0', 'cert/truststore.p12'], ['locationCallsign', 'MUTTI &amp; Co'], ['locationTeam', 'Blue'], ['atakRoleType', 'Team Lead']]) {
+  for (const [k, v] of [['connectString0', 'tak.example.com:8089:ssl'], ['username0', 'mike'], ['password0', 'atakatak'], ['useAuth0', 'true'],
+    ['enrollForCertificateWithTrust0', 'true'], ['caLocation0', 'cert/truststore.p12'], ['locationCallsign', 'MIKE &amp; Co'], ['locationTeam', 'Blue'], ['atakRoleType', 'Team Lead']]) {
     assert.match(pref, new RegExp(`key="${k}"[^>]*>${v.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}<`), k);
   }
-  // Gegenprobe: der Paket-Leser von WebTAK (wie ATAK) liest Server, Anmeldung und Zertifikat
+  // Cross-check: WebTAK's package reader (like ATAK) reads server, login and certificate
   const r = tak.readDataPackage(pkg.data.toString('base64'));
   assert.deepEqual(r.server, { host: 'tak.example.com', port: 8089, proto: 'ssl', description: 'WebTAK' });
   assert.equal(r.enroll, true);

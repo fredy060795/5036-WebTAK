@@ -1,419 +1,424 @@
 # WebTAK
 
-**WebTAK** = TAK im Browser (Web-App), TAK-Zugänge mit Registrierung und Freigabe (OpenTAKServer) und
-Kamera-Streams, die automatisch im TAK-Server landen. Dazu Server und Handy-App für die Bluetooth-Helmkamera (ESP32-CAM, Firmware aus
+**WebTAK** = TAK in the browser (web app), TAK access with registration and approval (OpenTAKServer) and
+camera streams that end up in the TAK server automatically. Plus a server and phone app for the Bluetooth helmet camera (ESP32-CAM, firmware from
 [ESP32-Flash](https://github.com/fredy060795/ESP32-Flash)).
 
 ```
-Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HTTPS──▶ dein Server ──▶ ATAK / WinTAK / Admin
+Helmet camera ──Bluetooth──▶ phone (browser, stays online) ──HTTPS──▶ your server ──▶ ATAK / WinTAK / admin
 ```
 
-- **Ein Link pro Stream:** `https://<domain>/<benutzer>/<streamId>` – diesen Link in ATAK/WinTAK als Videoquelle eintragen.
-  Jeder Stream hat eine eigene zufällige Stream-ID, ein Benutzer kann mehrere Streams haben. So gibt es keine Konflikte,
-  auch wenn viele Streams gleichzeitig laufen.
-- **QR-Code für den Benutzer:** öffnet die Handy-App. Kamera per Bluetooth verbinden, „Stream starten“ – fertig.
-- **Admin-Fenster** (eigene Domain möglich): Login, Passwort-Reset per E-Mail (SMTP), alle Streams mit Status, Link
-  und QR-Code. „Ansehen“ öffnet frei bewegliche Video-Fenster (verschieben, Größe ändern, maximieren, minimieren,
-  schließen). „Alle Streams sperren“, einzelne Streams stoppen/freigeben, Handy **rauswerfen** oder Stream **löschen**.
+- **One link per stream:** `https://<domain>/<user>/<streamId>` – enter this link in ATAK/WinTAK as a video source.
+  Every stream has its own random stream id, a user can have several streams. So there are no conflicts,
+  even when many streams run at the same time.
+- **QR code for the user:** opens the phone app. Connect the camera via Bluetooth, "Start stream" – done.
+- **Admin window** (own domain possible): login, password reset by e-mail (SMTP), all streams with status, link
+  and QR code. "View" opens freely movable video windows (move, resize, maximize, minimize,
+  close). "Block all streams", stop/enable single streams, **kick** a phone or **delete** a stream.
 
-## Links pro Stream
+## Links per stream
 
-| Link | Format | Hinweis |
+| Link | Format | Note |
 |---|---|---|
-| `https://<domain>/<benutzer>/<streamId>` | MJPEG | Hauptlink, geringe Verzögerung, kein ffmpeg nötig. Im Browser geöffnet: Vollbild-Ansicht (Tippen: füllen/ganzes Bild) |
-| `https://<domain>/<benutzer>/<streamId>/index.m3u8` | HLS (H.264) | braucht ffmpeg auf dem Server, ca. 4–8 s Verzögerung; **für OpenTAKServer** |
-| `https://<domain>/<benutzer>/<streamId>/stream.ts` | MPEG-TS (H.264) | braucht ffmpeg, fortlaufender HTTP-Stream |
-| `https://<domain>/<benutzer>/<streamId>/snapshot.jpg` | JPEG | letztes Bild |
+| `https://<domain>/<user>/<streamId>` | MJPEG | main link, low latency, no ffmpeg needed. Opened in a browser: fullscreen view (tap: fill/whole image) |
+| `https://<domain>/<user>/<streamId>/index.m3u8` | HLS (H.264) | needs ffmpeg on the server, approx. 4–8 s latency; **for OpenTAKServer** |
+| `https://<domain>/<user>/<streamId>/stream.ts` | MPEG-TS (H.264) | needs ffmpeg, continuous HTTP stream |
+| `https://<domain>/<user>/<streamId>/snapshot.jpg` | JPEG | last image |
 
-Welches Format dein ATAK/WinTAK am besten abspielt, am besten mit einem laufenden Stream ausprobieren – alle drei
-liefern dasselbe Bild. Die Bildrate kommt von der Kamera über Bluetooth (bei 320x240 etwa 2–5 Bilder/s).
+Which format your ATAK/WinTAK plays best is easiest to try with a running stream – all three
+deliver the same image. The frame rate comes from the camera via Bluetooth (at 320x240 about 2–5 frames/s).
 
-## Automatisch im TAK-Server (OpenTAKServer)
+## Automatically in the TAK server (OpenTAKServer)
 
-Sobald im Admin unter **TAK-Zugänge → Einstellungen** der OpenTAKServer verbunden ist, trägt der Server jeden
-Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts mehr nötig:
+As soon as OpenTAKServer is connected in the admin under **Settings → OpenTAKServer & registration**, the server registers every
+camera stream **automatically** as a video feed in OTS – nothing to do by hand:
 
-- Neue Streams (Selbst-Anmeldung, EUD, manuell angelegt) bekommen einen Pfad aus dem Namen, z. B. `cam/alpha-10`.
-- OTS/MediaMTX holt das Bild bei Bedarf selbst über den **HLS-Link** (`…/index.m3u8`, `sourceOnDemand`) –
-  dafür braucht der Streams-Server ffmpeg (im Docker-Image dabei) und eine öffentliche Adresse
-  (Admin → Links & QR-Codes → Adresse dieses Servers, oder `PUBLIC_URL`).
-- In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
-- Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
+- New streams (self-registration, EUD, created manually) get a path from the name, e.g. `cam/alpha-10`.
+- OTS/MediaMTX pulls the video itself on demand via the **HLS link** (`…/index.m3u8`, `sourceOnDemand`) –
+  for this the streams server needs ffmpeg (included in the Docker image) and a public address
+  (Admin → Links & QR codes → address of this server, or `PUBLIC_URL`).
+- In ATAK/WinTAK the stream appears under **Video** as `rtsp://<TAK server>:8554/<path>`.
+- Blocking, switching off (checkbox in the "TAK path" column) or deleting removes the stream again.
 
-Im Admin gibt es dafür **einen** Bereich **Video-Feeds**: oben die Kameras aus WebTAK (Handy/Helmkamera – wer in
-WebTAK Video startet, ist sofort ein OTS-Feed `cam/<rufname>`), darunter **alle Feeds im TAK-Server** mit Herkunft
-(„WebTAK: …“ oder „extern“), ATAK-Link zum Kopieren und dem Formular für weitere Feeds (Pfad + Quelle
-rtsp/rtmp/srt/udp/HLS, MediaMTX holt das Bild bei Bedarf). Bei den Kameras wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
-ändern und Enter – der alte Pfad wird in OTS entfernt, der neue angelegt (leer = wieder automatisch). Der Punkt zeigt
-den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim Darüberfahren). Weitere Schalter:
-„Neue Streams automatisch“, „nur solange die Kamera sendet“ (sonst: solange freigegeben), Pfad-Präfix und
-**⟳ Abgleichen** (passiert zusätzlich beim Start und alle 10 Minuten).
+The admin has **one** section for this, **Video feeds**: at the top the cameras from WebTAK (phone/helmet camera – whoever
+starts video in WebTAK is an OTS feed `cam/<callsign>` right away), below **all feeds in the TAK server** with their origin
+("WebTAK: …" or "external"), the ATAK link to copy and the form for more feeds (path + source
+rtsp/rtmp/srt/udp/HLS, MediaMTX pulls the video on demand). For the cameras mainly the **path** is maintained: change the field in the "TAK path" column
+and press Enter – the old path is removed in OTS, the new one created (empty = automatic again). The dot shows
+the state (green = registered, yellow = waiting, red = error with an explanation on hover). More switches:
+"Add new streams automatically", "only while the camera is sending" (otherwise: while enabled), path prefix and
+**⟳ Sync** (also happens at startup and every 10 minutes).
 
-Wer OTS nicht verbindet, kann den HLS-Link (Knopf „QR / Links“) weiterhin von Hand in OTS unter
-**Videostreams → Add Video** als Quelle eintragen.
+Without an OTS connection you can still enter the HLS link (button "QR / Links") by hand in OTS under
+**Video streams → Add Video** as a source.
 
-## Drohne (DJI), Bildschirm und externe Kameras
+## Drone (DJI), screen and external cameras
 
-Alles landet als Feed im TAK-Server (ATAK/iTAK/WinTAK unter „Video“) – kein Anlegen nötig. MediaMTX im
-OpenTAKServer prüft den **TAK-Benutzer und das Passwort** und legt den Feed beim ersten Senden selbst an.
+Everything ends up as a feed in the TAK server (ATAK/iTAK/WinTAK under "Video") – nothing to create. MediaMTX in
+OpenTAKServer checks the **TAK user and password** and creates the feed itself on the first push.
 
-| Quelle | Weg |
+| Source | How |
 |---|---|
-| **DJI-Drohne** (DJI Fly / DJI Pilot 2) | ⋯ → Übertragung/Livestream → **RTMP** → Adresse von der Zugangsseite einfügen |
-| **OBS, Larix Broadcaster** | RTMP, RTSP oder SRT (Adressen siehe unten) |
-| **Handy-Bildschirm** | App „Larix Screencaster“ (Android) mit der RTMP-Adresse – Handy-Browser können den Bildschirm nicht teilen |
-| **PC-Bildschirm** | WebTAK → Video → **🖥 Share screen** (nur Desktop-Browser) |
-| **Helmkamera / Handy als Kamera ohne TAK-Zugang** | Kamera-App `/app/` (QR unter „Links & QR-Codes“) |
+| **DJI drone** (DJI Fly / DJI Pilot 2) | ⋯ → Transmission/Livestream → **RTMP** → paste the address from the access page |
+| **OBS, Larix Broadcaster** | RTMP, RTSP or SRT (addresses below) |
+| **Phone screen** | "Larix Screencaster" app (Android) with the RTMP address – phone browsers cannot share the screen |
+| **PC screen** | WebTAK → Video → **🖥 Share screen** (desktop browsers only) |
+| **Helmet camera / phone as a camera without TAK access** | camera app `/app/` (QR under "Links & QR codes") |
 
-Adressen (fertig ausgefüllt auf der Zugangsseite `/access/` und in WebTAK unter Video – ohne Passwort-Eingabe, wenn WebTAK über die Zugangsseite geöffnet wurde – sowie als Vorlage im Admin unter Video-Feeds):
+Addresses (filled in on the access page `/access/` and in WebTAK under Video – without typing a password if WebTAK was opened from the access page – and as a template in the admin under Video feeds):
 
 ```
-rtmp://<TAK-Server>:1935/drone-<rufname>?user=<benutzer>&pass=<passwort>
-rtsp://<benutzer>:<passwort>@<TAK-Server>:8554/drone-<rufname>
-srt://<TAK-Server>:8890?streamid=publish:drone-<rufname>:<benutzer>:<passwort>
+rtmp://<TAK server>:1935/drone-<callsign>?user=<user>&pass=<password>
+rtsp://<user>:<password>@<TAK server>:8554/drone-<callsign>
+srt://<TAK server>:8890?streamid=publish:drone-<callsign>:<user>:<password>
 ```
 
-Ports 1935 (RTMP), 8554 (RTSP) und 8890/udp (SRT) müssen am TAK-Server erreichbar sein.
+Ports 1935 (RTMP), 8554 (RTSP) and 8890/udp (SRT) must be reachable on the TAK server.
 
-## Bild ausrichten (jeder Helm ist anders montiert)
+## Aligning the image (every helmet is mounted differently)
 
-Ausrichten kann der Nutzer am Handy selbst (Karte „Ausrichten“) und der Admin im Ansehen-Fenster – beide sehen dieselbe Einstellung.
+The user can align on the phone (card "Align") and the admin in the viewer window – both see the same setting.
 
-- **Ansehen** → **∠ Ausrichten**: Regler für jeden Winkel von 0 bis 359,5° (im Uhrzeigersinn), Feinschritte
-  −90/−5/−1/+1/+5/+90°, 0°, **Spiegeln** und bei schrägen Winkeln **Füllen** (Rand wird abgeschnitten, keine schwarzen
-  Ecken) oder **Ganzes Bild** (schwarze Ecken). Das Ergebnis ist nach etwa einer Sekunde im Live-Bild zu sehen.
-- In der Liste steht der Winkel jedes Streams und kann dort auch direkt eingetippt werden.
-- **Einstellungen → Bild drehen:** Grundwinkel für neue Streams (z. B. 90°, wenn die Kamera quer im Gehäuse liegt),
-  optional auf alle bestehenden Streams anwenden.
+- **View** → **∠ Align**: slider for any angle from 0 to 359.5° (clockwise), fine steps
+  −90/−5/−1/+1/+5/+90°, 0°, **Mirror** and for oblique angles **Fill** (the edge is cropped, no black
+  corners) or **Whole image** (black corners). The result is visible in the live image after about a second.
+- The list shows the angle of every stream, and it can be typed in there directly.
+- **Settings → rotation:** base angle for new streams (e.g. 90° if the camera sits sideways in the housing),
+  optionally applied to all existing streams.
 
-Das Handy dreht jedes Bild, bevor es gesendet wird. Dadurch liefern alle Links (MJPEG, HLS, MPEG-TS, Einzelbild)
-und damit auch OpenTAKServer/ATAK schon das ausgerichtete Bild – beim Import muss nichts mehr angepasst werden.
-Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz neu.
+The phone rotates every image before it is sent. So all links (MJPEG, HLS, MPEG-TS, snapshot)
+and therefore OpenTAKServer/ATAK already get the aligned image – nothing to adjust on import.
+From 45° the image becomes portrait; HLS/MPEG-TS restart briefly when switching landscape/portrait.
 
-## Ablauf
+## Workflow
 
-1. Im Admin-Fenster oben den **QR-Code für alle Nutzer** groß anzeigen oder drucken (ein Code für alle).
-2. Der Nutzer scannt ihn, gibt **Name** und **Einheit** ein → er bekommt automatisch einen eigenen Stream
-   (z. B. `https://<domain>:5036/max-mueller/qugzu48s8q`). Das Handy merkt sich die Anmeldung.
-3. Quelle wählen: **Handy-Kamera** (Rückkamera) oder **Helmkamera (Bluetooth)** und ausrichten. Die Seite zeigt
-   **„Bereit“** – es wird noch nichts gesendet.
-4. Du schaltest im Admin mit **▶ Live** ein (Liste oder Ansehen-Fenster); das Handy vibriert kurz und sendet.
-   **■ Live aus** bzw. **Alle auf Bereit** schaltet zurück auf „Bereit“.
-5. In der Admin-Liste: ausrichten, Bildgröße, TAK-Pfad pflegen, sperren, rauswerfen oder löschen.
+1. In the admin window show or print the **QR code for all users** (one code for everyone).
+2. The user scans it and enters **name** and **unit** → they automatically get their own stream
+   (e.g. `https://<domain>:5036/max-mueller/qugzu48s8q`). The phone remembers the sign-up.
+3. Choose the source: **phone camera** (rear camera) or **helmet camera (Bluetooth)** and align it. The page shows
+   **"Ready"** – nothing is sent yet.
+4. You switch on with **▶ Live** in the admin (list or viewer window); the phone vibrates briefly and sends.
+   **■ Live off** or **All to ready** switches back to "Ready".
+5. In the admin list: align, image size, TAK path, block, kick or delete.
 
-Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
+Keep the phone screen on and the app in the foreground (otherwise the phone stops camera and Bluetooth).
 
-**Bildgröße** legt der Admin fest – pro Stream in der Liste oder im Ansehen-Fenster, Standard für neue Streams unter
-Einstellungen (vorbelegt **160x120, sehr schnell**). Auswahl: 160x120, 320x240, 640x480, 1280x720 (nur Handy-Kamera
-sinnvoll). Änderungen gelten sofort am Handy, auch während des Streams; der Nutzer sieht die Bildgröße nur an.
+The admin sets the **image size** – per stream in the list or in the viewer window, the default for new streams under
+Settings (preset **160x120, very fast**). Choices: 160x120, 320x240, 640x480, 1280x720 (only sensible for the
+phone camera). Changes apply immediately on the phone, even while streaming; the user only sees the image size.
 
-**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
-und angesteckte **USB/UVC-Kameras** (Windows/macOS/Linux, iPad mit USB-C, manche Android-Geräte; iPhone nicht).
-Das Handy merkt sich die Auswahl.
+**Phone camera:** works in every phone browser over HTTPS – also Safari on iPhone. About 5 frames/s. Under **Camera** all cameras the device reports can be selected: rear/front camera
+and connected **USB/UVC cameras** (Windows/macOS/Linux, iPad with USB-C, some Android devices; not iPhone).
+The phone remembers the choice.
 
-**Ausrichten am Handy:** Nach dem Verbinden zeigt die Seite eine Vorschau und die Karte **Ausrichten**
-(⟲/⟳ 90°, ±5°, ±1°, 0°, Spiegeln). Die Vorschau zeigt genau das Bild, das gesendet wird – also vor
-„Stream starten“ ausrichten. Die Einstellung gilt für Handy- und Helmkamera, wird am Server gespeichert und ist im
-Admin sichtbar; der Admin kann sie dort jederzeit ändern.
+**Aligning on the phone:** after connecting, the page shows a preview and the card **Align**
+(⟲/⟳ 90°, ±5°, ±1°, 0°, Mirror). The preview shows exactly the image that is sent – so align before
+"Start stream". The setting applies to the phone and helmet camera, is stored on the server and is visible in the
+admin; the admin can change it there at any time.
 
-**Helmkamera (Bluetooth):** Android mit **Chrome** (nicht Samsung Internet/Firefox). Auf dem iPhone kann kein Browser
-Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den Weg („Link für Bluefy kopieren“).
+**Helmet camera (Bluetooth):** Android with **Chrome** (not Samsung Internet/Firefox). On iPhone no browser can do
+Bluetooth – use the free **Bluefy** app there; the page shows the way ("Copy the link for Bluefy").
 
-**Adresse des Servers** (im Admin oben): legt fest, welche Adresse in QR-Codes und allen Links steht, z. B.
-`https://tak.example.com:5036`. Leer bzw. „Automatisch“ = `PUBLIC_URL` oder die aufgerufene Adresse. Die Einstellung
-gilt vor `PUBLIC_URL` und bleibt nach einem Neustart erhalten.
+**Address of the server** (in the admin): sets which address appears in QR codes and all links, e.g.
+`https://tak.example.com:5036`. Empty or "Automatic" = `PUBLIC_URL` or the address used to open the page. The setting
+takes precedence over `PUBLIC_URL` and survives a restart.
 
-**Admin schaltet live** (Schalter oben im Admin, Standard an): Nutzer warten nach dem Verbinden auf „▶ Live“. Aus =
-Nutzer starten den Stream selbst mit „Stream starten“. Die Seite muss geöffnet bleiben – Browser stoppen Kamera und
-Bluetooth, wenn die Seite in den Hintergrund geht. Auf Android ATAK und die Seite im **geteilten Bildschirm** nutzen.
+**Admin puts streams live** (switch in the admin, default on): after connecting, users wait for "▶ Live". Off =
+users start the stream themselves with "Start stream". The page must stay open – browsers stop camera and
+Bluetooth when the page goes to the background. On Android use ATAK and the page in **split screen**.
 
-**Nutzer dürfen selbst starten** (nur bei „Admin schaltet live“): Nutzer sehen zusätzlich „Stream starten“. Der Admin
-kann jederzeit „■ Live aus“ drücken.
+**Users may start by themselves** (only with "Admin puts streams live"): users additionally see "Start stream". The admin
+can press "■ Live off" at any time.
 
-**Hinweise:** Meldet sich jemand an, aktiviert die Kamera oder startet selbst, erscheint im Admin ein Popup mit Ton
-(„Ansehen“, „▶ Live“). Mit **🔔 Hinweise** zusätzlich Desktop-Benachrichtigungen erlauben – die kommen auch, wenn das
-Admin-Fenster im Hintergrund ist.
+**Notifications:** when someone signs up, activates the camera or starts by themselves, a popup with a sound appears in the admin.
+With **🔔 Notifications** you can additionally allow desktop notifications – they also arrive when the
+admin window is in the background.
 
-**Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
-Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
-sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.
+**Video from WebTAK/camera app allowed** (switch in the admin) blocks new sign-ups when needed; running streams stay.
+Whoever is deleted can sign up again with the general QR code – if that should not be possible, block
+self-registration. Optionally streams can still be created manually with their own QR code.
 
-## WebTAK-App (Karte + Lagebild auf dem Handy)
+## WebTAK app (map + situational picture on the phone)
 
-Unter `https://<server>/eud/` gibt es **WebTAK**, einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau,
-Oberfläche auf **Englisch** (multinational). Läuft auf Android und iPhone (Safari → Teilen → „Zum
-Home-Bildschirm“). Aufbau wie ATAK:
+At `https://<server>/eud/` there is **WebTAK**, a lean TAK client as a web app (PWA) at ATAK CoT level,
+with an **English** user interface (multinational). Runs on Android and iPhone (Safari → Share → "Add to
+Home Screen"). Laid out like ATAK:
 
-- **Leiste oben:** Karten (Layers), Marker, Chat, Video, Tools (Menü als Kachel-Raster wie ATAK:
+- **Top bar:** maps (layers), markers, chat, video, tools (menu as a tile grid like ATAK:
   Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
-- **Contacts & Markers** wie der ATAK Overlay Manager nach Art getrennt: **Contacts** (Nutzer), Marker
-  **Friendly / Hostile / Neutral / Unknown** (nach 2525-Zugehörigkeit), sonstige Punkte, Zeichnungen & Routen –
-  jede Gruppe auf- und zuklappbar und mit 🗑 einzeln bereinigen. **Clear Content** räumt mehrere Gruppen auf
-  einmal ab, dazu Overlays und Chat; auf Wunsch werden eigene Marker auch beim TAK-Server gelöscht.
-- **Links:** Kompass – die Nadel zeigt immer nach Norden. Antippen: von Hand gedrehte Karte wieder genordet;
-  ist sie genordet, Blickrichtung oben „HDG“ (ohne Sensor nach GPS-Kurs), erneut = Nord oben „N“.
-  Darunter „auf mich zoomen“.
-- **Gesten wie ATAK:** zwei Finger drehen = Karte drehen (erst ab ~12°, damit Zoomen nicht wackelt; am PC
-  Umschalt + Mausrad), zwei Finger gemeinsam nach oben/unten schieben = kippen – auch von der flachen Karte aus.
-- **Rechts:** Schieberegler zum Kippen (Doppeltippen = flach). Gekippt zeigt WebTAK eine **echte 3D-Karte** wie
-  WinTAK (MapLibre GL): Gelände mit Höhen, Himmel und Horizont, Neigung bis **88°**, Symbole stehen aufrecht mit
-  Namen, Routen/Flächen liegen auf dem Gelände, eigene Marker lassen sich auch in 3D verschieben und antippen.
-  Bei 0° geht es zurück zur flachen Karte (zum Zeichnen, Messen, Korridor) – mit gleichem Ausschnitt und gleicher
-  Drehung. **3D ist Standard** (Karte → 3D MAP: abschaltbar, „Start in 3D view“, Geländehöhe 1–3×). Höhendaten:
-  frei nutzbare *AWS Terrain Tiles* (Terrarium) über den eigenen Kachel-Zwischenspeicher; „Save for offline use“
-  speichert sie mit. Ohne WebGL 2 oder ohne Höhendaten: flach gekippt (bis 60°) bzw. 3D ohne Gelände.
-- **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
-  Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
-- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK; Zugehörigkeit (Unbekannt/Neutral/Feind/
-  Freund), Dimension (Ground, Air, Sea, Sub, Space) und MIL-STD-2525-Symbol wählen (z. B. Infanterie,
-  Panzer, Artillerie, Hubschrauber, Jäger, Drohne/UAV, Schiff, U-Boot, Satellit), dann die Stelle antippen.
-- **Eigene Position unten rechts antippen** öffnet das Callsign-Menü.
-- Alle Fenster öffnen als Sheet unten (im Querformat rechts), immer nur eines gleichzeitig.
+- **Contacts & Markers** split by type like the ATAK overlay manager: **Contacts** (users), markers
+  **Friendly / Hostile / Neutral / Unknown** (by 2525 affiliation), other points, drawings & routes –
+  every group can be expanded and collapsed and cleared on its own with 🗑. **Clear Content** clears several groups at
+  once, plus overlays and chat; optionally own markers are deleted on the TAK server too.
+- **Left:** compass – the needle always points north. Tap: a map rotated by hand goes back to north up;
+  if it is north up, heading up "HDG" (without a sensor by GPS course), again = north up "N".
+  Below it "zoom to me".
+- **Gestures like ATAK:** rotating two fingers = rotate the map (only after ~12° so zooming does not wobble; on a PC
+  Shift + mouse wheel), pushing two fingers up/down together = tilt – also from the flat map.
+- **Right:** slider for tilting (double tap = flat). When tilted, WebTAK shows a **real 3D map** like
+  WinTAK (MapLibre GL): terrain with elevation, sky and horizon, tilt up to **88°**, symbols stand upright with
+  names, routes/areas lie on the terrain, own markers can be moved and tapped in 3D too.
+  At 0° it goes back to the flat map (for drawing, measuring, corridor) – with the same extent and the same
+  rotation. **3D is the default** (Map → 3D MAP: can be switched off, "Start in 3D view", terrain exaggeration 1–3×). Elevation data:
+  the free *AWS Terrain Tiles* (Terrarium) through our own tile cache; "Save for offline use"
+  stores them too. Without WebGL 2 or without elevation data: flat tilt (up to 60°) or 3D without terrain.
+- **Bottom right:** connection indicator (green = connected, yellow = only some, red = offline; tap =
+  servers) and the own position: callsign, MGRS, altitude, direction, speed, accuracy. Scale bottom left.
+- **Markers** (marker button at the top): name prefix + index like ATAK; choose affiliation (Unknown/Neutral/Hostile/
+  Friendly), dimension (Ground, Air, Sea, Sub, Space) and MIL-STD-2525 symbol (e.g. infantry,
+  armor, artillery, helicopter, fighter, drone/UAV, ship, submarine, satellite), then tap the spot.
+- **Tapping the own position bottom right** opens the callsign menu.
+- All windows open as a sheet at the bottom (on the right in landscape), only one at a time.
 
-**Kernfunktionen**
+**Core functions**
 
-1. **Marker** setzen (s. o.). Eigene Marker per **Drag & Drop verschieben**, im Popup **umbenennen**
-   oder löschen – die Änderung geht wie bei ATAK mit gleicher UID an alle Server.
-2. **Server verbinden** – Menü → Servers. **Mehrere TAK-Server gleichzeitig**, alles auf einer Karte.
-   Je Server: QR-Code (ATAK-Enrollment `tak://…/enroll?…`, iTAK `Name,Host,Port,ssl`), Datenpaket (.zip),
-   Zertifikat (.p12), Truststore oder von Hand (Adresse, Port, SSL/TCP/UDP, Benutzer + Passwort →
-   „Request certificate“, Port 8446). Unbekannte Server-Zertifikate erst nach Bestätigung des Fingerabdrucks.
-3. **Chat** – Chat „All“ (GeoChat); Fenster lässt sich minimieren und schließen.
-4. **Videostream** – „Phone camera“ oder „Helmet camera (Bluetooth, Android/Chrome)“ antippen: der Stream
-   startet sofort (auch wenn im Admin „Admin schaltet live“ eingestellt ist – der Admin bekommt einen
-   Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt. Eigene Vorschau
-   minimieren oder ausblenden (Stream läuft weiter). **Streams ansehen:** alle Streams im Lagebild und die
-   Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
-   angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
-   Video und Chat stapeln sich, statt sich zu überdecken.
-   **Feeds anderer Systeme:** HLS (`.m3u8`) spielt WebTAK in allen Browsern mit hls.js (auch OpenTAKServer-Feeds mit `?jwt=…` – der Schlüssel geht an alle Teile des Streams); klappt es nicht, steht die Antwort des Video-Servers in der Meldung. RTSP-Feeds von
-   OpenTAKServer/MediaMTX (`rtsp://host:8554/pfad`, wie sie ATAK/iTAK abspielen) holt WebTAK automatisch über den
-   HLS-Ausgang von MediaMTX (`http://host:8888/pfad/index.m3u8`). Das läuft über den eigenen Server
-   (`/api/eud/media`: nur Video-Dateien, Ziel wie bei der TAK-Durchreiche geprüft) – kein Mixed Content, kein CORS.
-   Geht es trotzdem nicht: Hinweis und Knopf „im neuen Tab öffnen“ bzw. „Adresse für VLC kopieren“.
+1. Place **markers** (see above). **Drag & drop** own markers, **rename**
+   or delete them in the popup – the change goes to all servers with the same UID, like in ATAK.
+2. **Connect servers** – Menu → Servers. **Several TAK servers at once**, everything on one map.
+   Per server: QR code (ATAK enrollment `tak://…/enroll?…`, iTAK `name,host,port,ssl`), data package (.zip),
+   certificate (.p12), truststore or by hand (address, port, SSL/TCP/UDP, user + password →
+   "Request certificate", port 8446). Unknown server certificates only after confirming the fingerprint.
+3. **Chat** – chat "All" (GeoChat); the window can be minimized and closed.
+4. **Video stream** – tap "Phone camera" or "Helmet camera (Bluetooth, Android/Chrome)": the stream
+   starts right away (also when "Admin puts streams live" is set in the admin – the admin gets a
+   notification). The link is in the own position, ATAK users see it on the contact. The own preview can be
+   minimized or hidden (the stream keeps running). **Watching streams:** all streams in the situational picture and the
+   feeds of the TAK server in the viewer (MJPEG/HLS; RTSP is copied). The viewer behaves like the chat: docked at the
+   bottom (landscape: right), minimize = header only, tap the header = large again, fullscreen, close;
+   video and chat stack instead of covering each other.
+   **Feeds of other systems:** WebTAK plays HLS (`.m3u8`) in all browsers with hls.js (also OpenTAKServer feeds with `?jwt=…` – the key is passed to all parts of the stream); if it fails, the message shows the video server's answer. RTSP feeds from
+   OpenTAKServer/MediaMTX (`rtsp://host:8554/path`, as ATAK/iTAK play them) are fetched automatically through the
+   HLS output of MediaMTX (`http://host:8888/path/index.m3u8`). This runs through our own server
+   (`/api/eud/media`: video files only, the target is checked like the TAK relay) – no mixed content, no CORS.
+   If it still fails: a message and a button "Open in new tab" or "Copy address (VLC)".
 
-**TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
-Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte
-werden bei Änderungen automatisch aktualisiert, ⟳ lädt sofort neu; bei OpenTAKServer werden auch die in ATAK
-angelegten Missionen mit `tool=public` gefunden, und Punkte, für die der Server nur Metadaten liefert, erscheinen
-trotzdem auf der Karte), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom
-Gerät, auch Rasterkarten mit mehreren Detailstufen; bleiben offline gespeichert).
-**Auto-Push wie bei ATAK:** schickt der TAK-Server ein Datenpaket an das Gerät oder lädt es in eine
-Mission ein, wird beides automatisch geladen bzw. abonniert. Fehler beim Abruf stehen im Server-Log
-(„EUD TAK-API … Fehler“).
+**TAK data** (Menu → TAK Data, through API port 8443 with the client certificate):
+load data packages from the server, **Data Sync** (subscribe to missions – also password-protected ones –, content
+is updated automatically on changes, ⟳ reloads right away; with OpenTAKServer the missions created in ATAK
+with `tool=public` are found too, and points for which the server only delivers metadata still appear
+on the map), **overlays** (KML/KMZ from packages, missions or the
+device, also raster maps with several detail levels; stay stored offline).
+**Auto push like ATAK:** if the TAK server sends a data package to the device or invites it to a
+mission, both are loaded or subscribed automatically. Errors while fetching are in the server log
+("EUD TAK-API … error").
 
-**Karte** (Menü → Map): Quelle wählen (OpenStreetMap, OpenTopoMap, Esri Satellit/Topo oder eigene
-URL mit `{z}/{x}/{y}`). Kacheln laufen über diesen Server und werden dort unter `DATA_DIR/tiles`
-zwischengespeichert. **Offline speichern:** sichtbaren Ausschnitt oder einen gezeichneten **Korridor**
-(Breite in m) mit Zoom von/bis; gespeicherte Bereiche lassen sich anzeigen und löschen. Bitte nur
-benötigte Bereiche laden – die freien Kartendienste erlauben kein Massen-Herunterladen.
+**Map** (Menu → Map): choose the source (OpenStreetMap, OpenTopoMap, Esri Satellite/Topo or a custom
+URL with `{z}/{x}/{y}`). Tiles go through this server and are cached there under `DATA_DIR/tiles`.
+**Save offline:** the visible area or a drawn **corridor**
+(width in m) with zoom from/to; saved areas can be shown and deleted. Please only load
+areas you need – the free map services do not allow bulk downloading.
 
-**Ohne Internet:** App, gespeicherte Kacheln, Lagebild und Overlays bleiben auf dem Gerät. GPS läuft
-weiter, Marker und Chats warten im Ausgang und gehen raus, sobald die Verbindung wieder steht.
+**Without internet:** the app, saved tiles, situational picture and overlays stay on the device. GPS keeps
+running, markers and chats wait in the outbox and go out as soon as the connection is back.
 
-**Grenzen einer Web-App:** Ein TAK-Server auf dem Handy selbst (z. B. in der Meshtastic-App,
-`127.0.0.1:8088`) ist für eine Web-App nicht erreichbar – Browser können keine TCP/TLS-Verbindungen
-öffnen. Dafür braucht es die EUD als installierte App. iOS pausiert Web-Apps im Hintergrund;
-Bluetooth gibt es in Safari nicht (Helmkamera am iPhone nur über die App „Bluefy“).
+**Limits of a web app:** a TAK server on the phone itself (e.g. in the Meshtastic app,
+`127.0.0.1:8088`) cannot be reached by a web app – browsers cannot open TCP/TLS connections.
+That needs the EUD as an installed app. iOS pauses web apps in the background;
+Safari has no Bluetooth (helmet camera on iPhone only through the "Bluefy" app).
 
-**Sicherheit:** Dieser Server reicht die Daten nur durch (`/ws/tak`, `/api/eud/marti`). Zertifikate und
-Schlüssel liegen nur auf dem Handy. Im Admin unter „Erlaubte TAK-Server“ den eigenen TAK-Server
-eintragen, damit niemand den Server als offene Durchreiche benutzt. Ohne Eintrag sind alle Server
-erlaubt – außer dem Server-Rechner selbst (`localhost`) und Link-Local-Adressen.
+**Security:** this server only relays the data (`/ws/tak`, `/api/eud/marti`). Certificates and
+keys stay on the phone only. Enter your own TAK server in the admin under "Allowed TAK servers"
+so nobody uses the server as an open relay. Without an entry all servers are
+allowed – except the server machine itself (`localhost`) and link-local addresses.
 
-## TAK-Zugänge (OpenTAKServer)
+## TAK access (OpenTAKServer)
 
-Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Konto auf dem
-**OpenTAKServer (OTS)** an und der Nutzer bekommt Zugangsdaten, QR-Codes und eine bebilderte Anleitung.
+Users request real TAK access here; after approval the app creates the account on the
+**OpenTAKServer (OTS)** and the user gets login details, QR codes and an illustrated guide.
 
-**Ablauf**
+**Workflow**
 
-1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin: „Benutzer & Anfragen“ → „Registrierungs-QR“), liest
-   kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
-   optional E-Mail-Bestätigung über SMTP). Er bekommt sofort eine Eingangsbestätigung per E-Mail
-   („WebTAK – registration request received“, mit seinem persönlichen Statuslink) und sieht nach dem Absenden,
-   wie es weitergeht. Die **Statusseite** zeigt eine Zeitleiste (Anfrage → ggf. E-Mail bestätigt → Freigabe →
-   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
-2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
-   Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
-3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, zufälliges Passwort je Nutzer
-   (optional fest einstellbar); danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
-   Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
-   bzw. der Admin gibt ihm den angezeigten Link.
-4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
-   Benutzer, Passwort, **Truststore-Download**, QR-Codes und Schritt-für-Schritt-Anleitung für
-   **ATAK** (Android), **iTAK** (iPhone) und **WebTAK** (QR öffnet die EUD mit allen Daten, das
-   Zertifikat wird automatisch angefordert).
+1. The user opens `https://<server>/join/` (QR code in the admin: "Users & requests" → "Registration QR"), reads
+   briefly what TAK can do and sends a request (name, unit, requested callsign, e-mail; optional code word,
+   optional e-mail confirmation via SMTP). They get a confirmation e-mail right away
+   ("WebTAK – registration request received", with their personal status link) and see what happens next
+   after submitting. The **status page** shows a timeline (request → e-mail confirmed if needed → approval →
+   login details), refreshes itself and says whether the approval comes by e-mail. The admin gets an e-mail for every new request.
+2. The admin sees the request (notification + list "Open") and approves it – **nothing happens without
+   approval**. They set the **callsign** (overrides e.g. "Horst" with "ALPHA 10"), **team** and **role**.
+3. The app creates the OTS account (role "user", username from the callsign, a random password per user
+   (optionally a fixed one); afterwards it checks that logging in with it works), sets the
+   team groups if needed and creates the ATAK enrollment QR code. The user gets an e-mail (if SMTP)
+   or the admin gives them the link shown.
+4. On the access page `/access/` (for multinational users): callsign, team, role, server,
+   user, password, **truststore download**, QR codes and a step-by-step guide for
+   **ATAK** (Android), **iTAK** (iPhone) and **WebTAK** (the QR opens the EUD with all data, the
+   certificate is requested automatically).
 
-**Verwaltung** (Admin → TAK-Zugänge): suchen/filtern, freigeben, ablehnen, bearbeiten, sperren/entsperren
-(OTS-Konto wird deaktiviert), neues Passwort, neuer ATAK-QR, Zugangslink kopieren, löschen (auch auf OTS).
+**Management** (Admin → Users & requests): search/filter, approve, decline, edit, block/unblock
+(the OTS account is deactivated), new password, new ATAK QR, copy access link, delete (also on OTS).
 
-**Rufname, Team und Rolle überschreiben:** Die App setzt für jedes Gerät des Nutzers OTS-Geräte-Profile
-(`locationCallsign`, `locationTeam`, `atakRoleType`). **ATAK** übernimmt sie beim (nächsten) Verbinden mit
-dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“ erzwingt es sofort). In der
-**Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
-Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
+**Overriding callsign, team and role:** the app sets OTS device profiles for every device of the user
+(`locationCallsign`, `locationTeam`, `atakRoleType`). **ATAK** applies them on its (next) connection to
+the server; new devices are detected every 2 minutes ("Sync with OTS" forces it right away). In the
+**web EUD** the assignment applies immediately and is locked; the relay also enforces it in the sent
+position. **iTAK** does not apply server profiles – there the user sets callsign/team as shown on the access page.
 
-**ATAK ohne Tippen:** Der ATAK-QR-Code auf der Zugangsseite ist ein normaler https-Link – mit der Handy-Kamera
-scannen, Seite öffnet sich, **ATAK-Einrichtungspaket** (`.zip`) laden und mit ATAK öffnen. Das Paket enthält Server,
-Benutzer, Passwort, Rufname, Team, Rolle und den Truststore von OTS (Passwort einstellbar, Standard `atakatak`);
-ATAK importiert es, fordert sein Zertifikat an und verbindet sich. Das funktioniert auch mit selbstsigniertem
-Server-Zertifikat. Der `tak://…/enroll`-QR von OTS bleibt als Alternative – laut OTS klappt er nur mit öffentlich
-vertrauenswürdigem Zertifikat (z. B. Let's Encrypt), und viele Kamera-Apps öffnen `tak://`-Links gar nicht.
-Das Paket lässt sich auch mit iTAK öffnen.
+**ATAK without typing:** the ATAK QR code on the access page is a normal https link – scan it with the phone camera,
+the page opens, download the **ATAK setup package** (`.zip`) and open it with ATAK. The package contains server,
+user, password, callsign, team, role and the OTS truststore (password configurable, default `atakatak`);
+ATAK imports it, requests its certificate and connects. This also works with a self-signed
+server certificate. The `tak://…/enroll` QR from OTS stays as an alternative – according to OTS it only works with a publicly
+trusted certificate (e.g. Let's Encrypt), and many camera apps do not open `tak://` links at all.
+The package can also be opened with iTAK.
 
-**Teams und Sichtbarkeit:** Standard: alle sehen alle – dann bekommen freigegebene Nutzer in OTS **keine Gruppe**,
-genau wie von Hand angelegte Benutzer; OTS nimmt dafür seine Standardgruppe `__ANON__`, und alle (auch WinTAK/ATAK
-ohne Gruppe) sehen sich. Erst wenn in der Matrix „Wer sieht wen?“ ein Haken entfernt wird, legt WebTAK je Team eine
-OTS-Gruppe an (`TEAM_<NAME>`): das Team liest die Gruppe des anderen nicht mehr, OTS stellt dann dessen Positionen,
-Marker und Chats nicht zu. Mit Geräten ohne Gruppe (`__ANON__`) wird dabei weiter ausgetauscht (abschaltbar);
-ein ausgeblendetes Team sendet nicht nach `__ANON__`, sonst wäre es dort doch sichtbar. Beim Start und mit
-„Mit OTS abgleichen“ werden die Gruppen aller Nutzer auf diesen Stand gebracht; Geräte verbinden sich danach neu. So können mehrere Einheiten einen Server
-nutzen, ohne sich zu stören. (Voraussetzung: OTS mit Kanälen/Gruppen, Standard `OTS_ENABLE_CHANNELS=True`,
-kein LDAP.)
+**Teams and visibility:** default: everyone sees everyone – approved users then get **no group** in OTS,
+just like users created by hand; OTS uses its default group `__ANON__` for this, and everyone (also WinTAK/ATAK
+without a group) sees each other. Only when a checkbox is removed in the "Who sees whom?" matrix does WebTAK create an
+OTS group per team (`TEAM_<NAME>`): the team no longer reads the other's group, OTS then does not deliver its positions,
+markers and chats. Exchange with devices without a group (`__ANON__`) continues (can be switched off);
+a hidden team does not send to `__ANON__`, otherwise it would be visible there after all. At startup and with
+"Sync with OTS" all users' groups are brought to this state; devices reconnect afterwards. This lets several units share a server
+without disturbing each other. (Requirement: OTS with channels/groups, default `OTS_ENABLE_CHANNELS=True`,
+no LDAP.)
 
-**Einrichtung:** Admin → TAK-Zugänge → Einstellungen:
-- Adresse der OTS-Weboberfläche/API (z. B. `https://ots.example.com`, oder intern `http://127.0.0.1:8081`
-  wenn beide auf demselben Rechner laufen), OTS-Admin-Benutzer und Passwort (**ohne Zwei-Faktor**).
-- Öffentliche TAK-Adresse für die Geräte (wird in die QR-Codes eingesetzt) und Ports (8089/8446/8443).
-- „Verbindung testen“, dann Registrierung öffnen und den QR-Code zur Registrierung verteilen.
+**Missions and groups:** OTS only shows users with a group the missions of their IN groups. A mission created
+in the admin without choosing groups therefore gets **all** groups; missions without any group are marked
+"⚠ none – invisible in ATAK/WebTAK" and can be fixed with **Share with all**.
 
-**Sicherheit:** Die Passwörter der TAK-Konten und das OTS-Admin-Passwort liegen in `DATA_DIR/db.json`
-(Dateirechte 600), damit die Zugangsseite die Daten zeigen kann; der Zugangslink ist geheim (48 Zeichen) und
-nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
+**Setup:** Admin → Settings → OpenTAKServer & registration:
+- Address of the OTS web UI/API (e.g. `https://ots.example.com`, or internally `http://127.0.0.1:8081`
+  if both run on the same machine), OTS admin user and password (**without two-factor**).
+- Public TAK address for the devices (put into the QR codes) and ports (8089/8446/8443).
+- "Test connection", then open registration and hand out the registration QR code.
 
-## TAK-Server verwalten (im WebTAK-Admin)
+**Security:** the passwords of the TAK accounts and the OTS admin password are stored in `DATA_DIR/db.json`
+(file mode 600) so the access page can show the data; the access link is secret (48 characters) and
+worthless after blocking/deleting. Registrations are limited to 5 per hour and IP.
 
-Unter **TAK-Server** in der Seitenleiste verwaltet WebTAK den OpenTAKServer wie dessen eigene Oberfläche:
+## Managing the TAK server (in the WebTAK admin)
 
-- **OTS-Benutzer:** alle Konten aus OTS – auch die, die direkt in OTS angelegt wurden – mit Rolle, aktiv/gesperrt,
-  Gruppen, Geräten und letzter Anmeldung. **Neuer Benutzer** legt ein Konto ohne Registrierung an (Rufname, optional
-  Benutzername/Passwort/E-Mail, Team, Rolle, OTS-Administrator) und zeigt den Zugangslink. **Übernehmen** verwaltet
-  einen vorhandenen OTS-Benutzer zusätzlich in WebTAK (Rufname, Team, Zugangsseite; optional neues Passwort und
-  Team-Gruppen). Außerdem: Rolle User/Administrator, sperren/aktivieren, Passwort setzen, Gruppen (IN/OUT) pflegen, löschen.
-- **Gruppen:** anlegen, löschen (`__ANON__` bleibt).
-- **Missionen (Data Sync):** anlegen (Beschreibung, Passwort, Gruppen; OTS verlangt ein bekanntes Gerät als
-  Ersteller – vorausgewählt), auflisten, löschen.
-- **Meshtastic:** Kanäle anlegen (Name, Funk-Voreinstellung, Region, Schlüssel erzeugen, Up-/Downlink) oder per
-  Meshtastic-Link übernehmen, Link kopieren, löschen.
+Under **TAK server** in the sidebar WebTAK manages OpenTAKServer like its own UI:
 
-Benutzer & Anfragen zeigt standardmäßig **alle** WebTAK-Nutzer (offene Anfragen oben) – freigegebene Nutzer
-verschwinden nicht mehr aus der Liste.
+- **OTS users:** all accounts from OTS – including those created directly in OTS – with role, active/blocked,
+  groups, devices and last login. **New user** creates an account without registration (callsign, optional
+  username/password/e-mail, team, role, OTS administrator) and shows the access link. **Import** additionally manages
+  an existing OTS user in WebTAK (callsign, team, access page; optionally a new password and
+  team groups). Also: role user/administrator, block/activate, set password, maintain groups (IN/OUT), delete.
+- **Groups:** create, delete (`__ANON__` stays).
+- **Missions (Data Sync):** create (description, password, groups; OTS requires a known device as
+  creator – preselected), list, set groups, delete.
+- **Meshtastic:** create channels (name, radio preset, region, generate key, up-/downlink) or import via
+  Meshtastic link, copy link, delete.
+
+Users & requests shows **all** WebTAK users by default (open requests on top) – approved users
+no longer disappear from the list.
 
 ## Admin
 
-**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste – oben das Tagesgeschäft, unten die einmaligen Einstellungen:
-- **TAK:** *Benutzer & Anfragen* (Zahl offener Anfragen, Knopf „Registrierungs-QR“), *Teams & Sichtbarkeit*,
-  *Links & QR-Codes* – **eine** Server-Adresse für alle Links und QR-Codes (Registrierung, WebTAK-App, alte
-  Kamera-App eingeklappt); Änderung wirkt sofort überall, auch für die Video-Feeds, die OTS abholt
-- **TAK-Server:** *OTS-Benutzer*, *Gruppen*, *Missionen*, *Meshtastic*
-- **Video:** *Video-Feeds* (WebTAK-Kameras und alle OTS-Feeds; Schalter „Video erlaubt“, „Admin schaltet live“), *Stream anlegen*
-- **Einstellungen:** *OpenTAKServer & Registrierung* (Verbindung, Passwörter, Registrierung – einmal einrichten),
-  *WebTAK-App*, *System* (Admin-Zugang, SMTP, Standard für neue Streams)
+**WebTAK admin** in a dark ATAK style with a sidebar – daily work on top, one-time settings at the bottom:
+- **TAK:** *Users & requests* (number of open requests, button "Registration QR"), *Teams & visibility*,
+  *Links & QR codes* – **one** server address for all links and QR codes (registration, WebTAK app, camera app);
+  a change applies everywhere right away, also to the video feeds OTS pulls
+- **TAK server:** *OTS users*, *Groups*, *Missions*, *Meshtastic*
+- **Video:** *Video feeds* (WebTAK cameras and all OTS feeds; switches "Video allowed", "Admin puts streams live"), *Create stream*
+- **Settings:** *OpenTAKServer & registration* (connection, passwords, registration – set up once),
+  *WebTAK app*, *System* (admin login, SMTP, defaults for new streams)
 
-- **Helfer** (System → Helfer): eigene Admin-Anmeldungen, die nur Anfragen freigeben/ablehnen, Nutzer bearbeiten
-  (Rufname, Team, Rolle, sperren, neues Passwort/QR), neue TAK-Nutzer anlegen und Links/QR-Codes zeigen dürfen –
-  keine Einstellungen, keine Löschungen, keine OTS-Administratoren, keine Stream-Schlüssel. Der Server prüft das
-  bei jeder Anfrage; Helfer ändern unter „Mein Passwort“ nur ihr eigenes Passwort.
-- **🔔 Hinweise** (Kopfzeile): Liste der letzten Ereignisse (neue Registrierungsanfragen, Kameras angemeldet/aktiv,
-  Live gestartet/beendet) mit Zähler für Ungelesenes und direkten Knöpfen („Anfragen öffnen“, „Ansehen“, „▶ Live“);
-  Ton, Popup und Desktop-Benachrichtigung dort einzeln schaltbar. Popups sind nur zur Info: höchstens 3 gleichzeitig, sie verschwinden nach 6 s von selbst (Klick öffnet die Liste mit den Aktionen).
-- Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
-  werden (vorher ist nichts anderes möglich).
-- **System:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. SSL/TLS wird bei den Ports 465
-  (SSL/TLS) und 587/25 (STARTTLS) automatisch richtig gewählt – das behebt „wrong version number“. Danach funktioniert
-  „Passwort vergessen?“ auf der Login-Seite: Der Link zum Zurücksetzen kommt an die Admin-E-Mail und gilt 1 Stunde.
-- Nach 10 falschen Passwörtern ist der Login für diese IP 15 Minuten gesperrt.
+- **Helpers** (System → Helpers): separate admin logins that may only approve/decline requests, edit users
+  (callsign, team, role, block, new password/QR), create new TAK users and show links/QR codes –
+  no settings, no deletions, no OTS administrators, no stream keys. The server checks this
+  on every request; helpers can only change their own password under "My password".
+- **🔔 Notifications** (header): list of the latest events (new registration requests, cameras registered/active,
+  live started/ended) with an unread counter and direct buttons ("Open requests", "View", "▶ Live");
+  sound, popup and desktop notification can be switched separately there. Popups are for information only: at most 3 at a time, they disappear after 6 s by themselves (a click opens the list with the actions).
+- First login: **admin / admin123**. Then your own username and a new password must be set right away
+  (nothing else is possible before that).
+- **System:** enter the admin e-mail and SMTP server, "Send test mail". SSL/TLS is chosen automatically for ports 465
+  (SSL/TLS) and 587/25 (STARTTLS) – this fixes "wrong version number". After that
+  "Forgot password?" works on the login page: the reset link is sent to the admin e-mail and is valid for 1 hour.
+  The admin e-mail also receives a notification with a link to the admin for every new registration request.
+- After 10 wrong passwords the login is blocked for that IP for 15 minutes.
 
-## Test am Windows-PC
+## Testing on a Windows PC
 
-1. Repository herunterladen (**Code → Download ZIP**) und entpacken.
-2. **start.bat** doppelklicken. Fehlt Node.js, bietet das Fenster die Installation an (winget); danach start.bat
-   erneut starten. Beim ersten Start werden die Pakete installiert (braucht Internet).
-3. Beim ersten Start erzeugt start.bat **eigene HTTPS-Zertifikate** (Test-CA in `data\certs`) und trägt die
-   Test-CA in Windows ein – Windows fragt dabei nach, **„Ja“** wählen. Chrome und Edge vertrauen der Seite dann ohne
-   Warnung (falls doch noch eine kommt: Browser neu starten).
-4. Das Admin-Fenster öffnet sich unter `https://<IP-des-PCs>:5036/admin/` (erster Login admin / admin123).
-   Fragt Windows nach der Firewall, „Zugriff zulassen“ wählen.
-5. Stream anlegen → **QR / Links**. Dort gibt es zusätzlich den QR-Code **„Zertifikat fürs Handy“**:
-   einmal pro Handy scannen, Datei laden und installieren
-   - Android: Einstellungen → Sicherheit → Verschlüsselung & Anmeldedaten → Zertifikat installieren →
-     CA-Zertifikat → Datei wählen
-   - iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter
-     Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten
-6. Danach den QR-Code für alle Nutzer scannen → anmelden → Kamera wählen → Stream starten.
+1. Download the repository (**Code → Download ZIP**) and unpack it.
+2. Double-click **start.bat**. If Node.js is missing, the window offers to install it (winget); then run start.bat
+   again. On the first start the packages are installed (needs internet).
+3. On the first start start.bat creates **its own HTTPS certificates** (test CA in `data\certs`) and adds the
+   test CA to Windows – Windows asks, choose **"Yes"**. Chrome and Edge then trust the page without a
+   warning (if one still appears: restart the browser).
+4. The admin window opens at `https://<PC-IP>:5036/admin/` (first login admin / admin123).
+   If Windows asks about the firewall, choose "Allow access".
+5. Create a stream → **QR / Links**. There you additionally find the QR code **"Certificate for the phone"**:
+   scan it once per phone, download the file and install it
+   - Android: Settings → Security → Encryption & credentials → Install a certificate →
+     CA certificate → choose the file
+   - iPhone: download the profile, install it under Settings → General → VPN & Device Management and enable
+     "full trust" under About → Certificate Trust Settings
+6. Then scan the QR code for all users → sign up → choose the camera → start the stream.
 
-Lädt die Seite am Handy nicht: Handy im selben WLAN (kein Gäste-WLAN, keine mobilen Daten)? start.bat gibt Port 5036 und
-Node.js in der Windows-Firewall frei und entfernt Sperr-Regeln für Node.js (fragt einmal nach Administrator-Rechten).
-Klappt das nicht, **firewall.bat** doppelklicken und „Ja“ wählen (Details in `firewall.log`); zeigt das Fenster weitere
-Adressen des PCs an, eine davon probieren.
+If the page does not load on the phone: is the phone on the same Wi-Fi (no guest Wi-Fi, no mobile data)? start.bat opens port 5036 and
+Node.js in the Windows firewall and removes block rules for Node.js (asks once for administrator rights).
+If that does not work, double-click **firewall.bat** and choose "Yes" (details in `firewall.log`); if the window shows more
+addresses of the PC, try one of them.
 
-Die Test-CA bleibt erhalten; ändert sich die IP des PCs, wird nur das Server-Zertifikat neu erzeugt (Handys müssen
-nichts neu installieren). Läuft noch ein alter Server auf Port 5036, beendet start.bat ihn automatisch.
-Für HLS/MPEG-TS am PC ffmpeg installieren (`winget install Gyan.FFmpeg`) oder nach `tools\ffmpeg\bin\` legen.
-Alle Meldungen stehen zusätzlich in `start.log`.
+The test CA is kept; if the PC's IP changes, only the server certificate is recreated (phones do not have to
+install anything again). If an old server is still running on port 5036, start.bat stops it automatically.
+For HLS/MPEG-TS on the PC install ffmpeg (`winget install Gyan.FFmpeg`) or put it into `tools\ffmpeg\bin\`.
+All messages are also written to `start.log`.
 
-Die Test-Zertifikate sind nur für den PC-Test gedacht. Auf dem Server im Internet ein echtes Zertifikat
-verwenden (Let's Encrypt, siehe unten).
+The test certificates are only meant for testing on a PC. On a server on the internet use a real certificate
+(Let's Encrypt, see below).
 
-## Installation auf dem Server
+## Installation on the server
 
-### Mit Docker (empfohlen) – Port 5036
+### With Docker (recommended) – port 5036
 
-Der Server läuft auf **Port 5036** mit HTTPS (nötig für Kamera und Bluetooth im Handy-Browser). Am einfachsten mit dem
-Zertifikat, das auf dem Server schon vorhanden ist (z. B. Let's Encrypt des TAK-Servers):
+The server runs on **port 5036** with HTTPS (needed for camera and Bluetooth in the phone browser). The easiest way is with the
+certificate that already exists on the server (e.g. the Let's Encrypt certificate of the TAK server):
 
-1. In `docker-compose.yml` `tak.example.com` durch die eigene Domain ersetzen (bei `PUBLIC_URL` und den
-   Zertifikatspfaden).
-2. Port 5036 in der Firewall freigeben.
+1. In `docker-compose.yml` replace `tak.example.com` with your own domain (in `PUBLIC_URL` and the
+   certificate paths).
+2. Open port 5036 in the firewall.
 3. `docker compose up -d`
-4. `https://<domain>:5036/admin/` öffnen, mit admin / admin123 anmelden.
+4. Open `https://<domain>:5036/admin/` and log in with admin / admin123.
 
-Stream-Links sehen dann so aus: `https://<domain>:5036/<benutzer>/<streamId>`. Erneuerte Zertifikate werden
-automatisch übernommen.
+Stream links then look like this: `https://<domain>:5036/<user>/<streamId>`. Renewed certificates are
+picked up automatically.
 
-Sind die Ports 80/443 frei, kann stattdessen Caddy die Zertifikate holen: `docker compose --profile caddy up -d`
-(Domains in `deploy/Caddyfile` eintragen, `TLS_CERT`/`TLS_KEY` in `docker-compose.yml` entfernen).
+If ports 80/443 are free, Caddy can fetch the certificates instead: `docker compose --profile caddy up -d`
+(enter the domains in `deploy/Caddyfile`, remove `TLS_CERT`/`TLS_KEY` from `docker-compose.yml`).
 
-### Ohne Docker
+### Without Docker
 
-Voraussetzungen: Node.js 18 oder neuer, ffmpeg (für HLS/MPEG-TS, optional) und ein Zertifikat. Der Dienst
-`deploy/helm-camera.service` startet den Server mit HTTPS direkt auf Port 5036; alternativ hinter einem
-Reverse-Proxy (Beispiele: `deploy/Caddyfile`, `deploy/nginx.conf`).
+Requirements: Node.js 18 or newer, ffmpeg (for HLS/MPEG-TS, optional) and a certificate. The service
+`deploy/helm-camera.service` starts the server with HTTPS directly on port 5036; alternatively behind a
+reverse proxy (examples: `deploy/Caddyfile`, `deploy/nginx.conf`).
 
 ```sh
 sudo useradd --system helmcam
 sudo git clone https://github.com/fredy060795/Wintak_video_streams_ESP32 /opt/helm-camera
 cd /opt/helm-camera && sudo npm ci --omit=dev
-sudo cp deploy/helm-camera.service /etc/systemd/system/   # Domains darin anpassen
+sudo cp deploy/helm-camera.service /etc/systemd/system/   # adjust the domains in it
 sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 ```
 
-### Einstellungen (Umgebungsvariablen)
+### Settings (environment variables)
 
-| Variable | Bedeutung | Standard |
+| Variable | Meaning | Default |
 |---|---|---|
-| `PUBLIC_URL` | Öffentliche Adresse für Links, QR-Codes und Reset-Mails, z. B. `https://tak.example.com:5036` – **setzen**, sonst gibt es keine Reset-Mails | aus der Anfrage |
-| `ADMIN_HOST` | Admin nur unter dieser Domain erreichbar, z. B. `admin.example.com` | Admin auf jeder Domain |
-| `ADMIN_URL` | Adresse für Links in Reset-Mails | aus `PUBLIC_URL` (mit `ADMIN_HOST` als Domain) |
-| `PORT` / `BIND` | Port und Adresse des Servers | `5036` / `0.0.0.0` |
-| `DATA_DIR` | Datenordner (Admin, SMTP, Streams) | `./data` |
-| `FFMPEG_PATH` | Pfad zu ffmpeg | `ffmpeg` |
-| `TLS_CERT` / `TLS_KEY` | HTTPS direkt im Server statt Reverse-Proxy | – |
-| `TEST_CA_FILE` | nur Test: CA-Datei, die unter `/ca.crt` zum Download angeboten wird (setzt start.bat) | – |
-| `TRUST_PROXY` | `1` = X-Forwarded-Header vom Reverse-Proxy auswerten | `1`, mit `TLS_CERT` `0` |
+| `PUBLIC_URL` | public address for links, QR codes and reset mails, e.g. `https://tak.example.com:5036` – **set it**, otherwise there are no reset mails | from the request |
+| `ADMIN_HOST` | admin only reachable under this domain, e.g. `admin.example.com` | admin on every domain |
+| `ADMIN_URL` | address for links in reset mails | from `PUBLIC_URL` (with `ADMIN_HOST` as the domain) |
+| `PORT` / `BIND` | port and address of the server | `5036` / `0.0.0.0` |
+| `DATA_DIR` | data directory (admin, SMTP, streams) | `./data` |
+| `FFMPEG_PATH` | path to ffmpeg | `ffmpeg` |
+| `TLS_CERT` / `TLS_KEY` | HTTPS directly in the server instead of a reverse proxy | – |
+| `TEST_CA_FILE` | test only: CA file offered for download at `/ca.crt` (set by start.bat) | – |
+| `TRUST_PROXY` | `1` = evaluate X-Forwarded headers from the reverse proxy | `1`, with `TLS_CERT` `0` |
 
-Alle Daten liegen in `DATA_DIR/db.json` (Passwort nur als scrypt-Hash).
+All data is stored in `DATA_DIR/db.json` (admin password only as a scrypt hash).
 
-## Für Entwickler
+## For developers
 
 ```sh
 npm install
 npm start      # http://localhost:5036/admin/
-npm test       # Ende-zu-Ende-Tests (Admin, Handy-WebSocket, MJPEG, HLS/TS, Drehung, Stoppen/Rauswerfen, SMTP-Reset)
+npm test       # end-to-end tests (admin, phone WebSocket, MJPEG, HLS/TS, rotation, stop/kick, SMTP reset, OTS mock)
 ```
 
-Handy → Server: WebSocket `wss://<domain>/ws/publish?u=<benutzer>&s=<streamId>&k=<schlüssel>`, jede Binärnachricht
-ist ein JPEG. Der Server antwortet mit JSON (`welcome`, `config` mit Drehung, `stats`, `stopped`, `revoked`, `removed`,
+Phone → server: WebSocket `wss://<domain>/ws/publish?u=<user>&s=<streamId>&k=<key>`, every binary message
+is a JPEG. The server answers with JSON (`welcome`, `config` with rotation, `stats`, `stopped`, `revoked`, `removed`,
 `replaced`, `invalid`).
-Kamera → Handy: Bluetooth-Protokoll siehe `PROTOCOL.md` im Repository ESP32-Flash.
+Camera → phone: for the Bluetooth protocol see `PROTOCOL.md` in the ESP32-Flash repository.

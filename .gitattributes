@@ -1,4 +1,4 @@
-# Windows-Dateien immer mit CRLF ausliefern, auch bei "Raw"-Download
+# Always deliver Windows files with CRLF, also for "Raw" downloads
 start.bat -text
 tools/*.ps1 -text
 firewall.bat -text

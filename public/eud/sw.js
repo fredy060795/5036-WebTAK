@@ -1,9 +1,9 @@
-// Service Worker: App, Bibliotheken und Kartenkacheln bleiben auf dem Gerät,
-// damit der EUD auch ohne Internet startet und die Karte zeigt.
+// Service worker: app, libraries and map tiles stay on the device
+// so the EUD starts and shows the map without internet.
 
-const SHELL_CACHE = 'eud-shell-v16';
+const SHELL_CACHE = 'eud-shell-v17';
 const TILE_CACHE = 'eud-tiles';
-const MAX_TILES = 40000; // gespeicherte Bereiche + zuletzt angesehene Kacheln
+const MAX_TILES = 40000; // saved areas + recently viewed tiles
 const SHELL = [
   './', 'index.html', 'eud.css', 'eud.js', 'view3d.js', 'video.js', 'data.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
@@ -12,7 +12,7 @@ const SHELL = [
   'vendor/images/layers.png', 'vendor/images/layers-2x.png',
   'vendor/images/marker-icon.png', 'vendor/images/marker-icon-2x.png', 'vendor/images/marker-shadow.png',
 ];
-// Kacheln: eigener Server (/eud/tiles/…) und eigene Quellen (Bild-Anfragen mit z/x/y im Pfad)
+// Tiles: own server (/eud/tiles/…) and custom sources (image requests with z/x/y in the path)
 const isTile = (url, req) => url.pathname.includes('/eud/tiles/') && !url.pathname.endsWith('.json')
   || (url.origin !== location.origin && req.destination === 'image' && /\/\d{1,2}\/\d+\/\d+/.test(url.pathname + url.search));
 
@@ -49,7 +49,7 @@ async function tile(req) {
   }
 }
 
-// Erst Netz (für Updates), bei Ausfall nach 4 s aus dem Speicher
+// Network first (for updates), from the cache after 4 s on failure
 async function networkFirst(req, fallbackKey) {
   const cache = await caches.open(SHELL_CACHE);
   try {
@@ -72,11 +72,11 @@ self.addEventListener('fetch', e => {
   const url = new URL(req.url);
   if (isTile(url, req)) return e.respondWith(tile(req));
   if (url.origin !== location.origin) return;
-  const base = new URL('./', self.registration.scope).pathname; // z. B. /eud/
+  const base = new URL('./', self.registration.scope).pathname; // e.g. /eud/
   if (req.mode === 'navigate' && url.pathname.startsWith(base)) return e.respondWith(networkFirst(req, new URL('index.html', self.registration.scope).href));
   if (url.pathname === '/api/eud/config') return e.respondWith(networkFirst(req));
   if (url.pathname.startsWith(base)) {
-    // Bibliotheken ändern sich nicht: aus dem Speicher; eigene Dateien: Netz zuerst
+    // Libraries do not change: from the cache; own files: network first
     if (url.pathname.startsWith(base + 'vendor/')) {
       return e.respondWith(caches.match(req, { ignoreSearch: true }).then(hit => hit || fetch(req)));
     }
@@ -84,7 +84,7 @@ self.addEventListener('fetch', e => {
   }
 });
 
-// Karte vorladen: die Seite schickt eine Liste von Kachel-Adressen; STOPP bricht ab, Löschen entfernt
+// Preload the map: the page sends a list of tile addresses; STOP cancels, delete removes
 let stopFlag = false;
 self.addEventListener('message', e => {
   if (!e.data) return;

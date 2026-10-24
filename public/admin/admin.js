@@ -1,38 +1,38 @@
-// Helm Camera Admin
-// Alle Texte aus Streams/Handys werden nur über textContent eingesetzt (kein HTML).
+// WebTAK admin
+// All texts from streams/phones are only inserted via textContent (no HTML).
 
 const $ = id => document.getElementById(id);
 const POLL_MS = 2000;
-// Drehung: beliebiger Winkel im Uhrzeigersinn, 0 bis 359,5°
+// Rotation: any clockwise angle, 0 to 359.5°
 const normDeg = v => {
   const r = Number(String(v).replace(',', '.'));
   if (!Number.isFinite(r)) return 0;
   return (Math.round((((r % 360) + 360) % 360) * 2) / 2) % 360;
 };
-const fmtDeg = v => String(v || 0).replace('.', ',') + '°';
+const fmtDeg = v => String(v || 0) + '°';
 
 function angleInput(value, cls = 'rot') {
-  const i = el('input', { class: cls, type: 'number', min: '0', max: '359.5', step: '0.5', title: 'Drehung in Grad (im Uhrzeigersinn)' });
+  const i = el('input', { class: cls, type: 'number', min: '0', max: '359.5', step: '0.5', title: 'Rotation in degrees (clockwise)' });
   i.value = String(value || 0);
   return i;
 }
 
-const SIZES = [[1, '160x120 – sehr schnell'], [5, '320x240'], [8, '640x480 – langsam'], [11, '1280x720 – nur Handy-Kamera']];
+const SIZES = [[1, '160x120 – very fast'], [5, '320x240'], [8, '640x480 – slow'], [11, '1280x720 – phone camera only']];
 function sizeSelect(value, cls = '') {
-  const sel = el('select', { class: cls, title: 'Bildgröße (gilt sofort am Handy)' });
+  const sel = el('select', { class: cls, title: 'Image size (applies immediately on the phone)' });
   for (const [v, t] of SIZES) sel.append(el('option', { value: String(v), text: t }));
   sel.value = String(value || 1);
   return sel;
 }
 
 function fitSelect(value) {
-  const sel = el('select', { title: 'Bei schrägen Winkeln' });
-  sel.append(el('option', { value: 'fill', text: 'Füllen (Rand abschneiden)' }), el('option', { value: 'fit', text: 'Ganzes Bild (schwarze Ecken)' }));
+  const sel = el('select', { title: 'For oblique angles' });
+  sel.append(el('option', { value: 'fill', text: 'Fill (crop the edges)' }), el('option', { value: 'fit', text: 'Whole image (black corners)' }));
   sel.value = value === 'fit' ? 'fit' : 'fill';
   return sel;
 }
 
-// Änderungen beim Schieben gesammelt senden (nicht bei jedem Pixel)
+// send changes batched while dragging (not on every pixel)
 const pendingOpts = new Map();
 function sendOptionsSoon(id, opts) {
   const p = pendingOpts.get(id) || { opts: {} };
@@ -50,7 +50,7 @@ let lastLoginPassword = '';
 let streams = [];
 let pollTimer = null;
 const rows = new Map();     // id -> { tr, cells }
-const windows = new Map();  // id -> Fenster
+const windows = new Map();  // id -> window
 let zTop = 500;
 let winOffset = 0;
 
@@ -68,16 +68,16 @@ async function api(path, { method = 'GET', body } = {}) {
     body: body !== undefined ? JSON.stringify(body) : undefined,
   });
   let data = {};
-  try { data = await res.json(); } catch (e) { /* leer */ }
+  try { data = await res.json(); } catch (e) { /* empty */ }
   if (res.status === 401 && path !== 'login') {
     showAuth('login');
-    throw new ApiError(data.error || 'Bitte anmelden.');
+    throw new ApiError(data.error || 'Please log in.');
   }
   if (res.status === 403 && data.mustChange) {
     showFirst();
     throw new ApiError(data.error);
   }
-  if (!res.ok) throw new ApiError(data.error || 'Fehler ' + res.status);
+  if (!res.ok) throw new ApiError(data.error || 'Error ' + res.status);
   return data;
 }
 
@@ -106,7 +106,7 @@ async function copy(text, btn) {
   }
   if (btn) {
     const old = btn.textContent;
-    btn.textContent = 'Kopiert';
+    btn.textContent = 'Copied';
     setTimeout(() => { btn.textContent = old; }, 1200);
   }
 }
@@ -114,13 +114,13 @@ async function copy(text, btn) {
 function copyField(value) {
   const input = el('input', { readonly: '', value });
   input.addEventListener('focus', () => input.select());
-  const btn = el('button', { class: 'sm', type: 'button', text: 'Kopieren' });
+  const btn = el('button', { class: 'sm', type: 'button', text: 'Copy' });
   btn.addEventListener('click', () => copy(input.value, btn));
   return { input, btn };
 }
 
 // ======================================================================
-// Anmeldung
+// Login
 // ======================================================================
 
 function showAuth(which) {
@@ -163,7 +163,7 @@ $('forgotForm').addEventListener('submit', async e => {
   e.preventDefault();
   try {
     await api('forgot', { method: 'POST', body: { username: $('fUser').value } });
-    setMsg($('forgotMsg'), 'Wenn die Angaben stimmen und SMTP eingerichtet ist, kommt gleich eine E-Mail mit dem Link.', true);
+    setMsg($('forgotMsg'), 'If the details are correct and SMTP is set up, an e-mail with the link will arrive shortly.', true);
   } catch (err) {
     setMsg($('forgotMsg'), err.message);
   }
@@ -171,13 +171,13 @@ $('forgotForm').addEventListener('submit', async e => {
 
 $('resetForm').addEventListener('submit', async e => {
   e.preventDefault();
-  if ($('rPass').value !== $('rPass2').value) return setMsg($('resetMsg'), 'Die Passwörter stimmen nicht überein.');
+  if ($('rPass').value !== $('rPass2').value) return setMsg($('resetMsg'), 'The passwords do not match.');
   const token = new URLSearchParams(location.hash.slice(1)).get('reset');
   try {
     await api('reset', { method: 'POST', body: { token, password: $('rPass').value } });
     history.replaceState(null, '', location.pathname);
     showAuth('login');
-    setMsg($('loginMsg'), 'Passwort geändert. Bitte neu anmelden.', true);
+    setMsg($('loginMsg'), 'Password changed. Please log in again.', true);
   } catch (err) {
     setMsg($('resetMsg'), err.message);
   }
@@ -185,7 +185,7 @@ $('resetForm').addEventListener('submit', async e => {
 
 $('firstForm').addEventListener('submit', async e => {
   e.preventDefault();
-  if ($('xPass').value !== $('xPass2').value) return setMsg($('firstMsg'), 'Die Passwörter stimmen nicht überein.');
+  if ($('xPass').value !== $('xPass2').value) return setMsg($('firstMsg'), 'The passwords do not match.');
   try {
     await api('credentials', {
       method: 'POST',
@@ -205,23 +205,23 @@ $('firstForm').addEventListener('submit', async e => {
 });
 
 $('logoutBtn').addEventListener('click', async () => {
-  try { await api('logout', { method: 'POST', body: {} }); } catch (e) { /* egal */ }
+  try { await api('logout', { method: 'POST', body: {} }); } catch (e) { /* ignore */ }
   for (const w of [...windows.values()]) w.close();
   me = null;
   showAuth('login');
 });
 
 // ======================================================================
-// Übersicht
+// Overview
 // ======================================================================
 
-// ---- Seitenleiste (wie das ATAK-Menü): immer nur ein Bereich sichtbar ----
-const VIEW_TITLES = { users: 'Benutzer & Anfragen', teams: 'Teams & Sichtbarkeit', ots: 'OpenTAKServer & Registrierung' };
+// ---- Sidebar (like the ATAK menu): only one section visible at a time ----
+const VIEW_TITLES = { users: 'Users & requests', teams: 'Teams & visibility', ots: 'OpenTAKServer & registration' };
 const TAK_TAB = { users: 'users', teams: 'teams', ots: 'settings' };
 const HELPER_VIEWS = ['users', 'links', 'otsusers', 'system'];
 const isHelper = () => !!(me && me.role === 'helper');
 function showView(view) {
-  if (view === 'feeds') view = 'video'; // früherer eigener Bereich, jetzt zusammengelegt
+  if (view === 'feeds') view = 'video'; // former separate section, now merged
   if (isHelper() && !HELPER_VIEWS.includes(view)) view = 'users';
   if (view === 'camera') view = 'links';
   if (!document.querySelector(`[data-nav="${view}"]`)) view = 'users';
@@ -236,7 +236,7 @@ function showView(view) {
   document.dispatchEvent(new CustomEvent('admin-view', { detail: view }));
   if (location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
   document.body.classList.remove('navopen');
-  try { localStorage.setItem('webtak.adminView', view); } catch (e) { /* privat */ }
+  try { localStorage.setItem('webtak.adminView', view); } catch (e) { /* private mode */ }
 }
 for (const a of document.querySelectorAll('[data-nav]')) {
   a.addEventListener('click', e => { e.preventDefault(); showView(a.dataset.nav); });
@@ -259,7 +259,7 @@ function showApp() {
   startPolling();
 }
 
-// ---- allgemeiner QR-Code + Selbst-Anmeldung --------------------------------
+// ---- general QR code + self-registration -----------------------------------
 async function loadRegistration() {
   try {
     const r = await api('registration');
@@ -271,22 +271,22 @@ async function loadRegistration() {
     $('liveOffAllBtn').classList.toggle('hidden', liveMode !== 'admin');
     $('appUrl').value = r.appUrl;
     if (document.activeElement !== $('baseUrl')) $('baseUrl').value = r.publicUrl;
-    $('baseUrl').placeholder = 'automatisch: ' + r.autoUrl;
+    $('baseUrl').placeholder = 'automatic: ' + r.autoUrl;
     $('appQr').src = '/api/admin/app-qr.svg?t=' + Date.now();
     $('appQr').closest('.appqr').classList.toggle('off', !r.enabled);
-  } catch (e) { /* angezeigt durch api() */ }
+  } catch (e) { /* shown by api() */ }
 }
 
 $('userStartToggle').addEventListener('change', async () => {
   const on = $('userStartToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { userCanStart: on } });
-    setMsg($('liveMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
+    setMsg($('liveMsg'), on ? 'Users can start by themselves – you get a notification.' : 'Only the admin puts streams live.', true);
   } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 
 // ======================================================================
-// Hinweise: Popup + Ton + Desktop-Benachrichtigung
+// Notifications: popup + sound + desktop notification
 // ======================================================================
 
 function beep() {
@@ -301,24 +301,24 @@ function beep() {
       o.start(ctx.currentTime + t);
       o.stop(ctx.currentTime + t + 0.16);
     });
-  } catch (e) { /* kein Ton möglich */ }
+  } catch (e) { /* no sound possible */ }
 }
 
-// Einstellungen pro Browser (Ton, Desktop, Popup)
+// settings per browser (sound, desktop, popup)
 const notePref = (k, d) => { try { const v = localStorage.getItem('webtak.note.' + k); return v == null ? d : v === '1'; } catch (e) { return d; } };
-const setNotePref = (k, on) => { try { localStorage.setItem('webtak.note.' + k, on ? '1' : '0'); } catch (e) { /* privat */ } };
+const setNotePref = (k, on) => { try { localStorage.setItem('webtak.note.' + k, on ? '1' : '0'); } catch (e) { /* private mode */ } };
 const notes = []; // { ev, read }
 const NOTE_ICON = { takreg: '👤', register: '📱', camera: '🎥', live: '🔴', stop: '⏹' };
 
-// Knöpfe zu einem Hinweis (in Popup und Liste gleich)
+// buttons for a notification (same in popup and list)
 function noteActions(ev, done) {
   const s = streams.find(x => sid(x) === ev.id);
   const btns = [];
   if (ev.kind === 'takreg') {
-    btns.push(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { showView('users'); if (window.loadTakUsers) window.loadTakUsers(); done(); } }));
+    btns.push(el('button', { class: 'sm pri', text: 'Open requests', onclick: () => { showView('users'); if (window.loadTakUsers) window.loadTakUsers(); done(); } }));
   }
   if (s) {
-    btns.push(el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => { openWindow(ev.id); done(); } }));
+    btns.push(el('button', { class: 'sm pri', text: 'View', onclick: () => { openWindow(ev.id); done(); } }));
     if (liveMode === 'admin' && !s.onAir && ev.kind !== 'stop' && s.enabled) {
       btns.push(el('button', { class: 'sm golive', text: '▶ Live', onclick: () => { setLive(ev.id, true); done(); } }));
     }
@@ -329,7 +329,7 @@ function noteActions(ev, done) {
 function noteTime(at) {
   const d = new Date(at);
   const today = new Date().toDateString() === d.toDateString();
-  return d.toLocaleString('de-DE', today ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+  return d.toLocaleString('en-GB', today ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
 }
 
 function renderNotes() {
@@ -342,7 +342,7 @@ function renderNotes() {
     el('span', { class: 'note-ic', text: NOTE_ICON[n.ev.kind] || '•' }),
     el('div', { class: 'grow' },
       el('div', { class: 'note-head' }, el('span', { text: n.ev.text }), el('span', { class: 'mut small', text: noteTime(n.ev.at) })),
-      el('div', { class: 'row' }, ...noteActions(n.ev, () => closeNotes()))))) : [el('p', { class: 'mut small', style: 'padding:12px', text: 'Noch keine Hinweise. Hier erscheinen neue Anfragen, angemeldete Kameras und Live-Starts.' })]));
+      el('div', { class: 'row' }, ...noteActions(n.ev, () => closeNotes()))))) : [el('p', { class: 'mut small', style: 'padding:12px', text: 'No notifications yet. New requests, registered cameras and live starts appear here.' })]));
 }
 
 function addNote(ev, read) {
@@ -356,7 +356,7 @@ function addNote(ev, read) {
 function openNotes() {
   $('notePanel').classList.remove('hidden');
   renderNotes();
-  for (const n of notes) n.read = true; // geöffnet = gelesen (Markierung bleibt bis zum Schließen sichtbar)
+  for (const n of notes) n.read = true; // opened = read (the marking stays visible until closed)
   $('notifyCount').classList.add('hidden');
 }
 function closeNotes() {
@@ -375,29 +375,29 @@ document.addEventListener('click', e => { if (!$('notePanel').classList.contains
 function showToast(ev) {
   addNote(ev, false);
   if (notePref('popup', true)) {
-    // Nur zur Info: verschwindet von selbst, keine Bestätigung nötig (Aktionen stehen in der Hinweisliste)
-    const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    const t = el('div', { class: 'toast info ' + ev.kind, title: 'Klicken für alle Hinweise' },
+    // for information only: disappears by itself, no confirmation needed (actions are in the notification list)
+    const time = new Date(ev.at).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
+    const t = el('div', { class: 'toast info ' + ev.kind, title: 'Click for all notifications' },
       el('div', { class: 'toast-head' }, el('span', { text: (NOTE_ICON[ev.kind] || '•') + ' ' + ev.text }), el('span', { class: 'mut small', text: time })));
     const close = () => { t.classList.add('gone'); setTimeout(() => t.remove(), 300); };
     t.addEventListener('click', e => { e.stopPropagation(); close(); openNotes(); });
     $('toasts').prepend(t);
-    for (const old of [...$('toasts').children].slice(3)) old.remove(); // bei vielen Streams höchstens 3 gleichzeitig
+    for (const old of [...$('toasts').children].slice(3)) old.remove(); // with many streams at most 3 at a time
     setTimeout(close, 6000);
   }
   if (ev.kind === 'takreg' && window.loadTakUsers) window.loadTakUsers();
   if (ev.kind !== 'stop' && notePref('sound', true)) beep();
   if (document.hidden && notePref('desk', false) && 'Notification' in window && Notification.permission === 'granted') {
-    try { new Notification('WebTAK', { body: ev.text, tag: String(ev.seq), icon: '/assets/brand/favicon-32.png' }); } catch (e) { /* nicht unterstützt */ }
+    try { new Notification('WebTAK', { body: ev.text, tag: String(ev.seq), icon: '/assets/brand/favicon-32.png' }); } catch (e) { /* not supported */ }
   }
 }
 
-// Browser spielen Ton erst nach einer Bedienung ab: beim ersten Klick freischalten
+// browsers only play sound after user interaction: unlock on the first click
 function unlockAudio() {
   try {
     const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
     if (ctx.state === 'suspended') ctx.resume();
-  } catch (e) { /* kein Ton */ }
+  } catch (e) { /* no sound */ }
 }
 document.addEventListener('pointerdown', unlockAudio, { once: true });
 
@@ -422,7 +422,7 @@ $('liveToggle').addEventListener('change', async () => {
   const admin = $('liveToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { mode: admin ? 'admin' : 'user' } });
-    setMsg($('liveMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
+    setMsg($('liveMsg'), admin ? 'Admin puts streams live: users wait for "▶ Live".' : 'Users start the stream themselves.', true);
     await loadRegistration();
     await refresh();
   } catch (e) { setMsg($('liveMsg'), e.message); }
@@ -432,7 +432,7 @@ $('regToggle').addEventListener('change', async () => {
   const enabled = $('regToggle').checked;
   try {
     await api('registration', { method: 'POST', body: { enabled } });
-    setMsg($('liveMsg'), enabled ? 'Video aus WebTAK/Kamera-App erlaubt.' : 'Gesperrt – in WebTAK und der Kamera-App kann niemand mehr ein neues Video starten.', enabled);
+    setMsg($('liveMsg'), enabled ? 'Video from WebTAK/camera app allowed.' : 'Blocked – nobody can start a new video in WebTAK or the camera app any more.', enabled);
     loadRegistration();
   } catch (e) { setMsg($('liveMsg'), e.message); }
 });
@@ -441,8 +441,8 @@ $('appUrlCopy').addEventListener('click', () => copy($('appUrl').value, $('appUr
 async function saveBase(url) {
   try {
     const r = await api('public-url', { method: 'POST', body: { url } });
-    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – alle Links und QR-Codes sind angepasst.'
-      : 'Adresse wieder automatisch – alle Links und QR-Codes sind angepasst.', true);
+    setMsg($('regMsg'), r.publicUrl ? 'Address saved: ' + r.publicUrl + ' – all links and QR codes are updated.'
+      : 'Address automatic again – all links and QR codes are updated.', true);
     await loadRegistration();
     await loadTak();
     if (window.loadTakUsers) window.loadTakUsers();
@@ -453,22 +453,22 @@ async function saveBase(url) {
 $('baseForm').addEventListener('submit', e => { e.preventDefault(); saveBase($('baseUrl').value); });
 $('baseAuto').addEventListener('click', () => { $('baseUrl').value = ''; saveBase(''); });
 $('appQrBig').addEventListener('click', () => {
-  const img = el('img', { class: 'qr', alt: 'QR-Code zur Handy-Seite', src: '/api/admin/app-qr.svg?t=' + Date.now() });
-  const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+  const img = el('img', { class: 'qr', alt: 'QR code for the phone page', src: '/api/admin/app-qr.svg?t=' + Date.now() });
+  const print = el('button', { type: 'button', text: 'Print', onclick: () => {
     const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) return;
     const d = w.document;
-    d.title = 'WebTAK Kamera';
+    d.title = 'WebTAK camera';
     d.body.style.fontFamily = 'system-ui, sans-serif';
     d.body.style.textAlign = 'center';
-    const h = d.createElement('h1'); h.textContent = 'Helmkamera';
+    const h = d.createElement('h1'); h.textContent = 'Helmet camera';
     const i = d.createElement('img'); i.src = img.src; i.style.width = '340px';
-    const t = d.createElement('p'); t.textContent = '1. Scannen  2. Name und Einheit eingeben  3. Kamera verbinden  4. Stream starten';
-    const t2 = d.createElement('p'); t2.textContent = 'Android: Chrome · iPhone: App „Bluefy“';
+    const t = d.createElement('p'); t.textContent = '1. Scan  2. Enter name and unit  3. Connect the camera  4. Start the stream';
+    const t2 = d.createElement('p'); t2.textContent = 'Android: Chrome · iPhone: "Bluefy" app';
     d.body.append(h, i, t, t2);
     i.onload = () => w.print();
   } });
-  openModal('QR-Code für alle Nutzer', img, el('p', { class: 'mut small', text: $('appUrl').value }), el('div', { class: 'row' }, print));
+  openModal('QR code for all users', img, el('p', { class: 'mut small', text: $('appUrl').value }), el('div', { class: 'row' }, print));
 });
 
 function startPolling() {
@@ -481,12 +481,12 @@ function stopPolling() {
   pollTimer = null;
 }
 
-let eventSeq = -1; // letzte gesehene Hinweis-Nummer (-1 = noch keine Abfrage)
+let eventSeq = -1; // last seen notification number (-1 = not queried yet)
 
 async function refresh() {
   try {
     const data = await api('streams' + (eventSeq >= 0 ? '?since=' + eventSeq : '?history=1'));
-    for (const ev of data.history || []) addNote(ev, true); // ältere Hinweise in die Liste, ohne Popup/Ton
+    for (const ev of data.history || []) addNote(ev, true); // older notifications into the list, without popup/sound
     streams = data.streams;
     if (data.takVideo) { takVideo = data.takVideo; renderTakVideo(); }
     render();
@@ -499,7 +499,7 @@ async function refresh() {
 
 const sid = s => s.user + '/' + s.streamId;
 
-// ---------- Streams automatisch in den TAK-Server (OpenTAKServer/MediaMTX) ----------
+// ---------- Streams into the TAK server automatically (OpenTAKServer/MediaMTX) ----------
 let takVideo = { ready: false, auto: true, when: 'all', prefix: 'cam' };
 
 function renderTakVideo() {
@@ -508,8 +508,8 @@ function renderTakVideo() {
   if (document.activeElement !== $('tvPrefix')) $('tvPrefix').value = takVideo.prefix || '';
   const inTak = streams.filter(s => s.tak && s.tak.inTak).length;
   const errs = streams.filter(s => s.tak && s.tak.error).length;
-  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „Einstellungen → OpenTAKServer & Registrierung“ eintragen.'
-    : `${inTak} von ${streams.length} Stream${streams.length === 1 ? '' : 's'} im TAK-Server` + (errs ? ` · ${errs} Fehler (Punkt antippen)` : '');
+  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer is not connected – set it up under "Settings → OpenTAKServer & registration".'
+    : `${inTak} of ${streams.length} stream${streams.length === 1 ? '' : 's'} in the TAK server` + (errs ? ` · ${errs} error${errs === 1 ? '' : 's'} (tap the dot)` : '');
   $('tvStatus').className = 'small ' + (!takVideo.ready || errs ? 'warn' : 'mut');
 }
 
@@ -533,21 +533,21 @@ $('tvSync').addEventListener('click', async () => {
   $('tvSync').disabled = true;
   try {
     const r = await api('takvideo/sync', { method: 'POST', body: {} });
-    if (r.errors && r.errors.length) alert('Abgleich mit Fehlern:\n\n' + r.errors.join('\n'));
+    if (r.errors && r.errors.length) alert('Sync finished with errors:\n\n' + r.errors.join('\n'));
     else if (r.error) alert(r.error);
   } catch (e) { alert(e.message); }
   $('tvSync').disabled = false;
   await refresh();
 });
 
-let liveMode = 'admin'; // "admin" = Admin schaltet live, "user" = Nutzer startet selbst
+let liveMode = 'admin'; // "admin" = admin puts live, "user" = user starts by themselves
 
 function state(s) {
-  if (!s.enabled) return ['Gesperrt', 'stop'];
+  if (!s.enabled) return ['Blocked', 'stop'];
   if (s.receiving) return ['Live', 'live'];
-  if (liveMode === 'admin' && s.onAir && s.phoneConnected) return ['Live angefordert', 'wait'];
-  if (s.ready) return ['Bereit', 'ready'];
-  if (s.phoneConnected) return ['Verbunden', 'wait'];
+  if (liveMode === 'admin' && s.onAir && s.phoneConnected) return ['Live requested', 'wait'];
+  if (s.ready) return ['Ready', 'ready'];
+  if (s.phoneConnected) return ['Connected', 'wait'];
   return ['Offline', 'off'];
 }
 
@@ -561,9 +561,9 @@ async function setLive(id, on) {
 function ago(iso) {
   if (!iso) return '–';
   const sec = Math.max(0, Math.round((Date.now() - new Date(iso).getTime()) / 1000));
-  if (sec < 60) return 'vor ' + sec + ' s';
-  if (sec < 3600) return 'vor ' + Math.round(sec / 60) + ' min';
-  return new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' });
+  if (sec < 60) return sec + ' s ago';
+  if (sec < 3600) return Math.round(sec / 60) + ' min ago';
+  return new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' });
 }
 
 function buildRow(s) {
@@ -577,22 +577,22 @@ function buildRow(s) {
   c.label = el('b');
   c.path = el('code', { text: id });
   c.name.append(c.label, c.path);
-  c.camera = td('Kamera');
-  c.fps = td('Bilder/s', 'num');
-  c.viewers = td('Zuschauer', 'num');
-  c.last = td('Letztes Bild');
-  c.rotTd = td('Drehung');
+  c.camera = td('Camera');
+  c.fps = td('FPS', 'num');
+  c.viewers = td('Viewers', 'num');
+  c.last = td('Last image');
+  c.rotTd = td('Rotation');
   c.rot = angleInput(s.rotate);
   c.rot.addEventListener('change', () => setOptions(id, { rotate: normDeg(c.rot.value) }));
   c.rotTd.append(el('span', { class: 'deg' }, c.rot, '°'));
-  c.sizeTd = td('Bildgröße');
+  c.sizeTd = td('Image size');
   c.size = sizeSelect(s.framesize, 'rot-size');
   c.size.addEventListener('change', () => setOptions(id, { framesize: +c.size.value }));
   c.sizeTd.append(c.size);
-  // TAK-Pfad: Stream steht automatisch als Video-Feed im TAK-Server; hier nur den Pfad pflegen
-  c.link = td('TAK-Pfad');
-  c.takOn = el('input', { type: 'checkbox', title: 'Im TAK-Server als Video-Feed eintragen', onchange: () => setTak(id, { enabled: c.takOn.checked }) });
-  c.takPath = el('input', { class: 'tak-path', placeholder: 'automatisch', autocomplete: 'off', spellcheck: 'false' });
+  // TAK path: the stream is a video feed in the TAK server automatically; only the path is maintained here
+  c.link = td('TAK path');
+  c.takOn = el('input', { type: 'checkbox', title: 'Register as a video feed in the TAK server', onchange: () => setTak(id, { enabled: c.takOn.checked }) });
+  c.takPath = el('input', { class: 'tak-path', placeholder: 'automatic', autocomplete: 'off', spellcheck: 'false' });
   const savePath = () => { if (c.takPath.value.trim() !== (c.takPathOld || '')) setTak(id, { path: c.takPath.value }); };
   c.takPath.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); c.takPath.blur(); } });
   c.takPath.addEventListener('change', savePath);
@@ -603,11 +603,11 @@ function buildRow(s) {
     const cur = streams.find(x => sid(x) === id);
     if (cur) setLive(id, !cur.onAir);
   } });
-  c.view = el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => openWindow(id) });
+  c.view = el('button', { class: 'sm pri', text: 'View', onclick: () => openWindow(id) });
   c.qr = el('button', { class: 'sm', text: 'QR / Links', onclick: () => showQr(id) });
   c.toggle = el('button', { class: 'sm', onclick: () => toggleStream(id) });
-  c.revoke = el('button', { class: 'sm danger', text: 'Rauswerfen', onclick: () => revokeStream(id) });
-  c.remove = el('button', { class: 'sm danger', text: 'Löschen', onclick: () => removeStream(id) });
+  c.revoke = el('button', { class: 'sm danger', text: 'Kick', onclick: () => revokeStream(id) });
+  c.remove = el('button', { class: 'sm danger', text: 'Delete', onclick: () => removeStream(id) });
   c.actions.append(el('div', { class: 'btns' }, c.onair, c.view, c.qr, c.toggle, c.revoke, c.remove));
   const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.rotTd, c.sizeTd, c.link, c.actions);
   return { tr, c };
@@ -624,22 +624,22 @@ function updateRow(r, s) {
   c.viewers.textContent = String(s.viewers);
   c.last.textContent = ago(s.lastFrameAt);
   if (document.activeElement !== c.rot && !pendingOpts.has(sid(s))) c.rot.value = String(s.rotate || 0);
-  c.rotTd.title = (s.mirror ? 'gespiegelt, ' : '') + (s.fit === 'fit' ? 'ganzes Bild' : 'füllen');
+  c.rotTd.title = (s.mirror ? 'mirrored, ' : '') + (s.fit === 'fit' ? 'whole image' : 'fill');
   if (document.activeElement !== c.size) c.size.value = String(s.framesize || 1);
   const t = s.tak || {};
   c.takOn.checked = !!t.enabled;
   c.takOn.disabled = !takVideo.ready;
   if (document.activeElement !== c.takPath) { c.takPath.value = t.path || ''; c.takPathOld = t.path || ''; }
   c.takPath.disabled = !takVideo.ready;
-  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Einstellungen → OpenTAKServer & Registrierung)']
-    : t.error ? ['err', 'Fehler: ' + t.error]
-      : t.inTak ? ['ok', 'Im TAK-Server: ' + (t.rtsp || t.path)]
-        : t.enabled ? ['wait', takVideo.when === 'live' ? 'Wird eingetragen, sobald die Kamera sendet' : 'Wird eingetragen …'] : ['off', 'Nicht im TAK-Server'];
+  const takState = !takVideo.ready ? ['off', 'OpenTAKServer not connected (Settings → OpenTAKServer & registration)']
+    : t.error ? ['err', 'Error: ' + t.error]
+      : t.inTak ? ['ok', 'In the TAK server: ' + (t.rtsp || t.path)]
+        : t.enabled ? ['wait', takVideo.when === 'live' ? 'Registered as soon as the camera sends' : 'Registering …'] : ['off', 'Not in the TAK server'];
   c.takDot.className = 'tak-dot ' + takState[0];
   c.takDot.title = takState[1];
   c.link.title = takState[1];
-  c.toggle.textContent = s.enabled ? 'Sperren' : 'Freigeben';
-  c.onair.textContent = s.onAir ? '■ Live aus' : '▶ Live';
+  c.toggle.textContent = s.enabled ? 'Block' : 'Enable';
+  c.onair.textContent = s.onAir ? '■ Live off' : '▶ Live';
   c.onair.className = 'sm ' + (s.onAir ? 'danger' : 'golive');
   c.onair.classList.toggle('hidden', liveMode !== 'admin' || !s.enabled);
 }
@@ -655,12 +655,12 @@ function render() {
     let r = rows.get(id);
     if (!r) { r = buildRow(s); rows.set(id, r); }
     updateRow(r, s);
-    tbody.append(r.tr); // hängt in sortierter Reihenfolge an
+    tbody.append(r.tr); // appends in sorted order
   }
   for (const [id, r] of rows) if (!visible.some(s => sid(s) === id)) r.tr.remove();
   $('empty').classList.toggle('hidden', streams.length > 0);
   const live = streams.filter(s => s.enabled && s.receiving).length;
-  $('summary').textContent = `${live} live · ${streams.length} Stream${streams.length === 1 ? '' : 's'}`;
+  $('summary').textContent = `${live} live · ${streams.length} stream${streams.length === 1 ? '' : 's'}`;
   $('navLive').textContent = live ? String(live) : '';
   for (const [id, w] of windows) {
     const s = streams.find(x => sid(x) === id);
@@ -703,7 +703,7 @@ async function toggleStream(id) {
 }
 
 async function revokeStream(id) {
-  if (!confirm(`Handy von „${id}“ rauswerfen?\n\nDas Handy wird sofort getrennt und der alte QR-Code gilt nicht mehr. Der Stream-Link für ATAK bleibt gleich. Danach wird ein neuer QR-Code angezeigt.`)) return;
+  if (!confirm(`Kick the phone of "${id}"?\n\nThe phone is disconnected immediately and the old QR code is no longer valid. The stream link for ATAK stays the same. A new QR code is shown afterwards.`)) return;
   try {
     await api(streamPath(id) + '/revoke', { method: 'POST', body: {} });
     await refresh();
@@ -712,7 +712,7 @@ async function revokeStream(id) {
 }
 
 async function removeStream(id) {
-  if (!confirm(`Stream „${id}“ endgültig löschen?\n\nDas Handy wird getrennt, Link und QR-Code funktionieren nicht mehr.`)) return;
+  if (!confirm(`Delete stream "${id}" permanently?\n\nThe phone is disconnected, link and QR code stop working.`)) return;
   try {
     await api(streamPath(id), { method: 'DELETE', body: {} });
     if (windows.has(id)) windows.get(id).close();
@@ -728,7 +728,7 @@ $('liveOffAllBtn').addEventListener('click', async () => {
 });
 
 $('stopAllBtn').addEventListener('click', async () => {
-  if (!confirm('ALLE Streams sperren?\n\nAlle Handys werden getrennt. Einzelne Streams kann man danach mit „Freigeben“ wieder erlauben.')) return;
+  if (!confirm('Block ALL streams?\n\nAll phones are disconnected. Single streams can be allowed again afterwards with "Enable".')) return;
   try {
     await api('streams/stop-all', { method: 'POST', body: {} });
     await refresh();
@@ -736,7 +736,7 @@ $('stopAllBtn').addEventListener('click', async () => {
 });
 
 // ======================================================================
-// Dialoge
+// Dialogs
 // ======================================================================
 
 function openModal(title, ...content) {
@@ -757,35 +757,35 @@ document.addEventListener('keydown', e => { if (e.key === 'Escape' && !$('modal'
 function showQr(id) {
   const s = streams.find(x => sid(x) === id);
   if (!s) return;
-  const img = el('img', { class: 'qr', alt: 'QR-Code für die Handy-App', src: '/api/admin/' + streamPath(id) + '/qr.svg?t=' + Date.now() });
+  const img = el('img', { class: 'qr', alt: 'QR code for the phone app', src: '/api/admin/' + streamPath(id) + '/qr.svg?t=' + Date.now() });
   const dl = el('dl', { class: 'links' });
   const add = (label, value) => {
     const f = copyField(value);
     dl.append(el('dt', { text: label }), el('dd', {}, f.input, f.btn));
   };
-  add('Stream-Link für ATAK/WinTAK (MJPEG)', s.links.stream);
+  add('Stream link for ATAK/WinTAK (MJPEG)', s.links.stream);
   if (me.ffmpeg) {
-    add('HLS – als „Quelle“ in OpenTAKServer/MediaMTX eintragen', s.links.hls);
-    add('Alternativ MPEG-TS', s.links.ts);
+    add('HLS – enter as "source" in OpenTAKServer/MediaMTX', s.links.hls);
+    add('Alternative: MPEG-TS', s.links.ts);
   }
-  add('Einzelbild', s.links.snapshot);
-  add('Handy-App (enthält den Zugangsschlüssel – nur an den Benutzer geben)', s.links.app);
+  add('Snapshot', s.links.snapshot);
+  add('Phone app (contains the access key – give only to the user)', s.links.app);
   const hint = el('p', { class: 'mut small', text: !me.ffmpeg
-    ? 'Für OpenTAKServer (MediaMTX) wird der HLS-Link gebraucht – dafür ffmpeg auf dem Server installieren.'
-    : s.tak && s.tak.inTak ? `Im TAK-Server eingetragen als „${s.tak.path}“ – ATAK: ${s.tak.rtsp}`
-      : 'Der Stream wird automatisch im OpenTAKServer eingetragen (Spalte „TAK-Pfad“), sobald der verbunden ist.' });
+    ? 'OpenTAKServer (MediaMTX) needs the HLS link – install ffmpeg on the server for it.'
+    : s.tak && s.tak.inTak ? `Registered in the TAK server as "${s.tak.path}" – ATAK: ${s.tak.rtsp}`
+      : 'The stream is registered in OpenTAKServer automatically (column "TAK path") once it is connected.' });
   const caBox = me.testCa ? el('div', { class: 'card', style: 'margin-top:12px' },
-    el('b', { text: 'Testbetrieb: Zertifikat fürs Handy' }),
-    el('p', { class: 'mut small', text: 'Einmal pro Handy: QR-Code scannen, Datei laden. Android: Einstellungen → Sicherheit → '
-      + 'Verschlüsselung & Anmeldedaten → Zertifikat installieren → CA-Zertifikat → Datei wählen. '
-      + 'iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter '
-      + 'Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten. '
-      + 'Die Warnung beim ersten Öffnen mit „Erweitert → Weiter“ bestätigen.' }),
-    el('img', { class: 'qr', alt: 'QR-Code Zertifikat', src: '/api/admin/ca-qr.svg', style: 'max-width:200px' }),
+    el('b', { text: 'Test mode: certificate for the phone' }),
+    el('p', { class: 'mut small', text: 'Once per phone: scan the QR code, download the file. Android: Settings → Security → '
+      + 'Encryption & credentials → Install a certificate → CA certificate → choose the file. '
+      + 'iPhone: download the profile, install it under Settings → General → VPN & Device Management and enable '
+      + '"full trust" under About → Certificate Trust Settings. '
+      + 'Confirm the warning on first opening with "Advanced → Proceed".' }),
+    el('img', { class: 'qr', alt: 'Certificate QR code', src: '/api/admin/ca-qr.svg', style: 'max-width:200px' }),
     el('a', { href: me.publicBase + '/ca.crt', text: me.publicBase + '/ca.crt' })) : null;
-  const print = el('button', { text: 'QR-Code drucken', type: 'button', onclick: () => printQr(s, img.src) });
-  openModal('QR-Code: ' + (s.label || s.user),
-    el('p', { class: 'mut small', text: `Diesen QR-Code dem Benutzer „${s.user}“ geben. Er öffnet die Handy-App, verbindet die Helmkamera per Bluetooth und sendet die Bilder an diesen Stream.` }),
+  const print = el('button', { text: 'Print QR code', type: 'button', onclick: () => printQr(s, img.src) });
+  openModal('QR code: ' + (s.label || s.user),
+    el('p', { class: 'mut small', text: `Give this QR code to the user "${s.user}". It opens the phone app, connects the helmet camera via Bluetooth and sends the images to this stream.` }),
     img, dl, hint, el('div', { class: 'row', style: 'margin-top:12px' }, print), caBox);
 }
 
@@ -797,34 +797,34 @@ function printQr(s, src) {
   const h = d.createElement('h2'); h.textContent = s.label || s.user;
   const p = d.createElement('p'); p.textContent = s.user + '/' + s.streamId;
   const img = d.createElement('img'); img.src = src; img.style.width = '320px';
-  const t = d.createElement('p'); t.textContent = 'Scannen, Kamera verbinden, Stream starten.';
+  const t = d.createElement('p'); t.textContent = 'Scan, connect the camera, start the stream.';
   d.body.style.fontFamily = 'system-ui, sans-serif';
   d.body.style.textAlign = 'center';
   d.body.append(h, p, img, t);
   img.onload = () => w.print();
 }
 
-// System: Standard für neue Streams, Admin-Zugang, SMTP
-// Helfer: nur das eigene Passwort
+// System: defaults for new streams, admin login, SMTP
+// Helpers: only their own password
 function renderOwnPassword() {
   const f = el('form', {},
-    el('p', { class: 'mut small', text: `Angemeldet als Helfer „${me.username}“. Du kannst Anfragen freigeben/ablehnen, Nutzer bearbeiten und neue TAK-Nutzer anlegen. Einstellungen ändert der Admin.` }),
-    el('label', { text: 'Aktuelles Passwort' }), el('input', { name: 'current', type: 'password', autocomplete: 'current-password', required: '' }),
-    el('label', { text: 'Neues Passwort (mind. 8 Zeichen)' }), el('input', { name: 'password', type: 'password', autocomplete: 'new-password', minlength: '8', required: '' }),
-    el('div', { class: 'row', style: 'margin-top:10px' }, el('button', { class: 'pri', type: 'submit', text: 'Passwort ändern' })),
+    el('p', { class: 'mut small', text: `Logged in as helper "${me.username}". You can approve/decline requests, edit users and create new TAK users. Settings are changed by the admin.` }),
+    el('label', { text: 'Current password' }), el('input', { name: 'current', type: 'password', autocomplete: 'current-password', required: '' }),
+    el('label', { text: 'New password (min. 8 characters)' }), el('input', { name: 'password', type: 'password', autocomplete: 'new-password', minlength: '8', required: '' }),
+    el('div', { class: 'row', style: 'margin-top:10px' }, el('button', { class: 'pri', type: 'submit', text: 'Change password' })),
     el('p', { class: 'msg', 'data-msg': '' }));
   f.addEventListener('submit', async e => {
     e.preventDefault();
     try {
       await api('own-password', { method: 'POST', body: { current: f.current.value, password: f.password.value } });
       f.reset();
-      setMsg(f.querySelector('[data-msg]'), 'Passwort geändert.', true);
+      setMsg(f.querySelector('[data-msg]'), 'Password changed.', true);
     } catch (err) { setMsg(f.querySelector('[data-msg]'), err.message); }
   });
-  $('systemCard').replaceChildren(el('h2', { text: 'Mein Passwort' }), f);
+  $('systemCard').replaceChildren(el('h2', { text: 'My password' }), f);
 }
 
-// Haupt-Admin: Helfer anlegen, Passwort setzen, löschen
+// main admin: create helpers, set passwords, delete
 async function helpersCard() {
   const box = el('div');
   const m = el('p', { class: 'msg' });
@@ -835,38 +835,38 @@ async function helpersCard() {
     const rows = r.helpers.map(h => el('tr', {},
       el('td', {}, el('b', { text: h.username }), h.name ? el('div', { class: 'mut small', text: h.name }) : null),
       el('td', { class: 'small', text: h.email || '–' }),
-      el('td', { class: 'small', text: h.lastLogin ? new Date(h.lastLogin).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nie' }),
+      el('td', { class: 'small', text: h.lastLogin ? new Date(h.lastLogin).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : 'never' }),
       el('td', {}, el('div', { class: 'btns' },
-        el('button', { class: 'sm', type: 'button', text: 'Passwort …', onclick: async () => {
-          const pw = prompt(`Neues Passwort für „${h.username}“ (mind. 8 Zeichen):`);
+        el('button', { class: 'sm', type: 'button', text: 'Password …', onclick: async () => {
+          const pw = prompt(`New password for "${h.username}" (min. 8 characters):`);
           if (!pw) return;
-          try { await api(`helpers/${h.id}/password`, { method: 'POST', body: { password: pw } }); setMsg(m, 'Passwort gesetzt – der Helfer ist abgemeldet.', true); } catch (e) { setMsg(m, e.message); }
+          try { await api(`helpers/${h.id}/password`, { method: 'POST', body: { password: pw } }); setMsg(m, 'Password set – the helper has been logged out.', true); } catch (e) { setMsg(m, e.message); }
         } }),
-        el('button', { class: 'sm danger', type: 'button', text: 'Löschen', onclick: async () => {
-          if (!confirm(`Helfer „${h.username}“ löschen?`)) return;
+        el('button', { class: 'sm danger', type: 'button', text: 'Delete', onclick: async () => {
+          if (!confirm(`Delete helper "${h.username}"?`)) return;
           try { await api(`helpers/${h.id}`, { method: 'DELETE' }); load(); } catch (e) { setMsg(m, e.message); }
         } })))));
     list.replaceChildren(el('table', { class: 'streams' },
-      el('thead', {}, el('tr', {}, el('th', { text: 'Helfer' }), el('th', { text: 'E-Mail' }), el('th', { text: 'Letzte Anmeldung' }), el('th'))),
-      el('tbody', {}, ...(rows.length ? rows : [el('tr', {}, el('td', { colspan: '4', class: 'mut', text: 'Noch keine Helfer.' }))]))));
+      el('thead', {}, el('tr', {}, el('th', { text: 'Helper' }), el('th', { text: 'E-mail' }), el('th', { text: 'Last login' }), el('th'))),
+      el('tbody', {}, ...(rows.length ? rows : [el('tr', {}, el('td', { colspan: '4', class: 'mut', text: 'No helpers yet.' }))]))));
   };
   const f = el('form', { class: 'row' },
-    el('div', { class: 'grow' }, el('label', { text: 'Benutzername' }), el('input', { name: 'username', required: '', autocomplete: 'off' })),
-    el('div', { class: 'grow' }, el('label', { text: 'Passwort (mind. 8)' }), el('input', { name: 'password', type: 'password', required: '', minlength: '8', autocomplete: 'new-password' })),
+    el('div', { class: 'grow' }, el('label', { text: 'Username' }), el('input', { name: 'username', required: '', autocomplete: 'off' })),
+    el('div', { class: 'grow' }, el('label', { text: 'Password (min. 8)' }), el('input', { name: 'password', type: 'password', required: '', minlength: '8', autocomplete: 'new-password' })),
     el('div', { class: 'grow' }, el('label', { text: 'Name (optional)' }), el('input', { name: 'name' })),
-    el('div', { class: 'grow' }, el('label', { text: 'E-Mail (optional)' }), el('input', { name: 'email', type: 'email' })),
-    el('div', { class: 'actions-end' }, el('button', { class: 'pri', type: 'submit', text: '+ Helfer' })));
+    el('div', { class: 'grow' }, el('label', { text: 'E-mail (optional)' }), el('input', { name: 'email', type: 'email' })),
+    el('div', { class: 'actions-end' }, el('button', { class: 'pri', type: 'submit', text: '+ Helper' })));
   f.addEventListener('submit', async e => {
     e.preventDefault();
     try {
       await api('helpers', { method: 'POST', body: Object.fromEntries(new FormData(f)) });
       f.reset();
-      setMsg(m, 'Helfer angelegt – Anmeldung hier im Admin mit Benutzername und Passwort.', true);
+      setMsg(m, 'Helper created – they log in here in the admin with username and password.', true);
       load();
     } catch (err) { setMsg(m, err.message); }
   });
-  box.append(el('h3', { text: 'Helfer' }),
-    el('p', { class: 'mut small', text: 'Helfer melden sich hier im Admin an und dürfen nur: Anfragen freigeben/ablehnen, Nutzer bearbeiten (Rufname, Team, Rolle, sperren, neues Passwort/QR), neue TAK-Nutzer anlegen und Links/QR-Codes zeigen. Keine Einstellungen, keine Löschungen, kein OTS-Admin.' }),
+  box.append(el('h3', { text: 'Helpers' }),
+    el('p', { class: 'mut small', text: 'Helpers log in here in the admin and may only: approve/decline requests, edit users (callsign, team, role, block, new password/QR), create new TAK users and show links/QR codes. No settings, no deletions, no OTS admin.' }),
     f, m, list);
   load();
   return box;
@@ -893,7 +893,7 @@ async function renderSystem() {
     defs.mirror.checked = d.mirror;
     defFit.value = d.fit;
     defSize.value = String(d.framesize);
-  } catch (e) { /* angezeigt durch api() */ }
+  } catch (e) { /* shown by api() */ }
   defs.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = defs.querySelector('[data-msg]');
@@ -901,7 +901,7 @@ async function renderSystem() {
       await api('defaults', { method: 'POST', body: { rotate: normDeg(defs.rotate.value), mirror: defs.mirror.checked, fit: defFit.value, framesize: +defSize.value, applyAll: defs.applyAll.checked } });
       defs.applyAll.checked = false;
       await refresh();
-      setMsg(msg, 'Gespeichert.', true);
+      setMsg(msg, 'Saved.', true);
     } catch (err) { setMsg(msg, err.message); }
   });
 
@@ -916,7 +916,7 @@ async function renderSystem() {
       me = await api('me');
       cred.current.value = '';
       cred.password.value = '';
-      setMsg(msg, 'Gespeichert.', true);
+      setMsg(msg, 'Saved.', true);
     } catch (err) { setMsg(msg, err.message); }
   });
 
@@ -924,8 +924,8 @@ async function renderSystem() {
     const s = await api('smtp');
     smtp.host.value = s.host; smtp.port.value = s.port; smtp.secure.checked = s.secure;
     smtp.user.value = s.user; smtp.from.value = s.from;
-    smtp.querySelector('[data-haspass]').textContent = s.hasPass ? '(gespeichert)' : '';
-  } catch (e) { /* angezeigt durch api() */ }
+    smtp.querySelector('[data-haspass]').textContent = s.hasPass ? '(saved)' : '';
+  } catch (e) { /* shown by api() */ }
 
   const smtpBody = () => ({
     host: smtp.host.value, port: smtp.port.value, secure: smtp.secure.checked,
@@ -936,25 +936,25 @@ async function renderSystem() {
     const msg = smtp.querySelector('[data-msg]');
     try {
       await api('smtp', { method: 'POST', body: smtpBody() });
-      if (smtp.pass.value) smtp.querySelector('[data-haspass]').textContent = '(gespeichert)';
+      if (smtp.pass.value) smtp.querySelector('[data-haspass]').textContent = '(saved)';
       smtp.pass.value = '';
-      setMsg(msg, 'Gespeichert.', true);
+      setMsg(msg, 'Saved.', true);
     } catch (err) { setMsg(msg, err.message); }
   });
   smtp.querySelector('[data-test]').addEventListener('click', async () => {
     const msg = smtp.querySelector('[data-msg]');
-    setMsg(msg, 'Sende …', true);
+    setMsg(msg, 'Sending …', true);
     try {
       await api('smtp', { method: 'POST', body: smtpBody() });
       smtp.pass.value = '';
       await api('smtp/test', { method: 'POST', body: {} });
-      setMsg(msg, 'Test-Mail an ' + me.email + ' gesendet.', true);
+      setMsg(msg, 'Test mail sent to ' + me.email + '.', true);
     } catch (err) { setMsg(msg, err.message); }
   });
 }
 
 // ======================================================================
-// Video-Fenster: verschieben, Größe ändern, maximieren, minimieren, schließen
+// Video windows: move, resize, maximize, minimize, close
 // ======================================================================
 
 function openWindow(id) {
@@ -963,20 +963,20 @@ function openWindow(id) {
   if (!s) return;
 
   const title = el('span', { class: 'win-title' });
-  const btnAlign = el('button', { title: 'Bild ausrichten (drehen, spiegeln)', text: '∠ Ausrichten' });
-  const btnLive = el('button', { title: 'Live schalten / beenden' });
+  const btnAlign = el('button', { title: 'Align the image (rotate, mirror)', text: '∠ Align' });
+  const btnLive = el('button', { title: 'Put live / end live' });
   btnLive.addEventListener('click', () => {
     const cur = streams.find(x => sid(x) === id);
     if (cur) setLive(id, !cur.onAir);
   });
-  const btnFull = el('button', { title: 'Vollbild am Bildschirm', text: '⛶' });
-  const btnMin = el('button', { title: 'Minimieren', text: '–' });
-  const btnMax = el('button', { title: 'Maximieren', text: '□' });
-  const btnClose = el('button', { title: 'Schließen', text: '✕' });
+  const btnFull = el('button', { title: 'Fullscreen', text: '⛶' });
+  const btnMin = el('button', { title: 'Minimize', text: '–' });
+  const btnMax = el('button', { title: 'Maximize', text: '□' });
+  const btnClose = el('button', { title: 'Close', text: '✕' });
   const bar = el('div', { class: 'win-bar' }, title, btnLive, btnAlign, btnFull, btnMin, btnMax, btnClose);
 
-  // Ausrichten: Regler 0–359,5°, Feinschritte, Spiegeln, Füllen/Ganzes Bild
-  const range = el('input', { type: 'range', min: '0', max: '359.5', step: '0.5', class: 'grow', 'aria-label': 'Drehung' });
+  // align: slider 0–359.5°, fine steps, mirror, fill/whole image
+  const range = el('input', { type: 'range', min: '0', max: '359.5', step: '0.5', class: 'grow', 'aria-label': 'Rotation' });
   const num = angleInput(s.rotate, 'rot');
   const mirrorBox = el('input', { type: 'checkbox' });
   const fitSel = fitSelect(s.fit);
@@ -996,8 +996,8 @@ function openWindow(id) {
     el('div', { class: 'row' }, step(-90), step(-5), step(-1), step(1), step(5), step(90),
       el('button', { class: 'sm', type: 'button', text: '0°', onclick: () => setAngle(0, true) })),
     el('div', { class: 'row' },
-      el('label', { class: 'check' }, mirrorBox, 'Spiegeln'), fitSel),
-    el('div', { class: 'row' }, el('span', { class: 'mut', text: 'Bildgröße' }), sizeSel),
+      el('label', { class: 'check' }, mirrorBox, 'Mirror'), fitSel),
+    el('div', { class: 'row' }, el('span', { class: 'mut', text: 'Image size' }), sizeSel),
   );
   mirrorBox.addEventListener('change', () => setOptions(id, { mirror: mirrorBox.checked }));
   fitSel.addEventListener('change', () => setOptions(id, { fit: fitSel.value }));
@@ -1006,13 +1006,13 @@ function openWindow(id) {
     align.classList.toggle('hidden');
     btnAlign.classList.toggle('pri', !align.classList.contains('hidden'));
   });
-  const img = el('img', { alt: 'Live-Bild' });
+  const img = el('img', { alt: 'Live image' });
   const off = el('div', { class: 'win-off' });
   const info = el('div', { class: 'win-info' });
   const body = el('div', { class: 'win-body' }, img, off, info);
   const win = el('div', { class: 'win' }, bar, align, body);
 
-  // Fenster an das Seitenverhältnis des Bildes anpassen -> kein schwarzer Rand
+  // fit the window to the aspect ratio of the image -> no black border
   let lastDims = '';
   const fitAspect = () => {
     const iw = img.naturalWidth, ih = img.naturalHeight;
@@ -1021,7 +1021,7 @@ function openWindow(id) {
     if (dims === lastDims) return;
     lastDims = dims;
     if (win.classList.contains('max') || win.classList.contains('min')) return;
-    const chrome = win.offsetHeight - body.offsetHeight; // Titelleiste + Ausrichten-Bereich
+    const chrome = win.offsetHeight - body.offsetHeight; // title bar + align area
     let width = win.offsetWidth;
     let height = chrome + width * ih / iw;
     const maxH = window.innerHeight - 16;
@@ -1050,14 +1050,14 @@ function openWindow(id) {
   if (vw < 600) win.classList.add('max');
   $('windows').append(win);
 
-  // Bild direkt vom Admin-Server holen (relativer Pfad): unabhängig von der eingestellten
-  // öffentlichen Adresse und ohne Dauerverbindung (Browser erlauben nur ~6 pro Server)
+  // fetch the image directly from the admin server (relative path): independent of the configured
+  // public address and without a persistent connection (browsers allow only ~6 per server)
   const snapUrl = '/' + encodeURIComponent(s.user) + '/' + encodeURIComponent(s.streamId) + '/snapshot.jpg';
   let alive = true, shownUrl = null, lastFrameAt = null;
   (async function pull() {
     while (alive) {
       const st = streams.find(x => sid(x) === id);
-      // nur ein neues Bild holen, wenn es eins gibt
+      // only fetch a new image if there is one
       if (!shownUrl || (st && st.lastFrameAt !== lastFrameAt) || (st && st.receiving)) {
         try {
           const r = await fetch(snapUrl + '?t=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
@@ -1068,7 +1068,7 @@ function openWindow(id) {
             shownUrl = url;
             lastFrameAt = st ? st.lastFrameAt : null;
           }
-        } catch (e) { /* Server kurz weg: weiter versuchen */ }
+        } catch (e) { /* server briefly gone: keep trying */ }
       }
       await new Promise(r => setTimeout(r, 250));
     }
@@ -1079,16 +1079,16 @@ function openWindow(id) {
     update(st) {
       title.textContent = (st.label || st.user) + ' – ' + sid(st);
       const [text] = state(st);
-      info.textContent = st.receiving ? `${st.fps.toFixed(1)} Bilder/s · ${st.camera || ''}` : text;
-      off.textContent = st.receiving ? '' : (!st.enabled ? 'Stream gesperrt'
-        : !st.phoneConnected ? 'Kein Live-Bild (Handy offline)'
-        : liveMode === 'admin' && !st.onAir ? (st.ready ? 'Bereit – „▶ Live“ drücken' : 'Handy verbunden, Kamera noch nicht bereit')
-        : 'Warte auf Bilder vom Handy …');
-      btnLive.textContent = st.onAir ? '■ Live aus' : '▶ Live';
+      info.textContent = st.receiving ? `${st.fps.toFixed(1)} fps · ${st.camera || ''}` : text;
+      off.textContent = st.receiving ? '' : (!st.enabled ? 'Stream blocked'
+        : !st.phoneConnected ? 'No live image (phone offline)'
+        : liveMode === 'admin' && !st.onAir ? (st.ready ? 'Ready – press "▶ Live"' : 'Phone connected, camera not ready yet')
+        : 'Waiting for images from the phone …');
+      btnLive.textContent = st.onAir ? '■ Live off' : '▶ Live';
       btnLive.className = st.onAir ? 'danger' : 'golive';
       btnLive.classList.toggle('hidden', liveMode !== 'admin' || !st.enabled);
       off.classList.toggle('hidden', st.receiving);
-      // Regler nur nachführen, wenn gerade niemand daran dreht
+      // only update the slider when nobody is turning it
       const busy = pendingOpts.has(id) || [range, num, fitSel].includes(document.activeElement);
       if (!busy) {
         range.value = String(st.rotate || 0);
@@ -1097,10 +1097,10 @@ function openWindow(id) {
         if (document.activeElement !== sizeSel) sizeSel.value = String(st.framesize || 1);
       }
       mirrorBox.checked = !!st.mirror;
-      btnAlign.textContent = '∠ ' + (st.rotate ? fmtDeg(st.rotate) : 'Ausrichten');
+      btnAlign.textContent = '∠ ' + (st.rotate ? fmtDeg(st.rotate) : 'Align');
     },
     close() {
-      alive = false; // Bildabfrage beenden
+      alive = false; // stop fetching images
       if (shownUrl) URL.revokeObjectURL(shownUrl);
       img.removeAttribute('src');
       win.remove();
@@ -1125,7 +1125,7 @@ function openWindow(id) {
   btnMax.addEventListener('click', toggleMax);
   bar.addEventListener('dblclick', e => { if (e.target.tagName !== 'BUTTON') toggleMax(); });
 
-  // Verschieben an der Titelleiste
+  // move by the title bar
   let drag = null;
   bar.addEventListener('pointerdown', e => {
     if (e.target.tagName === 'BUTTON' || win.classList.contains('max')) return;
@@ -1176,18 +1176,18 @@ async function loadTak() {
     f.port.value = t.preset ? t.preset.port : '';
     f.proto.value = t.preset ? t.preset.proto : 'ssl';
     f.enrollPort.value = t.preset ? t.preset.enrollPort : '';
-  } catch (e) { /* nicht angemeldet */ }
+  } catch (e) { /* not logged in */ }
 }
 
 async function loadEudLinks() {
   try {
     const { links } = await api('eud-links');
     const box = $('eudLinks');
-    box.textContent = links.length ? 'Verbundene WebTAK-Geräte:' : 'Zurzeit kein WebTAK-Gerät verbunden.';
+    box.textContent = links.length ? 'Connected WebTAK devices:' : 'No WebTAK device connected right now.';
     for (const l of links) {
       box.append(el('div', { text: `${l.callsign || '–'} → ${l.host || '–'} (${l.state})` }));
     }
-  } catch (e) { /* ignorieren */ }
+  } catch (e) { /* ignore */ }
 }
 
 $('takForm').addEventListener('submit', async e => {
@@ -1199,13 +1199,13 @@ $('takForm').addEventListener('submit', async e => {
       allowedHosts: f.allowedHosts.value,
       preset: host ? { host, port: Number(f.port.value) || 8089, proto: f.proto.value, enrollPort: Number(f.enrollPort.value) || 8446 } : null,
     } });
-    setMsg($('eudMsg'), 'Gespeichert – der QR-Code ist angepasst.', true);
+    setMsg($('eudMsg'), 'Saved – the QR code is updated.', true);
     loadTak();
   } catch (err) { setMsg($('eudMsg'), err.message); }
 });
 function showEudQr() {
-  const img = el('img', { class: 'qr', alt: 'QR-Code zu WebTAK', src: '/api/admin/eud-qr.svg?t=' + Date.now() });
-  const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+  const img = el('img', { class: 'qr', alt: 'WebTAK QR code', src: '/api/admin/eud-qr.svg?t=' + Date.now() });
+  const print = el('button', { type: 'button', text: 'Print', onclick: () => {
     const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) return;
     const d = w.document;
@@ -1219,9 +1219,8 @@ function showEudQr() {
     d.body.append(h, i, t, t2);
     i.onload = () => w.print();
   } });
-  openModal('QR-Code WebTAK', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
+  openModal('WebTAK QR code', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
 }
-$('eudQr').addEventListener('click', showEudQr);
 $('eudQr').addEventListener('click', showEudQr);
 $('eudQr').style.cursor = 'pointer';
 $('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));

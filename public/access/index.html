@@ -162,8 +162,8 @@ let confirmed = false;
 try {
   if (token) localStorage.setItem('tak.access', token);
   else token = localStorage.getItem('tak.access') || '';
-} catch (e) { /* privat */ }
-if (location.hash) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
+} catch (e) { /* private mode */ }
+if (location.hash) history.replaceState(null, '', location.pathname); // do not leave the key in the address bar
 
 const fmt = iso => iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
 const STATUS = {
@@ -178,7 +178,7 @@ const STATUS = {
 function timeline(me) {
   const st = me.status;
   const list = [[`Request sent`, fmt(me.created), 'done']];
-  // Bestätigungsschritt nur, wenn wirklich per E-Mail bestätigt wurde (sonst ist confirmedAt = Zeitpunkt der Anfrage)
+  // Confirmation step only if really confirmed by e-mail (otherwise confirmedAt = time of the request)
   const confirmedLater = me.confirmedAt && new Date(me.confirmedAt) - new Date(me.created) > 2000;
   if (st === 'unconfirmed' || confirmedLater) list.push(['E-mail confirmed', fmt(me.confirmedAt), st === 'unconfirmed' ? 'now' : 'done']);
   if (st === 'rejected') list.push(['Request declined', '', 'bad']);
@@ -216,7 +216,7 @@ async function load() {
     $('waitHint').classList.toggle('hidden', me.status === 'rejected' || me.status === 'blocked');
     $('checked').textContent = 'Last checked: ' + new Date().toLocaleTimeString([], { timeStyle: 'short' });
     $('waitCard').classList.remove('hidden');
-    // regelmäßig nachsehen: sobald freigegeben, erscheinen die Zugangsdaten ohne Neuladen
+    // check regularly: once approved, the login data appears without reloading
     if (me.status === 'pending' || me.status === 'unconfirmed') setTimeout(() => load().catch(() => {}), 30000);
     return;
   }
@@ -251,7 +251,7 @@ async function load() {
     fetch('/api/access/atak-link', { headers: { 'X-Access-Token': token } }).then(r => r.json()).then(d => { if (d.link) $('atakDirect').href = d.link; }).catch(() => {});
   } else $('atakDirectBox').classList.add('hidden');
   const p = new URLSearchParams({ host: me.host, port: me.streamPort, proto: 'ssl', enroll: me.enrollPort, username: me.username, password: me.password, callsign: me.callsign });
-  // Drohne/externe Kamera: MediaMTX im TAK-Server nimmt Streams mit dem TAK-Login an und legt den Feed selbst an
+  // Drone/external camera: MediaMTX in the TAK server accepts streams with the TAK login and creates the feed itself
   const slug = String(me.callsign || me.username).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
   const path = 'drone-' + slug;
   if (me.password && me.host) {
@@ -262,7 +262,7 @@ async function load() {
     $('droneSrt').textContent = `srt://${me.host}:8890?streamid=publish:${path}:${u}:${pw}`;
     $('droneCopy').onclick = () => navigator.clipboard.writeText($('droneRtmp').value).then(() => { $('droneCopy').textContent = 'Copied'; }, () => $('droneRtmp').select());
   } else $('droneCard').classList.add('hidden');
-  p.set('t', token); // WebTAK merkt sich den Zugang (z. B. für die Drohnen-Adresse ohne Passwort-Eingabe)
+  p.set('t', token); // WebTAK remembers the access (e.g. for the drone address without typing the password)
   $('eudLink').href = '/eud/#' + p;
 
 }
