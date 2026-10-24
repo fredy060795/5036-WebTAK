@@ -13,7 +13,7 @@ Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HT
 - **QR-Code für den Benutzer:** öffnet die Handy-App. Kamera per Bluetooth verbinden, „Stream starten“ – fertig.
 - **Admin-Fenster** (eigene Domain möglich): Login, Passwort-Reset per E-Mail (SMTP), alle Streams mit Status, Link
   und QR-Code. „Ansehen“ öffnet frei bewegliche Video-Fenster (verschieben, Größe ändern, maximieren, minimieren,
-  schließen). „Alle Streams stoppen“, einzelne Streams stoppen/freigeben, Handy **rauswerfen** oder Stream **löschen**.
+  schließen). „Alle Streams sperren“, einzelne Streams stoppen/freigeben, Handy **rauswerfen** oder Stream **löschen**.
 
 ## Links pro Stream
 
@@ -58,9 +58,11 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 1. Im Admin-Fenster oben den **QR-Code für alle Nutzer** groß anzeigen oder drucken (ein Code für alle).
 2. Der Nutzer scannt ihn, gibt **Name** und **Einheit** ein → er bekommt automatisch einen eigenen Stream
    (z. B. `https://<domain>:5036/max-mueller/qugzu48s8q`). Das Handy merkt sich die Anmeldung.
-3. Quelle wählen: **Handy-Kamera** (Rückkamera) oder **Helmkamera (Bluetooth)** → **Stream starten**.
-4. Der Stream erscheint sofort in der Admin-Liste – dort ausrichten, Link für ATAK/OpenTAKServer kopieren,
-   stoppen, rauswerfen oder löschen.
+3. Quelle wählen: **Handy-Kamera** (Rückkamera) oder **Helmkamera (Bluetooth)** und ausrichten. Die Seite zeigt
+   **„Bereit“** – es wird noch nichts gesendet.
+4. Du schaltest im Admin mit **▶ Live** ein (Liste oder Ansehen-Fenster); das Handy vibriert kurz und sendet.
+   **■ Live aus** bzw. **Alle auf Bereit** schaltet zurück auf „Bereit“.
+5. In der Admin-Liste: ausrichten, Bildgröße, Link für ATAK/OpenTAKServer kopieren, sperren, rauswerfen oder löschen.
 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
@@ -83,6 +85,10 @@ Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den 
 **Adresse des Servers** (im Admin oben): legt fest, welche Adresse in QR-Codes und allen Links steht, z. B.
 `https://tak.example.com:5036`. Leer bzw. „Automatisch“ = `PUBLIC_URL` oder die aufgerufene Adresse. Die Einstellung
 gilt vor `PUBLIC_URL` und bleibt nach einem Neustart erhalten.
+
+**Admin schaltet live** (Schalter oben im Admin, Standard an): Nutzer warten nach dem Verbinden auf „▶ Live“. Aus =
+Nutzer starten den Stream selbst mit „Stream starten“. Die Seite muss geöffnet bleiben – Browser stoppen Kamera und
+Bluetooth, wenn die Seite in den Hintergrund geht. Auf Android ATAK und die Seite im **geteilten Bildschirm** nutzen.
 
 **Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung

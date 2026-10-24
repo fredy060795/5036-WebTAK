@@ -229,6 +229,9 @@ async function loadRegistration() {
   try {
     const r = await api('registration');
     $('regToggle').checked = r.enabled;
+    liveMode = r.liveMode;
+    $('liveToggle').checked = liveMode === 'admin';
+    $('liveOffAllBtn').classList.toggle('hidden', liveMode !== 'admin');
     $('appUrl').value = r.appUrl;
     if (document.activeElement !== $('baseUrl')) $('baseUrl').value = r.publicUrl;
     $('baseUrl').placeholder = 'automatisch: ' + r.autoUrl;
@@ -236,6 +239,16 @@ async function loadRegistration() {
     $('appQr').closest('.appqr').classList.toggle('off', !r.enabled);
   } catch (e) { /* angezeigt durch api() */ }
 }
+
+$('liveToggle').addEventListener('change', async () => {
+  const admin = $('liveToggle').checked;
+  try {
+    await api('live-mode', { method: 'POST', body: { mode: admin ? 'admin' : 'user' } });
+    setMsg($('regMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
+    await loadRegistration();
+    await refresh();
+  } catch (e) { setMsg($('regMsg'), e.message); }
+});
 
 $('regToggle').addEventListener('change', async () => {
   const enabled = $('regToggle').checked;
@@ -300,11 +313,22 @@ async function refresh() {
 
 const sid = s => s.user + '/' + s.streamId;
 
+let liveMode = 'admin'; // "admin" = Admin schaltet live, "user" = Nutzer startet selbst
+
 function state(s) {
-  if (!s.enabled) return ['Gestoppt', 'stop'];
+  if (!s.enabled) return ['Gesperrt', 'stop'];
   if (s.receiving) return ['Live', 'live'];
+  if (liveMode === 'admin' && s.onAir && s.phoneConnected) return ['Live angefordert', 'wait'];
+  if (s.ready) return ['Bereit', 'ready'];
   if (s.phoneConnected) return ['Verbunden', 'wait'];
   return ['Offline', 'off'];
+}
+
+async function setLive(id, on) {
+  try {
+    await api(streamPath(id) + '/live', { method: 'POST', body: { on } });
+    await refresh();
+  } catch (e) { alert(e.message); }
 }
 
 function ago(iso) {
@@ -343,12 +367,16 @@ function buildRow(s) {
   c.linkInput = f.input;
   c.link.append(el('div', { class: 'link' }, f.input, f.btn));
   c.actions = td('', '');
+  c.onair = el('button', { class: 'sm', onclick: () => {
+    const cur = streams.find(x => sid(x) === id);
+    if (cur) setLive(id, !cur.onAir);
+  } });
   c.view = el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => openWindow(id) });
   c.qr = el('button', { class: 'sm', text: 'QR / Links', onclick: () => showQr(id) });
   c.toggle = el('button', { class: 'sm', onclick: () => toggleStream(id) });
   c.revoke = el('button', { class: 'sm danger', text: 'Rauswerfen', onclick: () => revokeStream(id) });
   c.remove = el('button', { class: 'sm danger', text: 'Löschen', onclick: () => removeStream(id) });
-  c.actions.append(el('div', { class: 'btns' }, c.view, c.qr, c.toggle, c.revoke, c.remove));
+  c.actions.append(el('div', { class: 'btns' }, c.onair, c.view, c.qr, c.toggle, c.revoke, c.remove));
   const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.rotTd, c.sizeTd, c.link, c.actions);
   return { tr, c };
 }
@@ -367,7 +395,10 @@ function updateRow(r, s) {
   c.rotTd.title = (s.mirror ? 'gespiegelt, ' : '') + (s.fit === 'fit' ? 'ganzes Bild' : 'füllen');
   if (document.activeElement !== c.size) c.size.value = String(s.framesize || 1);
   if (document.activeElement !== c.linkInput) c.linkInput.value = s.links.stream;
-  c.toggle.textContent = s.enabled ? 'Stoppen' : 'Freigeben';
+  c.toggle.textContent = s.enabled ? 'Sperren' : 'Freigeben';
+  c.onair.textContent = s.onAir ? '■ Live aus' : '▶ Live';
+  c.onair.className = 'sm ' + (s.onAir ? 'danger' : 'golive');
+  c.onair.classList.toggle('hidden', liveMode !== 'admin' || !s.enabled);
 }
 
 function render() {
@@ -445,8 +476,15 @@ async function removeStream(id) {
   } catch (e) { alert(e.message); }
 }
 
+$('liveOffAllBtn').addEventListener('click', async () => {
+  try {
+    await api('streams/live-off-all', { method: 'POST', body: {} });
+    await refresh();
+  } catch (e) { alert(e.message); }
+});
+
 $('stopAllBtn').addEventListener('click', async () => {
-  if (!confirm('ALLE Streams stoppen?\n\nAlle Handys werden getrennt. Einzelne Streams kann man danach mit „Freigeben“ wieder erlauben.')) return;
+  if (!confirm('ALLE Streams sperren?\n\nAlle Handys werden getrennt. Einzelne Streams kann man danach mit „Freigeben“ wieder erlauben.')) return;
   try {
     await api('streams/stop-all', { method: 'POST', body: {} });
     await refresh();
@@ -612,11 +650,16 @@ function openWindow(id) {
 
   const title = el('span', { class: 'win-title' });
   const btnAlign = el('button', { title: 'Bild ausrichten (drehen, spiegeln)', text: '∠ Ausrichten' });
+  const btnLive = el('button', { title: 'Live schalten / beenden' });
+  btnLive.addEventListener('click', () => {
+    const cur = streams.find(x => sid(x) === id);
+    if (cur) setLive(id, !cur.onAir);
+  });
   const btnFull = el('button', { title: 'Vollbild am Bildschirm', text: '⛶' });
   const btnMin = el('button', { title: 'Minimieren', text: '–' });
   const btnMax = el('button', { title: 'Maximieren', text: '□' });
   const btnClose = el('button', { title: 'Schließen', text: '✕' });
-  const bar = el('div', { class: 'win-bar' }, title, btnAlign, btnFull, btnMin, btnMax, btnClose);
+  const bar = el('div', { class: 'win-bar' }, title, btnLive, btnAlign, btnFull, btnMin, btnMax, btnClose);
 
   // Ausrichten: Regler 0–359,5°, Feinschritte, Spiegeln, Füllen/Ganzes Bild
   const range = el('input', { type: 'range', min: '0', max: '359.5', step: '0.5', class: 'grow', 'aria-label': 'Drehung' });
@@ -723,7 +766,13 @@ function openWindow(id) {
       title.textContent = (st.label || st.user) + ' – ' + sid(st);
       const [text] = state(st);
       info.textContent = st.receiving ? `${st.fps.toFixed(1)} Bilder/s · ${st.camera || ''}` : text;
-      off.textContent = st.receiving ? '' : (st.enabled ? 'Kein Live-Bild (Handy ' + (st.phoneConnected ? 'verbunden, keine Bilder' : 'offline') + ')' : 'Stream gestoppt');
+      off.textContent = st.receiving ? '' : (!st.enabled ? 'Stream gesperrt'
+        : !st.phoneConnected ? 'Kein Live-Bild (Handy offline)'
+        : liveMode === 'admin' && !st.onAir ? (st.ready ? 'Bereit – „▶ Live“ drücken' : 'Handy verbunden, Kamera noch nicht bereit')
+        : 'Warte auf Bilder vom Handy …');
+      btnLive.textContent = st.onAir ? '■ Live aus' : '▶ Live';
+      btnLive.className = st.onAir ? 'danger' : 'golive';
+      btnLive.classList.toggle('hidden', liveMode !== 'admin' || !st.enabled);
       off.classList.toggle('hidden', st.receiving);
       // Regler nur nachführen, wenn gerade niemand daran dreht
       const busy = pendingOpts.has(id) || [range, num, fitSel].includes(document.activeElement);

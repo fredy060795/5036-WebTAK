@@ -68,3 +68,5 @@ input.rot { width: 76px; padding: 5px 6px; font-size: 13px; text-align: right; }
 .appqr.off .qr-small { opacity: .3; }
 .qr-small { width: 140px; height: 140px; background: #fff; border-radius: 8px; flex: 0 0 auto; }
 select.rot-size { width: auto; padding: 5px 8px; font-size: 13px; }
+.badge.ready { color: var(--acc); }
+button.golive { color: var(--ok); border-color: var(--ok); font-weight: 600; }

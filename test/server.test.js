@@ -123,6 +123,8 @@ test('erster Login mit admin/admin123 erzwingt Passwortwechsel', async () => {
   const me = await api('me');
   assert.equal(me.data.username, 'chef');
   assert.equal(me.data.mustChange, false);
+  // Die folgenden Tests senden Bilder direkt: Modus "Nutzer startet selbst"
+  assert.equal((await api('live-mode', { method: 'POST', body: { mode: 'user' } })).data.mode, 'user');
 });
 
 test('schreibende Admin-Anfragen ohne CSRF-Header werden abgelehnt', async () => {
@@ -596,4 +598,49 @@ test('Stream-Link: Browser bekommt Vollbild-Seite, Player den MJPEG-Stream', asy
   assert.match((await get(url, '*/*')).type, /multipart\/x-mixed-replace/);
   assert.match((await get(url)).type, /multipart\/x-mixed-replace/);
   assert.match((await get(url + '?raw=1', 'text/html')).type, /multipart\/x-mixed-replace/);
+});
+
+test('Admin schaltet live: Bereit, Live, Live aus', async () => {
+  assert.equal((await api('live-mode', { method: 'POST', body: { mode: 'admin' } })).data.mode, 'admin');
+  const reg = await (await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Bereitschaft' }) })).json();
+  const find = async () => (await api('streams')).data.streams.find(x => x.streamId === reg.s);
+  const snap = () => fetch(`${base}/${reg.u}/${reg.s}/snapshot.jpg`);
+
+  const p = publisher({ user: reg.u, streamId: reg.s }, reg.k);
+  const first = await p.waitFor('live');
+  assert.equal(first.mode, 'admin');
+  assert.equal(first.on, false);
+  p.ws.send(JSON.stringify({ type: 'state', ready: true }));
+  p.ws.send(JSON.stringify({ type: 'hello', camera: 'Helm 7' }));
+  p.ws.send(JSON.stringify({ type: 'hello', camera: 'Helm 7' }));
+  await sleep(100);
+  let st = await find();
+  assert.equal(st.ready, true);
+  assert.equal(st.onAir, false);
+
+  p.ws.send(JPEG_A); // nicht live: wird verworfen
+  await sleep(100);
+  assert.equal((await snap()).status, 404);
+
+  p.messages.length = 0;
+  assert.equal((await api(`streams/${reg.u}/${reg.s}/live`, { method: 'POST', body: { on: true } })).status, 200);
+  assert.equal((await p.waitFor('live')).on, true);
+  p.ws.send(JPEG_B);
+  await sleep(100);
+  assert.equal((await snap()).status, 200);
+  st = await find();
+  assert.equal(st.onAir, true);
+  assert.equal(st.receiving, true);
+
+  p.messages.length = 0;
+  await api('streams/live-off-all', { method: 'POST', body: {} });
+  assert.equal((await p.waitFor('live')).on, false);
+  assert.equal((await find()).onAir, false);
+
+  // Moduswechsel wird an die Handys gemeldet
+  p.messages.length = 0;
+  await api('live-mode', { method: 'POST', body: { mode: 'user' } });
+  assert.equal((await p.waitFor('live')).mode, 'user');
+  assert.equal((await api('registration')).data.liveMode, 'user');
+  p.ws.close();
 });

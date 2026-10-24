@@ -292,6 +292,7 @@ async function handleAdminApi(req, res, route) {
     const host = ((config.trustProxy && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
     return json(res, 200, {
       enabled: registrationEnabled(),
+      liveMode: hub.liveMode(),
       appUrl: publicBase(req) + '/app/',
       publicUrl: (store.data.settings || {}).publicUrl || '',           // im Admin eingestellt
       autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
@@ -375,6 +376,20 @@ async function handleAdminApi(req, res, route) {
     log('Stream angelegt', entry.user + '/' + entry.streamId);
     return json(res, 200, { ok: true, stream: { ...hub.status(StreamHub.id(entry.user, entry.streamId)), links: links(req, entry) } });
   }
+  if (route === 'live-mode' && method === 'POST') {
+    const body = await readJson(req);
+    store.data.settings = { ...(store.data.settings || {}), liveMode: body.mode === 'user' ? 'user' : 'admin' };
+    store.save();
+    hub.broadcastLive();
+    log('Live-Modus', hub.liveMode() === 'admin' ? 'Admin schaltet live' : 'Nutzer startet selbst');
+    return json(res, 200, { ok: true, mode: hub.liveMode() });
+  }
+  if (route === 'streams/live-off-all' && method === 'POST') {
+    for (const id of Object.keys(store.data.streams)) hub.setOnAir(id, false);
+    log('Alle Streams auf Bereit');
+    return json(res, 200, { ok: true });
+  }
+
   if (route === 'streams/stop-all' && method === 'POST') {
     hub.stopAll();
     log('Alle Streams gestoppt');
@@ -394,6 +409,12 @@ async function handleAdminApi(req, res, route) {
     if (method === 'POST' && action === 'options') {
       const body = await readJson(req);
       hub.setOptions(id, { rotate: body.rotate, mirror: body.mirror, fit: body.fit, framesize: body.framesize, label: body.label });
+      return json(res, 200, { ok: true });
+    }
+    if (method === 'POST' && action === 'live') {
+      const body = await readJson(req);
+      hub.setOnAir(id, !!body.on);
+      log(body.on ? 'Live geschaltet' : 'Live beendet', id);
       return json(res, 200, { ok: true });
     }
     if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
@@ -540,6 +561,7 @@ function handleUpgrade(req, socket, head) {
       stream: links(req, entry).stream,
     }));
     ws.send(JSON.stringify(StreamHub.config(entry)));
+    hub.sendLive(id);
 
     let alive = true;
     ws.on('pong', () => { alive = true; });
@@ -563,6 +585,8 @@ function handleUpgrade(req, socket, head) {
           if (msg.camera !== undefined) live.camera = String(msg.camera).slice(0, 40);
           if (msg.phone !== undefined) live.phone = String(msg.phone).slice(0, 120);
           if (msg.resolution !== undefined) live.resolution = String(msg.resolution).slice(0, 20);
+        } else if (msg.type === 'state') {
+          live.ready = !!msg.ready; // Kamera am Handy verbunden
         } else if (msg.type === 'options') {
           // Nutzer richtet am Handy selbst aus (Drehung/Spiegeln); Admin sieht und kann es ändern
           hub.setOptions(id, { rotate: msg.rotate, mirror: msg.mirror });

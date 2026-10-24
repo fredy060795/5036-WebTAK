@@ -15,6 +15,10 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .view video.tiny { position: absolute; right: 0; bottom: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
 .align { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
 .align button { padding: 10px 4px; }
+.live-state { margin-top: 12px; padding: 12px; border-radius: 10px; text-align: center; font-weight: 700;
+  border: 1px solid var(--bd); color: var(--mut); }
+.live-state.on { background: #c62828; border-color: #c62828; color: #fff; }
+.live-state small { display: block; font-weight: 400; margin-top: 4px; }
 .angle { font-size: 20px; font-weight: 700; text-align: center; margin: 4px 0 10px; }
 .live-dot { position: absolute; top: 10px; left: 10px; background: #c62828; color: #fff; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
 .big { width: 100%; padding: 14px; font-size: 17px; margin-top: 12px; }
@@ -81,6 +85,7 @@ header { display: flex; justify-content: space-between; align-items: center; gap
       </div>
       <button class="big hidden" id="camBtn" type="button">Kamera trennen</button>
       <button class="big hidden" id="liveBtn">Stream starten</button>
+      <div id="liveState" class="live-state hidden"></div>
       <div id="camPick" class="hidden">
         <label for="camSelect">Kamera</label>
         <select id="camSelect"></select>
@@ -146,6 +151,7 @@ function readLink() {
 let link = readLink();
 let ws = null, wsOk = false, wsRetry = 0, wsTimer = null, blockedState = null;
 let device = null, cmdChr = null, camConnected = false;
+let liveMode = 'admin', onAir = false; // Admin schaltet live (Standard) bzw. Nutzer startet selbst
 let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
 let writeChain = Promise.resolve();
 let lastPreview = 0;
@@ -214,7 +220,9 @@ function setAlignment(newRotate, newMirror) {
 
 function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
 
+let lastReady = null;
 function setSteps() {
+  if (camConnected !== lastReady) { lastReady = camConnected; sendState(); }
   $('srvBadge').textContent = wsOk ? 'Server verbunden' : 'Server getrennt';
   $('srvBadge').className = 'badge ' + (wsOk ? 'live' : 'wait');
   $('srcBtns').classList.toggle('hidden', camConnected);
@@ -224,9 +232,21 @@ function setSteps() {
   const noBt = !navigator.bluetooth && window.isSecureContext;
   $(isIOS ? 'iosHelp' : 'noBle').classList.toggle('hidden', !noBt || camConnected);
   $('camBtn').classList.toggle('hidden', !camConnected);
-  $('liveBtn').classList.toggle('hidden', !camConnected);
+  const adminMode = liveMode === 'admin';
   $('liveBtn').textContent = wantLive ? 'Stream stoppen' : 'Stream starten';
-  $('liveBtn').className = 'big ' + (wantLive ? 'danger' : 'pri') + (camConnected ? '' : ' hidden');
+  $('liveBtn').className = 'big ' + (wantLive ? 'danger' : 'pri') + (camConnected && !adminMode ? '' : ' hidden');
+  // Admin-Modus: statt Knopf eine Anzeige, ob live gesendet wird
+  const ls = $('liveState');
+  ls.classList.toggle('hidden', !adminMode || !wsOk);
+  ls.classList.toggle('on', adminMode && onAir && camConnected);
+  if (!camConnected) {
+    ls.innerHTML = onAir ? 'Admin möchte live sehen<small>Bitte Kamera verbinden</small>' : 'Kamera verbinden<small>Danach schaltet der Admin den Stream live</small>';
+  } else if (onAir) {
+    ls.innerHTML = 'LIVE – wird gesendet<small>Seite geöffnet lassen</small>';
+  } else {
+    ls.innerHTML = 'Bereit<small>Der Admin schaltet den Stream live, wenn er gebraucht wird.'
+      + (isIOS ? '' : ' Tipp: ATAK und diese Seite im geteilten Bildschirm nutzen.') + '</small>';
+  }
   $('liveDot').classList.toggle('hidden', !(wantLive && camConnected && wsOk));
 }
 
@@ -258,9 +278,23 @@ function connectServer() {
       $('blocked').classList.add('hidden');
       $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + msg.user + '/' + msg.streamId;
       sendHello();
-      if (resumeLive) {
+      sendState();
+      if (resumeLive && liveMode !== 'admin') {
         resumeLive = false; // Admin hat wieder freigegeben: dort weitermachen, wo gestoppt wurde
         startLive();
+      }
+    } else if (msg.type === 'live') {
+      liveMode = msg.mode === 'user' ? 'user' : 'admin';
+      const was = onAir;
+      onAir = !!msg.on;
+      if (liveMode === 'admin') {
+        if (onAir && !wantLive) {
+          startLive();
+          if (!was && navigator.vibrate) navigator.vibrate([200, 100, 200]); // kurzer Hinweis: jetzt live
+        } else if (!onAir && wantLive) {
+          stopLive();
+          setMsg('Live beendet – bereit.', 'ok');
+        }
       }
     } else if (msg.type === 'config') {
       rotate = msg.rotate || 0;
@@ -305,6 +339,11 @@ function connectServer() {
     const delay = blockedState === 'stopped' ? 15000 : Math.min(15000, 1000 * 2 ** wsRetry++);
     wsTimer = setTimeout(connectServer, delay);
   };
+}
+
+// Server wissen lassen, ob eine Kamera bereit ist (Admin sieht "Bereit")
+function sendState() {
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'state', ready: camConnected }));
 }
 
 function sendHello() {
@@ -643,7 +682,8 @@ async function startLive() {
   setSteps();
   await requestWakeLock();
   if (camConnected && source === 'ble') await startPreview(); // Helmkamera evtl. neu verbunden
-  setMsg(wsOk ? 'Stream läuft.' : 'Stream startet, sobald der Server verbunden ist.', 'ok');
+  if (!camConnected) setMsg('Live angefordert – bitte Kamera verbinden.', 'err');
+  else setMsg(wsOk ? 'Stream läuft.' : 'Stream startet, sobald der Server verbunden ist.', 'ok');
 }
 
 function stopLive() {
