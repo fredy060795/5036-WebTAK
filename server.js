@@ -292,6 +292,7 @@ async function handleAdminApi(req, res, route) {
     const host = ((config.trustProxy && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
     return json(res, 200, {
       enabled: registrationEnabled(),
+      liveMode: hub.liveMode(),
       appUrl: publicBase(req) + '/app/',
       publicUrl: (store.data.settings || {}).publicUrl || '',           // im Admin eingestellt
       autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
@@ -375,6 +376,20 @@ async function handleAdminApi(req, res, route) {
     log('Stream angelegt', entry.user + '/' + entry.streamId);
     return json(res, 200, { ok: true, stream: { ...hub.status(StreamHub.id(entry.user, entry.streamId)), links: links(req, entry) } });
   }
+  if (route === 'live-mode' && method === 'POST') {
+    const body = await readJson(req);
+    store.data.settings = { ...(store.data.settings || {}), liveMode: body.mode === 'user' ? 'user' : 'admin' };
+    store.save();
+    hub.broadcastLive();
+    log('Live-Modus', hub.liveMode() === 'admin' ? 'Admin schaltet live' : 'Nutzer startet selbst');
+    return json(res, 200, { ok: true, mode: hub.liveMode() });
+  }
+  if (route === 'streams/live-off-all' && method === 'POST') {
+    for (const id of Object.keys(store.data.streams)) hub.setOnAir(id, false);
+    log('Alle Streams auf Bereit');
+    return json(res, 200, { ok: true });
+  }
+
   if (route === 'streams/stop-all' && method === 'POST') {
     hub.stopAll();
     log('Alle Streams gestoppt');
@@ -396,6 +411,12 @@ async function handleAdminApi(req, res, route) {
       hub.setOptions(id, { rotate: body.rotate, mirror: body.mirror, fit: body.fit, framesize: body.framesize, label: body.label });
       return json(res, 200, { ok: true });
     }
+    if (method === 'POST' && action === 'live') {
+      const body = await readJson(req);
+      hub.setOnAir(id, !!body.on);
+      log(body.on ? 'Live geschaltet' : 'Live beendet', id);
+      return json(res, 200, { ok: true });
+    }
     if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
     if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); log('Stream freigegeben', id); return json(res, 200, { ok: true }); }
     if (method === 'POST' && action === 'revoke') { hub.revoke(id); log('Zugang entzogen', id); return json(res, 200, { ok: true, links: links(req, entry) }); }
@@ -408,6 +429,25 @@ async function handleAdminApi(req, res, route) {
 // Stream-Ausgabe
 // ======================================================================
 
+const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Vollbild-Ansicht für den Stream-Link im Browser (Tippen: ganzes Bild / füllen, Doppeltippen: Vollbild)
+function viewerPage(entry) {
+  const title = escapeHtml(entry.label || entry.user);
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
+img{display:block;width:100vw;height:100vh;object-fit:contain}body.fill img{object-fit:cover}
+#hint{position:fixed;left:10px;bottom:8px;color:#ccc;font:13px system-ui,sans-serif;text-shadow:0 1px 2px #000}</style>
+</head><body><img src="?raw=1" alt="${title}">
+<div id="hint">${title} · Tippen: füllen / ganzes Bild · Doppeltippen: Vollbild</div>
+<script>
+document.body.onclick=function(){document.body.classList.toggle('fill')};
+document.body.ondblclick=function(){var d=document.documentElement;if(document.fullscreenElement)document.exitFullscreen();else if(d.requestFullscreen)d.requestFullscreen()};
+setTimeout(function(){var h=document.getElementById('hint');if(h)h.remove()},5000);
+</script></body></html>`;
+}
+
 async function handleStream(req, res, user, streamId, rest) {
   const entry = hub.get(user, streamId);
   if (!entry) return send(res, 404, 'Stream nicht gefunden');
@@ -416,6 +456,9 @@ async function handleStream(req, res, user, streamId, rest) {
 
   if (rest === '' || rest === '/') {
     if (req.method === 'HEAD') return send(res, 200, '', 'multipart/x-mixed-replace');
+    // Browser bekommt eine Vollbild-Seite, Player (ATAK, VLC …) den MJPEG-Stream
+    const wantsHtml = /text\/html/.test(req.headers.accept || '') && !/[?&]raw\b/.test(req.url);
+    if (wantsHtml) return send(res, 200, viewerPage(entry), 'text/html; charset=utf-8');
     return hub.addMjpegViewer(id, res);
   }
   if (rest === '/snapshot.jpg') {
@@ -428,6 +471,7 @@ async function handleStream(req, res, user, streamId, rest) {
     if (!tc) return send(res, 503, 'HLS/MPEG-TS nicht verfügbar: ffmpeg ist auf dem Server nicht installiert.');
     if (rest === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'X-Accel-Buffering': 'no' });
+      res.flushHeaders();
       return tc.addTsClient(res);
     }
     tc.touch();
@@ -517,6 +561,7 @@ function handleUpgrade(req, socket, head) {
       stream: links(req, entry).stream,
     }));
     ws.send(JSON.stringify(StreamHub.config(entry)));
+    hub.sendLive(id);
 
     let alive = true;
     ws.on('pong', () => { alive = true; });
@@ -540,6 +585,8 @@ function handleUpgrade(req, socket, head) {
           if (msg.camera !== undefined) live.camera = String(msg.camera).slice(0, 40);
           if (msg.phone !== undefined) live.phone = String(msg.phone).slice(0, 120);
           if (msg.resolution !== undefined) live.resolution = String(msg.resolution).slice(0, 20);
+        } else if (msg.type === 'state') {
+          live.ready = !!msg.ready; // Kamera am Handy verbunden
         } else if (msg.type === 'options') {
           // Nutzer richtet am Handy selbst aus (Drehung/Spiegeln); Admin sieht und kann es ändern
           hub.setOptions(id, { rotate: msg.rotate, mirror: msg.mirror });

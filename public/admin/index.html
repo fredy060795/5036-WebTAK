@@ -79,7 +79,10 @@
     <section class="card">
       <div class="row between">
         <h2>QR-Code für alle Nutzer</h2>
-        <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
+        <div class="row">
+          <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
+          <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
+        </div>
       </div>
       <div class="appqr">
         <img id="appQr" class="qr-small" alt="QR-Code zur Handy-Seite">
@@ -117,7 +120,8 @@
         <h2>Streams</h2>
         <div class="row">
           <input id="filter" placeholder="Suchen …" class="filter">
-          <button class="danger pri" id="stopAllBtn">Alle Streams stoppen</button>
+          <button id="liveOffAllBtn" class="live-only">Alle auf Bereit</button>
+          <button class="danger pri" id="stopAllBtn">Alle Streams sperren</button>
         </div>
       </div>
       <p class="mut small hidden" id="noFfmpeg">ffmpeg ist auf dem Server nicht installiert – nur der MJPEG-Link ist verfügbar.</p>
