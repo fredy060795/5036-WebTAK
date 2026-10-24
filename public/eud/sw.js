@@ -1,7 +1,7 @@
 // Service Worker: App, Bibliotheken und Kartenkacheln bleiben auf dem Gerät,
 // damit der EUD auch ohne Internet startet und die Karte zeigt.
 
-const SHELL_CACHE = 'eud-shell-v3';
+const SHELL_CACHE = 'eud-shell-v4';
 const TILE_CACHE = 'eud-tiles';
 const MAX_TILES = 40000; // gespeicherte Bereiche + zuletzt angesehene Kacheln
 const SHELL = [

@@ -31,7 +31,10 @@
 
   // ---------------- KML/KMZ -> Leaflet ----------------
 
-  map.createPane('kml').style.zIndex = 390; // unter Zeichnungen und Markern
+  // Eigene Ebene für Overlays: über den Kacheln, unter Zeichnungen und Markern. Mit drehbarer Karte
+  // muss sie in der mitdrehenden Ebene liegen – sonst liegt sie unter der Karte und dreht nicht mit.
+  const kmlPane = map.createPane('kml', map.getPane('rotatePane') || map.getPane('mapPane'));
+  kmlPane.style.zIndex = 390;
   const layers = new Map(); // overlay id -> Leaflet-Layer
   let overlays = [];
 

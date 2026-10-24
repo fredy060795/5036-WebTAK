@@ -105,16 +105,18 @@ sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anle
 
 Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau,
 Oberfläche auf **Englisch** (multinational). Läuft auf Android und iPhone (Safari → Teilen → „Zum
-Home-Bildschirm“). Aufbau wie die LPU5-EUD:
+Home-Bildschirm“). Aufbau wie ATAK:
 
-- **Kopfzeile:** Uhrzeit, Server-Status als Punkt (grün = verbunden, orange = nur ein Teil der Server,
-  rot = offline), Pin (Markerleiste unten ein-/ausklappen), Chat, Video, Menü.
-- **Links unter der Kopfzeile:** Kompass. Antippen = Karte dreht mit der Blickrichtung (HDG-UP),
-  erneut antippen = Nord oben (N-UP, Standard wie ATAK). Ohne Kompass-Sensor dreht die Karte beim
-  Gehen/Fahren nach dem GPS-Kurs.
+- **Leiste oben:** Karten (Layers), Marker, Chat, Video, Tools (Menü als Kachel-Raster wie ATAK:
+  Servers, Contacts, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
+- **Links:** Kompass (antippen = Blickrichtung oben „HDG“, erneut = Nord oben „N“; ohne Sensor nach
+  GPS-Kurs), darunter „auf mich zoomen“.
 - **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
-- **Unten (über den Pin):** Feind, Freund, Neutral, Unbekannt und Entfernungsmesser. Symbol wählen,
-  dann die Stelle auf der Karte antippen. Rechts unten: auf eigene Position zentrieren.
+- **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
+  Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
+- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK, Unbekannt/Neutral/Feind/Freund wählen,
+  dann die Stelle auf der Karte antippen.
+- Alle Fenster öffnen als Sheet unten (im Querformat rechts), immer nur eines gleichzeitig.
 
 **Kernfunktionen**
 

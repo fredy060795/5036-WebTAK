@@ -182,9 +182,6 @@ function symbolSvg(sidc, size = 26) {
 // ======================================================================
 
 let battery = null;
-function tick() { $('clock').textContent = hhmm(new Date()); }
-tick();
-setInterval(tick, 10000);
 // Akku nur für die eigene Position (ATAK zeigt ihn beim Kontakt)
 if (navigator.getBattery) navigator.getBattery().then(b => {
   const upd = () => { battery = Math.round(b.level * 100); };
@@ -202,8 +199,16 @@ function showMe() {
 
 const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts', map: 'Map', data: 'TAK Data' };
 let popupSec = null;
+// Wie ATAK: immer nur ein Sheet unten offen
+function closeSheets(except) {
+  if (except !== 'sidebar') closeSidebar();
+  if (except !== 'popup') closePopup();
+  if (except !== 'chat' && typeof closeChat === 'function') closeChat();
+  if (except !== 'markers' && profile.showTools && typeof showTools === 'function') showTools(false);
+}
+
 function openPopup(sec, title) {
-  closeSidebar();
+  closeSheets('popup');
   popupSec = sec;
   for (const s of document.querySelectorAll('.mbody section')) s.classList.toggle('on', s.dataset.sec === sec);
   $('popupTitle').textContent = title || TITLES[sec] || '';
@@ -220,12 +225,23 @@ function closePopup() {
 }
 for (const b of document.querySelectorAll('[data-pclose]')) b.addEventListener('click', closePopup);
 
-function openSidebar() { $('sidebar').classList.remove('hidden'); }
+function openSidebar() { closeSheets('sidebar'); $('sidebar').classList.remove('hidden'); }
 function closeSidebar() { $('sidebar').classList.add('hidden'); }
 for (const b of document.querySelectorAll('[data-sbclose]')) b.addEventListener('click', closeSidebar);
-$('btnMenu').addEventListener('click', openSidebar);
+$('btnMenu').addEventListener('click', () => ($('sidebar').classList.contains('hidden') ? openSidebar() : closeSidebar()));
+$('btnLayers').addEventListener('click', () => (popupSec === 'map' ? closePopup() : openPopup('map')));
 for (const t of document.querySelectorAll('[data-open]')) {
-  t.addEventListener('click', () => (t.dataset.open === 'chat' ? openChat() : openPopup(t.dataset.open)));
+  t.addEventListener('click', () => {
+    const o = t.dataset.open;
+    if (o === 'chat') return openChat();
+    if (o === 'overlays' || o === 'sync' || o === 'data') {
+      openPopup('data', { overlays: 'Overlay Manager', sync: 'Data Sync', data: 'Data Packages' }[o]);
+      const tab = document.querySelector(`#dataTabs [data-tab="${o === 'data' ? 'packages' : o}"]`);
+      if (tab) tab.click();
+      return;
+    }
+    openPopup(o);
+  });
 }
 $('connBtn').addEventListener('click', () => openPopup('server'));
 
@@ -527,8 +543,7 @@ function chatXml(text) {
 }
 
 function openChat() {
-  closeSidebar();
-  closePopup();
+  closeSheets('chat');
   unread = 0;
   updateBadge();
   renderChat();
@@ -580,6 +595,7 @@ function updateStatus() {
   else if (anyErr) text = 'ERROR';
   else text = 'CONNECTING';
   $('dot').className = 'dot ' + kind;
+  $('connBtn').className = kind;
   $('statusText').textContent = text;
   $('connBtn').title = 'Servers: ' + text;
   if (popupSec === 'server') renderServers();
@@ -745,6 +761,7 @@ function sendSelfTo(srv) {
 window.eudSendSelf = sendSelf;
 
 function drawMe() {
+  updateSelfInfo();
   const ll = [me.lat, me.lon];
   const col = TEAMS[profile.team] || '#00FFFF';
   const rot = (Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0)) + northAngle();
@@ -792,8 +809,8 @@ $('btnLocate').classList.add('active');
 const TOOL_NAMES = { 'a-h-G': 'Hostile', 'a-f-G': 'Friendly', 'a-n-G': 'Neutral', 'a-u-G': 'Unknown', 'b-m-p-s-p-i': 'Point' };
 let tool = null;
 for (const b of document.querySelectorAll('[data-tool]')) {
-  const sidc = sidcFor(b.dataset.tool + '-U');
-  if (sidc) b.innerHTML = symbolSvg(sidc, 22).svg;
+  const sidc = sidcFor(b.dataset.tool);
+  if (sidc) b.innerHTML = symbolSvg(sidc, 30).svg;
   b.addEventListener('click', () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
 }
 function setTool(t) {
@@ -808,7 +825,17 @@ function placeMarker(latlng) {
   const now = new Date();
   const type = tool;
   const uid = profile.uid + '-' + rnd(4);
-  const name = `${TOOL_NAMES[type]} ${hhmm(now)}`;
+  // Name wie ATAK: Präfix + laufende Nummer (ohne Präfix: Art + Uhrzeit)
+  const prefix = ($('mkPrefix').value || '').trim();
+  let name = `${TOOL_NAMES[type]} ${hhmm(now)}`;
+  if (prefix) {
+    const idx = Math.max(1, Number($('mkIndex').value) || 1);
+    name = `${prefix} ${idx}`;
+    $('mkIndex').value = idx + 1;
+  }
+  profile.markerPrefix = prefix;
+  profile.markerIndex = Number($('mkIndex').value) || 1;
+  saveProfile();
   const xml = `<event version="2.0" uid="${uid}" type="${type}" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 30 * 86400000))}">`
     + `<point lat="${latlng.lat.toFixed(7)}" lon="${latlng.lng.toFixed(7)}" hae="9999999" ce="9999999" le="9999999"/>`
     + `<detail><contact callsign="${xmlEsc(name)}"/>`
@@ -1623,7 +1650,7 @@ function updateCompass() {
   $('needle').style.transform = `rotate(${Math.round(needleAngle * 10) / 10}deg)`;
   const shown = compassMode === 'heading' && heading != null ? heading : (360 - n) % 360;
   $('compassText').textContent = String(Math.round(shown) % 360).padStart(3, '0') + '°';
-  $('compassMode').textContent = compassMode === 'heading' ? 'HDG-UP' : 'N-UP';
+  $('compassMode').textContent = compassMode === 'heading' ? 'HDG' : 'N';
   $('compass').classList.toggle('heading', compassMode === 'heading');
 }
 
@@ -1755,6 +1782,7 @@ function addMeasurePoint(ll) {
 }
 function toggleMeasure() {
   measuring = !measuring;
+  closeSheets();
   $('btnMeasure').classList.toggle('active', measuring);
   $('measureHint').classList.toggle('hidden', !measuring);
   map.getContainer().classList.toggle('drawing', measuring);
@@ -1764,7 +1792,11 @@ $('btnMeasure').addEventListener('click', toggleMeasure);
 
 // ---------------- Symbolleiste ein/aus (Pin) ----------------
 
+$('toolsClose').addEventListener('click', () => showTools(false));
+$('mkPrefix').value = profile.markerPrefix || '';
+$('mkIndex').value = profile.markerIndex || 1;
 function showTools(on) {
+  if (on) closeSheets('markers');
   profile.showTools = !!on;
   saveProfile();
   $('toolbar').classList.toggle('hidden', !on);
@@ -1773,6 +1805,50 @@ function showTools(on) {
 }
 $('btnPin').addEventListener('click', () => showTools(!profile.showTools));
 showTools(profile.showTools);
+
+// ======================================================================
+// Eigene Position unten rechts (wie ATAK): Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit
+// ======================================================================
+
+// WGS84 -> MGRS (z. B. "33U VP 49594 44664")
+function toMGRS(lat, lon) {
+  if (!(lat > -80 && lat < 84)) return '';
+  const a = 6378137, f = 1 / 298.257223563, k0 = 0.9996;
+  const e2 = f * (2 - f), ep2 = e2 / (1 - e2);
+  let zone = Math.floor((lon + 180) / 6) + 1;
+  if (lat >= 56 && lat < 64 && lon >= 3 && lon < 12) zone = 32;
+  if (lat >= 72) zone = lon < 9 ? 31 : lon < 21 ? 33 : lon < 33 ? 35 : lon < 42 ? 37 : zone;
+  const r = Math.PI / 180;
+  const phi = lat * r, lam = lon * r, lam0 = ((zone - 1) * 6 - 180 + 3) * r;
+  const N = a / Math.sqrt(1 - e2 * Math.sin(phi) ** 2);
+  const T = Math.tan(phi) ** 2, C = ep2 * Math.cos(phi) ** 2, A = Math.cos(phi) * (lam - lam0);
+  const M = a * ((1 - e2 / 4 - 3 * e2 ** 2 / 64 - 5 * e2 ** 3 / 256) * phi - (3 * e2 / 8 + 3 * e2 ** 2 / 32 + 45 * e2 ** 3 / 1024) * Math.sin(2 * phi)
+    + (15 * e2 ** 2 / 256 + 45 * e2 ** 3 / 1024) * Math.sin(4 * phi) - (35 * e2 ** 3 / 3072) * Math.sin(6 * phi));
+  const E = k0 * N * (A + (1 - T + C) * A ** 3 / 6 + (5 - 18 * T + T * T + 72 * C - 58 * ep2) * A ** 5 / 120) + 500000;
+  let Nn = k0 * (M + N * Math.tan(phi) * (A * A / 2 + (5 - T + 9 * C + 4 * C * C) * A ** 4 / 24 + (61 - 58 * T + T * T + 600 * C - 330 * ep2) * A ** 6 / 720));
+  if (lat < 0) Nn += 10000000;
+  const band = 'CDEFGHJKLMNPQRSTUVWX'[Math.min(19, Math.floor((lat + 80) / 8))];
+  const set = zone % 6 || 6;
+  const col = ['ABCDEFGH', 'JKLMNPQR', 'STUVWXYZ'][(set - 1) % 3][Math.floor(E / 100000) - 1];
+  const row = 'ABCDEFGHJKLMNPQRSTUV'[(Math.floor(Nn / 100000) + (set % 2 === 0 ? 5 : 0)) % 20];
+  const pad = v => String(Math.floor(v % 100000)).padStart(5, '0');
+  return `${zone}${band} ${col}${row} ${pad(E)} ${pad(Nn)}`;
+}
+window.eudMGRS = toMGRS;
+
+function updateSelfInfo() {
+  $('siCall').textContent = profile.callsign || '---';
+  if (!me) { $('siGrid').textContent = 'No GPS'; $('siAlt').textContent = $('siHdg').textContent = $('siSpd').textContent = $('siAcc').textContent = ''; return; }
+  $('siGrid').textContent = toMGRS(me.lat, me.lon);
+  $('siAlt').textContent = Number.isFinite(me.alt) && me.alt !== null ? `${Math.round(me.alt)} m MSL` : '--- m MSL';
+  const dir = compassMode === 'heading' && heading != null ? heading : (heading != null ? heading : (Number.isFinite(me.course) ? me.course : null));
+  $('siHdg').textContent = dir == null ? '---°' : `${String(Math.round(dir) % 360).padStart(3, '0')}°`;
+  $('siSpd').textContent = `${Number.isFinite(me.speed) && me.speed !== null ? Math.round(me.speed * 3.6) : 0} km/h`;
+  $('siAcc').textContent = `+/- ${Math.round(me.acc || 0)}m`;
+}
+setInterval(updateSelfInfo, 2000);
+
+L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 110 }).addTo(map);
 
 // ======================================================================
 // Start
