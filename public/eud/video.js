@@ -416,9 +416,10 @@
       vid.classList.add('hidden');
       say(text);
       const alt = $('vwAlt');
-      alt.textContent = isHttp ? 'Open in new tab' : 'Copy address (VLC)';
+      const tab = isHttp && !/\.m3u8(\?|$)/i.test(url); // eine .m3u8 im Tab spielt der Browser meist nicht ab
+      alt.textContent = tab ? 'Open in new tab' : 'Copy address (VLC)';
       alt.onclick = () => {
-        if (isHttp) window.open(url, '_blank', 'noopener');
+        if (tab) window.open(url, '_blank', 'noopener');
         else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { alt.textContent = 'Copied'; }, () => prompt('Stream address:', url));
         else prompt('Stream address:', url);
       };
@@ -436,16 +437,24 @@
       img.classList.add('hidden');
       vid.classList.remove('hidden');
       const via = mediaProxy(src); // gleiche Herkunft: kein Mixed Content, kein CORS
-      if (vid.canPlayType('application/vnd.apple.mpegurl')) { // Safari/iPhone: eingebaut
+      // Woran es liegt (Antwort des Video-Servers über die Durchreiche) – statt nur „nicht erreichbar“
+      const why = async fallback => {
+        const r = await fetch(via, { cache: 'no-store' }).catch(() => null);
+        const t = r && !r.ok ? (await r.text().catch(() => '')).slice(0, 160) : '';
+        giveUp(t ? `${fallback} (${t})` : fallback);
+      };
+      let Hls = null;
+      try { Hls = await loadHlsLib(); } catch (e) { /* dann eingebaut */ }
+      // hls.js bevorzugt; den eingebauten Player (Safari/iPhone, neuere Chrome/Edge) nur, wenn hls.js nicht geht –
+      // der eingebaute in Chrome/Edge spielt die MediaMTX-Streams des TAK-Servers oft nicht ab
+      if (!Hls || !Hls.isSupported()) {
+        if (!vid.canPlayType('application/vnd.apple.mpegurl')) return giveUp('This browser cannot play HLS video.');
         vid.onloadeddata = () => say('');
-        vid.onerror = () => giveUp('Stream not reachable (HLS). ATAK/iTAK may still play it via RTSP.');
+        vid.onerror = () => why('Stream not reachable (HLS). ATAK/iTAK may still play it via RTSP.');
         vid.src = via;
         vid.play().catch(() => {});
         return;
       }
-      let Hls;
-      try { Hls = await loadHlsLib(); } catch (e) { return giveUp('HLS player could not be loaded.'); }
-      if (!Hls || !Hls.isSupported()) return giveUp('This browser cannot play HLS video.');
       const h = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 2, manifestLoadingMaxRetry: 2 });
       hls = h;
       h.on(Hls.Events.MANIFEST_PARSED, () => { say(''); vid.play().catch(() => {}); });
@@ -453,9 +462,8 @@
         if (!data.fatal || hls !== h) return;
         h.destroy();
         hls = null;
-        giveUp(data.type === Hls.ErrorTypes.NETWORK_ERROR
-          ? 'Stream not reachable via HLS (is the camera live?). ATAK/iTAK may still play it via RTSP.'
-          : 'Stream format cannot be played in the browser.');
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) why('Stream not reachable via HLS (is the camera live?). ATAK/iTAK may still play it via RTSP.');
+        else giveUp('Stream format cannot be played in the browser.');
       });
       h.loadSource(via);
       h.attachMedia(vid);
