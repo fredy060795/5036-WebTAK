@@ -1,4 +1,4 @@
-/* Registrierung und Zugangsseite (gleicher Stil wie die EUD) */
+/* Registration and access page (same style as the EUD) */
 :root { --bg: #11151b; --card: #1d2128; --line: #3a404a; --text: #fff; --mut: #9aa3ad; --blue: #33b5e5; --cyan: #2fd8ff; --green: #3ddc4b; --red: #e53935; --yellow: #f6c344; color-scheme: dark; }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; }

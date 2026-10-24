@@ -1,5 +1,5 @@
-// TAK-Zugänge gegen einen nachgebauten OpenTAKServer: Registrierung, Freigabe, Teams/Sichtbarkeit,
-// Rufname/Team in Geräte-Profilen, Sperren, Löschen.
+// TAK access against a mock OpenTAKServer: registration, approval, teams/visibility,
+// callsign/team in device profiles, blocking, deleting.
 
 const { test, before, after } = require('node:test');
 const assert = require('node:assert/strict');
@@ -26,101 +26,101 @@ after(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
-test('Altes Standard-Passwort "atakatak" wird beim Start auf zufällig umgestellt (einmalig)', () => {
+test('old default password "atakatak" is switched to random once at startup', () => {
   const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tu-pw-'));
   const st = new Store(d);
   st.data.tak = { ots: { url: '', userPassword: 'atakatak' } };
   assert.equal(new TakUsers(st).t.ots.userPassword, '');
-  // danach bewusst gesetzt: bleibt
+  // set deliberately afterwards: kept
   st.data.tak.ots.userPassword = 'atakatak';
   assert.equal(new TakUsers(st).t.ots.userPassword, 'atakatak');
   fs.rmSync(d, { recursive: true, force: true });
 });
 
-test('OTS-Client: Anmeldung mit falschem und richtigem Passwort', async () => {
-  await assert.rejects(new Ots({ url, username: 'otsadmin', password: 'falsch' }).test(), /login failed/);
+test('OTS client: login with wrong and correct password', async () => {
+  await assert.rejects(new Ots({ url, username: 'otsadmin', password: 'wrong' }).test(), /login failed/);
   const r = await new Ots({ url, username: 'otsadmin', password: 'otspass' }).test();
   assert.equal(r.ok, true);
 });
 
-test('Registrierung: Codewort, Pflichtfelder, doppelte E-Mail, ohne SMTP direkt "pending"', () => {
-  tu.setRegistration({ open: true, codeword: 'Adler', emailConfirm: true });
-  assert.throws(() => tu.register({ name: 'Horst', email: 'h@example.com', codeword: 'falsch' }, { smtpReady: false }), /code word/);
-  assert.throws(() => tu.register({ name: 'Horst', email: 'kaputt', codeword: 'adler' }, { smtpReady: false }), /e-mail/);
-  const u = tu.register({ name: 'Horst', unit: 'Zug 1', email: 'H@Example.com', callsign: 'Horst', codeword: 'adler' }, { smtpReady: false });
+test('registration: code word, required fields, duplicate e-mail, without SMTP directly "pending"', () => {
+  tu.setRegistration({ open: true, codeword: 'Eagle', emailConfirm: true });
+  assert.throws(() => tu.register({ name: 'Horst', email: 'h@example.com', codeword: 'wrong' }, { smtpReady: false }), /code word/);
+  assert.throws(() => tu.register({ name: 'Horst', email: 'broken', codeword: 'eagle' }, { smtpReady: false }), /e-mail/);
+  const u = tu.register({ name: 'Horst', unit: 'Platoon 1', email: 'H@Example.com', callsign: 'Horst', codeword: 'eagle' }, { smtpReady: false });
   assert.equal(u.status, 'pending');
   assert.equal(u.email, 'h@example.com');
   assert.equal(u.token.length, 48);
-  assert.throws(() => tu.register({ name: 'X', email: 'h@example.com', codeword: 'adler' }, { smtpReady: false }), /already registered/);
-  // mit SMTP: erst E-Mail bestätigen
-  const v = tu.register({ name: 'Vera', email: 'v@example.com', codeword: 'Adler' }, { smtpReady: true });
+  assert.throws(() => tu.register({ name: 'X', email: 'h@example.com', codeword: 'eagle' }, { smtpReady: false }), /already registered/);
+  // with SMTP: confirm the e-mail first
+  const v = tu.register({ name: 'Vera', email: 'v@example.com', codeword: 'Eagle' }, { smtpReady: true });
   assert.equal(v.status, 'unconfirmed');
-  assert.equal(tu.confirmEmail('falsch'), null);
+  assert.equal(tu.confirmEmail('wrong'), null);
   assert.equal(tu.confirmEmail(v.emailToken).status, 'pending');
   tu.setRegistration({ open: false, codeword: '', emailConfirm: true });
   assert.throws(() => tu.register({ name: 'Y', email: 'y@example.com' }, { smtpReady: false }), /closed/);
   tu.setRegistration({ open: true, codeword: '', emailConfirm: true });
 });
 
-test('Freigabe nur mit OTS; legt Konto, Gruppen und QR an; Rufname überschreiben', async () => {
+test('approval only with OTS; creates account, groups and QR; overriding the callsign', async () => {
   const horst = tu.list().find(u => u.name === 'Horst');
   await assert.rejects(tu.approve(horst.id), /OpenTAKServer/);
   tu.setOts({ url, username: 'otsadmin', password: 'otspass', host: 'tak.example.com' });
   assert.equal(tu.fixQr('tak://com.atakmap.app/enroll?host=127.0.0.1:8089&username=a&token=b'), 'tak://com.atakmap.app/enroll?host=tak.example.com:8089&username=a&token=b');
-  await tu.setTeams([{ name: 'Blau', color: 'Blue' }, { name: 'Rot', color: 'Red' }], []);
-  const blau = tu.t.teams[0], rot = tu.t.teams[1];
-  const u = await tu.approve(horst.id, { callsign: 'Alpha 10', team: blau.id, role: 'Team Lead' });
+  await tu.setTeams([{ name: 'Blue', color: 'Blue' }, { name: 'Red', color: 'Red' }], []);
+  const blue = tu.t.teams[0], red = tu.t.teams[1];
+  const u = await tu.approve(horst.id, { callsign: 'Alpha 10', team: blue.id, role: 'Team Lead' });
   assert.equal(u.status, 'active');
   assert.equal(u.callsign, 'Alpha 10');
   assert.equal(u.username, 'alpha_10');
-  assert.match(u.password, /^[A-Za-z0-9]{14}$/, 'neue Konten: zufälliges Passwort');
+  assert.match(u.password, /^[A-Za-z0-9]{14}$/, 'new accounts: random password');
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.match(u.atakQr, /^tak:\/\/com\.atakmap\.app\/enroll\?host=tak\.example\.com:8089&username=alpha_10&token=/);
-  // Ohne Sperren: keine Gruppe – wie von Hand angelegte OTS-Benutzer (OTS nimmt dann __ANON__)
+  // Without blocks: no group – like OTS users created by hand (OTS then uses __ANON__)
   assert.deepEqual(mock.groupsOf('alpha_10'), []);
-  // Zugangsseite zeigt Daten erst nach Freigabe
+  // access page shows the data only after approval
   const pv = tu.publicView(u);
   assert.equal(pv.username, 'alpha_10');
   assert.equal(pv.host, 'tak.example.com');
   const vera = tu.list().find(x => x.name === 'Vera');
   assert.equal(tu.publicView(vera).password, undefined);
-  await tu.approve(vera.id, { callsign: 'Rot 1', team: rot.id });
-  assert.deepEqual(mock.groupsOf('rot_1'), []);
+  await tu.approve(vera.id, { callsign: 'Red 1', team: red.id });
+  assert.deepEqual(mock.groupsOf('red_1'), []);
 });
 
-test('Sichtbarkeit: Rot darf Blau nicht sehen -> Rot liest Blau nicht mehr', async () => {
-  const [blau, rot] = tu.t.teams;
-  const errors = await tu.setTeams(tu.t.teams, [[rot.id, blau.id]]);
+test('visibility: Red may not see Blue -> Red no longer reads Blue', async () => {
+  const [blue, red] = tu.t.teams;
+  const errors = await tu.setTeams(tu.t.teams, [[red.id, blue.id]]);
   assert.deepEqual(errors, []);
-  // Rot liest Blau nicht; mit Geräten ohne Gruppe (__ANON__) tauscht Rot weiter aus. Blau ist für Rot
-  // ausgeblendet und sendet daher nicht nach __ANON__ (sonst sähe Rot es dort doch).
-  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT', '__ANON__.IN', '__ANON__.OUT']);
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
-  assert.equal(tu.canSee(blau.id, rot.id), true);
-  assert.equal(tu.canSee(rot.id, blau.id), false);
-  // neues Team mit Sperre in einem Schritt (Entwurfs-Kennung)
-  await tu.setTeams([...tu.t.teams, { id: 'new1', name: 'Gelb', color: 'Yellow' }], [[rot.id, blau.id], ['new1', rot.id]]);
-  const gelb = tu.t.teams.find(t => t.name === 'Gelb');
-  assert.notEqual(gelb.id, 'new1');
-  assert.equal(tu.canSee(gelb.id, rot.id), false);
-  assert.equal(tu.canSee(gelb.id, blau.id), true);
-  // Gelb ist neu: Blau und Rot (sofern nicht gesperrt) lesen es mit
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_GELB.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
-  // Sperren wieder weg: alle Gruppen werden entfernt
-  await tu.setTeams(tu.t.teams.filter(t => t.name !== 'Gelb'), []);
+  // Red does not read Blue; Red still exchanges with devices without a group (__ANON__). Blue is hidden
+  // from Red and therefore does not send to __ANON__ (otherwise Red would see it there).
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_RED.IN', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', '__ANON__.OUT']);
+  assert.equal(tu.canSee(blue.id, red.id), true);
+  assert.equal(tu.canSee(red.id, blue.id), false);
+  // new team with a block in one step (draft id)
+  await tu.setTeams([...tu.t.teams, { id: 'new1', name: 'Yellow', color: 'Yellow' }], [[red.id, blue.id], ['new1', red.id]]);
+  const yellow = tu.t.teams.find(t => t.name === 'Yellow');
+  assert.notEqual(yellow.id, 'new1');
+  assert.equal(tu.canSee(yellow.id, red.id), false);
+  assert.equal(tu.canSee(yellow.id, blue.id), true);
+  // Yellow is new: Blue and Red (unless blocked) read it too
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', 'TEAM_YELLOW.OUT', '__ANON__.OUT']);
+  // blocks removed again: all groups are removed
+  await tu.setTeams(tu.t.teams.filter(t => t.name !== 'Yellow'), []);
   assert.deepEqual(mock.groupsOf('alpha_10'), []);
-  assert.deepEqual(mock.groupsOf('rot_1'), []);
-  // Ohne __ANON__-Austausch nur die Team-Gruppen
+  assert.deepEqual(mock.groupsOf('red_1'), []);
+  // without __ANON__ exchange only the team groups
   tu.setOts({ ...tu.t.ots, anon: false });
-  await tu.setTeams(tu.t.teams, [[rot.id, blau.id]]);
-  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT']);
+  await tu.setTeams(tu.t.teams, [[red.id, blue.id]]);
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_RED.IN', 'TEAM_RED.OUT']);
   tu.setOts({ ...tu.t.ots, anon: true });
   await tu.syncAllGroups();
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', '__ANON__.OUT']);
 });
 
-test('Rufname/Team/Rolle als Geräte-Profil für alle Geräte des Benutzers, Teamwechsel ändert Gruppen', async () => {
+test('callsign/team/role as device profile for all of the user\'s devices, team change changes groups', async () => {
   mock.state.euds.push({ uid: 'ANDROID-abc', callsign: 'Horst', username: 'alpha_10' }, { uid: 'ANDROID-def', callsign: 'Horsti', username: 'alpha_10' });
   let r = await tu.syncProfiles();
   assert.equal(r.updated, 2);
@@ -128,28 +128,28 @@ test('Rufname/Team/Rolle als Geräte-Profil für alle Geräte des Benutzers, Tea
   assert.equal(mock.profileOf('ANDROID-def', 'locationTeam'), 'Blue');
   assert.equal(mock.profileOf('ANDROID-def', 'atakRoleType'), 'Team Lead');
   r = await tu.syncProfiles();
-  assert.equal(r.updated, 0, 'unverändert -> nichts erneut senden');
+  assert.equal(r.updated, 0, 'unchanged -> send nothing again');
   const horst = tu.list().find(u => u.username === 'alpha_10');
-  const rot = tu.t.teams[1];
-  await tu.update(horst.id, { callsign: 'Alpha 11', team: rot.id });
+  const red = tu.t.teams[1];
+  await tu.update(horst.id, { callsign: 'Alpha 11', team: red.id });
   assert.equal(mock.profileOf('ANDROID-abc', 'locationCallsign'), 'Alpha 11');
   assert.equal(mock.profileOf('ANDROID-abc', 'locationTeam'), 'Red');
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT', '__ANON__.IN', '__ANON__.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_RED.IN', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
   assert.deepEqual(tu.assignmentFor('alpha_10'), { callsign: 'Alpha 11', team: 'Red', role: 'Team Lead' });
-  assert.equal(tu.assignmentFor('unbekannt'), null);
+  assert.equal(tu.assignmentFor('unknown'), null);
 });
 
-test('Sperren, Entsperren, neues Passwort, Löschen', async () => {
+test('block, unblock, new password, delete', async () => {
   const horst = tu.list().find(u => u.username === 'alpha_10');
   await tu.block(horst.id);
   assert.equal(mock.state.users.alpha_10.active, false);
   assert.equal(tu.assignmentFor('alpha_10'), null);
   await tu.unblock(horst.id);
   assert.equal(mock.state.users.alpha_10.active, true);
-  // Passwort-Einstellung leer = zufällig; ungültige Werte abgelehnt
-  assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'kurz' }), /8–64/);
+  // password setting empty = random; invalid values rejected
+  assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'short' }), /8–64/);
   assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'a&b<c>defgh' }), /OTS/);
-  // festes Passwort bleibt als Option möglich
+  // a fixed password is still possible as an option
   tu.setOts({ ...tu.t.ots, userPassword: 'feldtest1' });
   await tu.newPassword(horst.id);
   assert.equal(horst.password, 'feldtest1');

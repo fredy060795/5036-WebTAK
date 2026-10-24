@@ -1,13 +1,13 @@
-// Daten vom TAK-Server: Datenpakete, Data Sync (Missionen), Video-Feeds und Karten-Overlays (KML/KMZ).
-// Abruf über die Durchreiche (/api/eud/marti) mit dem Client-Zertifikat dieses Geräts.
-// Vom Server geschickte Pakete und Missions-Einladungen werden wie bei ATAK automatisch übernommen.
+// Data from the TAK server: data packages, Data Sync (missions), video feeds and map overlays (KML/KMZ).
+// Fetched through the relay (/api/eud/marti) with this device's client certificate.
+// Packages and mission invitations sent by the server are taken over automatically, like in ATAK.
 'use strict';
 
 (() => {
   const { $, store, profile, toast, setMsg, esc, map, handleCot, askTrust, postJson, getServers, saveServers } = window.eud;
   const msg = (text, ok) => setMsg($('dataMsg'), text, ok);
 
-  // ---------------- Speicher für Overlays (IndexedDB, bleibt offline) ----------------
+  // ---------------- Storage for overlays (IndexedDB, stays offline) ----------------
 
   const idb = (() => {
     let dbp = null;
@@ -31,8 +31,8 @@
 
   // ---------------- KML/KMZ -> Leaflet ----------------
 
-  // Eigene Ebene für Overlays: über den Kacheln, unter Zeichnungen und Markern. Mit drehbarer Karte
-  // muss sie in der mitdrehenden Ebene liegen – sonst liegt sie unter der Karte und dreht nicht mit.
+  // Own pane for overlays: above the tiles, below drawings and markers. With a rotatable map it
+  // must be in the rotating pane – otherwise it lies below the map and does not rotate.
   const kmlPane = map.createPane('kml', map.getPane('rotatePane') || map.getPane('mapPane'));
   kmlPane.style.zIndex = 390;
   const layers = new Map(); // overlay id -> Leaflet-Layer
@@ -45,7 +45,7 @@
   }
   const textOf = html => new DOMParser().parseFromString(String(html || ''), 'text/html').body.textContent.trim();
 
-  // KML lesen; bei Fehlern (z. B. "gx:" ohne Namensraum, nacktes "&") bereinigt erneut versuchen
+  // read KML; on errors (e.g. "gx:" without namespace, bare "&") retry after cleaning
   function parseXml(text) {
     const parse = t => new DOMParser().parseFromString(t, 'application/xml');
     let doc = parse(text);
@@ -59,7 +59,7 @@
     return doc;
   }
 
-  // Pfad einer Datei relativ zur KML (z. B. "../1/0.png" in "0/0/0.kml")
+  // path of a file relative to the KML (e.g. "../1/0.png" in "0/0/0.kml")
   function resolvePath(base, href) {
     const parts = String(base || '').split('/').slice(0, -1);
     for (const p of String(href).split('/')) {
@@ -143,7 +143,7 @@
         };
         walk(pm);
       }
-      // Rasterkarten (GroundOverlay) mit LatLonBox oder gx:LatLonQuad
+      // raster maps (GroundOverlay) with LatLonBox or gx:LatLonQuad
       for (const go of doc.getElementsByTagName('GroundOverlay')) {
         const icon = go.getElementsByTagName('Icon')[0];
         const url = image(txt(icon, 'href'), docPath);
@@ -161,7 +161,7 @@
       }
     }
 
-    // Rasterbilder: eine Detailstufe -> alle zeigen; mehrere (Super-Overlay) -> passende Stufe je Zoom, nur sichtbare
+    // raster images: one detail level -> show all; several (super overlay) -> matching level per zoom, only visible ones
     const levels = new Map();
     for (const g of grounds) {
       const k = Math.round(Math.log2(360 / g.span));
@@ -177,7 +177,7 @@
       const refresh = () => {
         if (!map.hasLayer(group)) return;
         const z = map.getZoom();
-        // Stufe, deren Bilder am Bildschirm etwa 256–512 px breit sind
+        // level whose images are about 256–512 px wide on screen
         const k = keys.reduce((best, lv) => {
           const w = 256 * 2 ** z / 2 ** lv;
           const bw = 256 * 2 ** z / 2 ** best;
@@ -229,7 +229,7 @@
       if (!first) first = ov;
     }
     renderOverlays();
-    // Neues Overlay gleich zeigen (sonst liegt es oft außerhalb des Ausschnitts)
+    // show a new overlay right away (otherwise it is often outside the view)
     if (zoomTo && first && layers.has(first.id)) {
       const b = boundsOf(layers.get(first.id));
       if (b && b.isValid()) map.fitBounds(b, { maxZoom: 15 });
@@ -277,7 +277,7 @@
     }
   }
 
-  // ---------------- Server-Auswahl und Abruf ----------------
+  // ---------------- Server selection and fetching ----------------
 
   const NEED_CERT = 'This needs a TAK server with SSL and a certificate (Menu → Servers).';
   const dataServers = () => getServers().filter(s => s.proto === 'ssl' && s.certPem && s.keyPem);
@@ -313,7 +313,7 @@
     return null;
   }
 
-  // Ergebnis einspielen: CoT auf die Karte, Overlays speichern
+  // apply the result: CoT onto the map, store overlays
   async function apply(result, source, zoomTo) {
     for (const xml of result.cot || []) handleCot(xml);
     if ((result.overlays || []).length) await saveOverlays(result.overlays, source, zoomTo);
@@ -365,7 +365,7 @@
     } catch (e) { msg(e.message); } finally { busy(btn, false); }
   });
 
-  // ---------------- Data Sync (Missionen) ----------------
+  // ---------------- Data Sync (missions) ----------------
 
   let subs = store.get('eud.missions', []); // [{ srv, name, password }]
   const isSub = (srv, name) => subs.some(s => s.srv === srv.id && s.name === name);
@@ -406,7 +406,7 @@
         const s = document.createElement('small');
         s.textContent = [m.description, `${m.items} items`, `${m.files} files`, m.groups && m.groups.length ? m.groups.join(', ') : ''].filter(Boolean).join(' · ');
         t.append(s);
-        // Abonnierte Mission sofort neu laden
+        // reload the subscribed mission right away
         const re = document.createElement('button');
         re.type = 'button';
         re.className = 'sm';
@@ -448,7 +448,7 @@
     } catch (e) { msg(e.message); } finally { busy(btn, false); }
   });
 
-  // Abonnierte Missionen aktuell halten: bei Änderungsmeldung vom Server und alle 5 Minuten
+  // keep subscribed missions up to date: on change messages from the server and every 5 minutes
   async function syncAll() {
     if (!navigator.onLine) return;
     for (const sub of subs) {
@@ -459,7 +459,7 @@
   setInterval(syncAll, 5 * 60 * 1000);
   setTimeout(syncAll, 8000);
 
-  // ---------------- Vom Server geschickt (Auto-Push wie bei ATAK) ----------------
+  // ---------------- Sent by the server (auto push like ATAK) ----------------
 
   const detailAttr = (xml, tag, attr) => {
     const m = new RegExp(`<${tag}\\b[^>]*\\b${attr}="([^"]*)"`).exec(xml);
@@ -468,12 +468,12 @@
   const pushSrv = d => (d && d.srv && d.srv.certPem ? d.srv : dataServers()[0] || null);
   const seenPush = new Set();
 
-  // Datenpaket an dieses Gerät geschickt (b-f-t-r mit <fileshare senderUrl=… sha256=…>)
+  // data package sent to this device (b-f-t-r with <fileshare senderUrl=… sha256=…>)
   document.addEventListener('eud-file-push', async e => {
     const xml = e.detail.xml;
     const url = detailAttr(xml, 'fileshare', 'senderUrl');
     let hash = detailAttr(xml, 'fileshare', 'sha256');
-    try { hash = new URL(url).searchParams.get('hash') || hash; } catch (err) { /* keine URL */ }
+    try { hash = new URL(url).searchParams.get('hash') || hash; } catch (err) { /* not a URL */ }
     const name = detailAttr(xml, 'fileshare', 'filename') || detailAttr(xml, 'fileshare', 'name') || 'package.zip';
     const from = detailAttr(xml, 'fileshare', 'senderCallsign');
     if (!hash || seenPush.has(hash)) return;
@@ -490,7 +490,7 @@
     }
   });
 
-  // Einladung in eine Mission (t-x-m-i): wie ATAK direkt abonnieren
+  // invitation to a mission (t-x-m-i): subscribe directly like ATAK
   document.addEventListener('eud-mission-invite', async e => {
     const name = detailAttr(e.detail.xml, 'mission', 'name');
     const srv = pushSrv(e.detail);
@@ -499,7 +499,7 @@
     try { await subscribe(srv, name); toast(`Mission "${name}" subscribed.`); } catch (err) { toast(`Mission "${name}": ${err.message}`, 6000); }
   });
 
-  // Mission geändert (t-x-m-c): diese Mission neu laden (kurz gesammelt)
+  // mission changed (t-x-m-c): reload this mission (briefly batched)
   const changeTimers = new Map();
   document.addEventListener('eud-mission-change', e => {
     const name = e.detail ? detailAttr(e.detail.xml, 'mission', 'name') : '';
@@ -514,7 +514,7 @@
     }
   });
 
-  // ---------------- Overlays vom Gerät ----------------
+  // ---------------- Overlays from the device ----------------
 
   $('ovFile').addEventListener('change', async e => {
     const f = e.target.files[0];
@@ -533,7 +533,7 @@
     } catch (err) { msg(err.message); }
   });
 
-  // ---------------- Video-Feeds vom TAK-Server ----------------
+  // ---------------- Video feeds from the TAK server ----------------
 
   $('feedLoad').addEventListener('click', async () => {
     const btn = $('feedLoad');
@@ -580,8 +580,8 @@
     if (e.detail === 'data') { fillServers(); renderOverlays(); msg(dataServers().length ? '' : NEED_CERT); }
   });
 
-  // Für "Clear Content" in eud.js
-  // Für die 3D-Karte: sichtbare Overlays als Linien/Flächen, Punkte und Rasterbilder
+  // for "Clear Content" in eud.js
+  // for the 3D map: visible overlays as lines/areas, points and raster images
   function for3d() {
     const out = { features: [], points: [], images: [] };
     const walk = l => {

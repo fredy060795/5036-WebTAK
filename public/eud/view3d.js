@@ -1,32 +1,32 @@
-// 3D-Karte wie WinTAK/ATAK: MapLibre mit Gelände (Höhendaten), Himmel und aufrecht stehenden Symbolen.
-// Die flache Leaflet-Karte bleibt das Werkzeug für alles Zeichnen/Messen (bei 0° Neigung); sobald gekippt
-// wird, übernimmt diese Ansicht mit gleichem Ausschnitt, gleicher Drehung und allen Markern.
-// MapLibre wird erst beim ersten Kippen geladen (ES-Modul, Worker liegt daneben).
+// 3D map like WinTAK/ATAK: MapLibre with terrain (elevation data), sky and upright symbols.
+// The flat Leaflet map stays the tool for all drawing/measuring (at 0° tilt); as soon as the map is
+// tilted, this view takes over with the same extent, the same rotation and all markers.
+// MapLibre is only loaded on the first tilt (ES module, the worker sits next to it).
 'use strict';
 
 (() => {
-  const DEM = location.origin + TILE_BASE + 'dem/{z}/{x}/{y}.png'; // Klammern nicht kodieren (new URL würde das tun)
+  const DEM = location.origin + TILE_BASE + 'dem/{z}/{x}/{y}.png'; // do not encode the braces (new URL would)
   const EMPTY = { type: 'FeatureCollection', features: [] };
   const supported = (() => {
     try { return !!document.createElement('canvas').getContext('webgl2'); } catch (e) { return false; }
   })();
 
   let lib = null;         // maplibregl
-  let ml = null;          // Karte
+  let ml = null;          // map
   let loading = null;
   let active = false;
-  let syncing = false;    // Kamera wird gerade von der anderen Karte übernommen
+  let syncing = false;    // camera is being taken over from the other map
   let timer = null;
   let clickedMarker = 0;
   let popup = null;
   const marks = new Map(); // uid -> { m, el, key }
   const ovMarks = [];
   let selfMark = null;
-  let images = [];         // ids der Rasterbilder aus Overlays
-  let demErrors = 0;       // fehlgeschlagene Höhenkacheln
+  let images = [];         // ids of raster images from overlays
+  let demErrors = 0;       // failed elevation tiles
 
   const absUrl = t => (/^https?:\/\//i.test(t) ? t : location.origin + t);
-  const mlZoom = () => map.getZoom() - 1; // Leaflet rechnet mit 256-px-Kacheln, MapLibre mit 512
+  const mlZoom = () => map.getZoom() - 1; // Leaflet works with 256 px tiles, MapLibre with 512
   const leafletBearing = () => (map.getBearing ? map.getBearing() : 0);
 
   function baseSource() {
@@ -86,19 +86,19 @@
         ml.on('pitchend', () => {
           if (!active || syncing) return;
           const p = ml.getPitch();
-          if (p < 2) { setPitch(0); return; } // ganz flach gedreht: zurück zur 2D-Karte
+          if (p < 2) { setPitch(0); return; } // tilted fully flat: back to the 2D map
           pitch = Math.round(p);
           profile.pitch = pitch;
           saveProfile();
         });
         ml.on('dragstart', () => { follow = false; $('btnLocate').classList.remove('active'); });
-        // von Hand gedreht (zwei Finger, rechte Maustaste): Blickrichtungs-Modus beenden
+        // rotated by hand (two fingers, right mouse button): end heading-up mode
         ml.on('rotatestart', e => { if (e.originalEvent && typeof manualRotate === 'function') manualRotate(); });
         ml.on('click', e => {
           if (Date.now() - clickedMarker < 400) return;
-          if (tool) placeMarker(L.latLng(e.lngLat.lat, e.lngLat.lng)); // Symbol gewählt: Antippen setzt den Marker
+          if (tool) placeMarker(L.latLng(e.lngLat.lat, e.lngLat.lng)); // symbol selected: a tap places the marker
         });
-        // Höhendaten nicht erreichbar (offline, gesperrt): 3D ohne Gelände statt Löchern in der Karte
+        // elevation data unreachable (offline, blocked): 3D without terrain instead of holes in the map
         ml.on('error', e => {
           if (e && e.sourceId === 'dem' && ++demErrors === 4 && ml.getTerrain()) {
             ml.setTerrain(null);
@@ -108,9 +108,9 @@
         await new Promise(r => {
           if (ml.loaded()) return r();
           ml.once('load', r);
-          setTimeout(() => (ml.isStyleLoaded() ? r() : ml.once('styledata', r)), 5000); // nicht ewig auf Kacheln warten
+          setTimeout(() => (ml.isStyleLoaded() ? r() : ml.once('styledata', r)), 5000); // do not wait forever for tiles
         });
-        // Leaflet bewegt sich (Eigene Position folgen, Kontakt angetippt, Overlay gezeigt …): 3D folgt
+        // Leaflet moves (following own position, contact tapped, overlay shown …): 3D follows
         map.on('moveend', () => { if (active && !syncing) fromLeaflet(true); });
         map.on('rotate', () => { if (active && !syncing) ml.setBearing(-leafletBearing()); });
       })();
@@ -118,7 +118,7 @@
     await loading;
   }
 
-  // ---------------- Kamera zwischen beiden Karten abgleichen ----------------
+  // ---------------- Sync the camera between both maps ----------------
 
   function fromLeaflet(animate) {
     const c = map.getCenter();
@@ -138,7 +138,7 @@
     } finally { syncing = false; }
   }
 
-  // ---------------- Inhalte: Marker, Zeichnungen, Overlays, eigene Position ----------------
+  // ---------------- Content: markers, drawings, overlays, own position ----------------
 
   function circlePoly(lat, lon, r, n = 64) {
     const pts = [];
@@ -216,9 +216,9 @@
         rec.it = it;
         continue;
       }
-      // Symbole stehen aufrecht zur Kamera (wie in WinTAK), sitzen aber auf dem Gelände
-      // Symbole stehen aufrecht und bleiben immer voll sichtbar (wie WinTAK). MapLibre würde Marker, deren
-      // Bodenpunkt vom Gelände verdeckt ist, auf 20 % abdunkeln – bei starker Neigung fast alle.
+      // Symbols stand upright facing the camera (like in WinTAK) but sit on the terrain.
+      // They always stay fully visible (like WinTAK). MapLibre would dim markers whose ground
+      // point is hidden by terrain to 20 % – at a steep tilt almost all of them.
       const m = new lib.Marker({ element: el, offset, draggable: !!it.own, pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
         .setLngLat([it.c.lon, it.c.lat]).addTo(ml);
       rec = { m, key, it };
@@ -241,7 +241,7 @@
       const el = document.createElement('div');
       el.className = 'm3d-self';
       el.innerHTML = `<svg width="34" height="34" viewBox="0 0 32 32"><path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></svg>`;
-      // Eigener Pfeil liegt flach im Gelände und zeigt in die Bewegungs-/Blickrichtung
+      // own arrow lies flat on the terrain and points in the direction of movement/view
       selfMark = new lib.Marker({ element: el, pitchAlignment: 'map', rotationAlignment: 'map', opacityWhenCovered: '1' }).setLngLat([me.lon, me.lat]).addTo(ml);
     }
     const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0);
@@ -278,7 +278,7 @@
     if (withOverlays) syncOverlays();
   }
 
-  // ---------------- Öffentliche Schnittstelle ----------------
+  // ---------------- Public interface ----------------
 
   window.view3d = {
     supported,
@@ -318,7 +318,7 @@
       map.invalidateSize({ animate: false });
       updateCompass();
     },
-    // Änderungen sammeln und gebündelt zeichnen
+    // collect changes and draw them in one go
     dirty() {
       if (!active || timer) return;
       timer = setTimeout(() => { timer = null; syncAll(false); }, 150);

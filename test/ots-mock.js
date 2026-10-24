@@ -1,4 +1,4 @@
-// Nachgebauter OpenTAKServer (nur die Web-API-Teile, die diese App nutzt) für Tests.
+// Mock OpenTAKServer (only the web API parts this app uses) for tests.
 
 const http = require('http');
 
@@ -9,7 +9,7 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
     members: [],      // { username, group, direction }
     euds: [],         // { uid, callsign, username }
     profiles: [],     // { eud_uid, preference_key, preference_value }
-    tokens: {},       // username -> Zähler
+    tokens: {},       // username -> counter
     videos: {},       // path -> { source, host }
     missions: {},     // name -> { name, description, creator_uid, password, groups }
     mesh: [],         // { name, url, … }
@@ -28,7 +28,7 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
       state.calls.push(`${req.method} ${u.pathname}`);
 
       if (u.pathname === '/api/login' && req.method === 'POST') {
-        // wie OTS: jeder aktive Benutzer kann sich anmelden; nur der Admin darf danach die Admin-API nutzen
+        // like OTS: every active user can log in; only the admin may then use the admin API
         const u = state.users[json.username];
         if (u && u.active && u.password === json.password) return send(200, { meta: { code: 200 }, response: { csrf_token: 'c', user: { authentication_token: 'user-' + json.username } } });
         if (json.username !== admin || json.password !== password) return send(400, { meta: { code: 400 }, response: { errors: ['Invalid password'] } });
@@ -154,7 +154,7 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
     state,
     listen: () => new Promise(r => server.listen(0, '127.0.0.1', () => r(`http://127.0.0.1:${server.address().port}`))),
     close: () => server.close(),
-    // Gruppen eines Benutzers als "GRUPPE.RICHTUNG"
+    // a user's groups as "GROUP.DIRECTION"
     groupsOf: username => state.members.filter(m => m.username === username).map(m => `${m.group}.${m.direction}`).sort(),
     profileOf: (uid, key) => (state.profiles.find(p => p.eud_uid === uid && p.preference_key === key) || {}).preference_value,
   };

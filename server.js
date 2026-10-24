@@ -1,13 +1,13 @@
-// Helm Camera Streams – Server
+// WebTAK / Helm Camera Streams – server
 //
-//   Handy-App:   https://<domain>/app/#u=<benutzer>&s=<streamId>&k=<schlüssel>   (per QR-Code)
-//   Stream:      https://<domain>/<benutzer>/<streamId>                         (MJPEG, Link für ATAK/WinTAK)
-//                https://<domain>/<benutzer>/<streamId>/index.m3u8              (HLS, braucht ffmpeg)
-//                https://<domain>/<benutzer>/<streamId>/stream.ts               (MPEG-TS, braucht ffmpeg)
-//                https://<domain>/<benutzer>/<streamId>/snapshot.jpg            (letztes Bild)
+//   Phone app:   https://<domain>/app/#u=<user>&s=<streamId>&k=<key>             (via QR code)
+//   Stream:      https://<domain>/<user>/<streamId>                             (MJPEG, link for ATAK/WinTAK)
+//                https://<domain>/<user>/<streamId>/index.m3u8                  (HLS, needs ffmpeg)
+//                https://<domain>/<user>/<streamId>/stream.ts                   (MPEG-TS, needs ffmpeg)
+//                https://<domain>/<user>/<streamId>/snapshot.jpg                (last image)
 //   Admin:       https://<admin-domain>/admin/
 //
-// Einstellungen über Umgebungsvariablen, siehe README.md.
+// Settings via environment variables, see README.md.
 
 const http = require('http');
 const https = require('https');
@@ -38,10 +38,10 @@ const config = {
   ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
   tlsCert: process.env.TLS_CERT || '',
   tlsKey: process.env.TLS_KEY || '',
-  // Nur zum Testen am PC (start.bat): eigene CA, die Handys unter /ca.crt herunterladen können
+  // Only for testing on a PC (start.bat): own CA that phones can download at /ca.crt
   testCa: process.env.TEST_CA_FILE || '',
-  // X-Forwarded-* nur auswerten, wenn ein Reverse-Proxy davor sitzt. Mit eigenem
-  // Zertifikat (TLS_CERT) läuft der Server direkt im Netz, dann standardmäßig aus.
+  // Evaluate X-Forwarded-* only when a reverse proxy sits in front. With its own
+  // certificate (TLS_CERT) the server runs directly on the network, then it is off by default.
   trustProxy: process.env.TRUST_PROXY !== undefined ? process.env.TRUST_PROXY !== '0' : !process.env.TLS_CERT,
 };
 
@@ -65,7 +65,7 @@ const TYPES = {
 };
 
 // ======================================================================
-// Hilfsfunktionen
+// Helpers
 // ======================================================================
 
 function hostOf(req) {
@@ -83,7 +83,7 @@ function clientIp(req) {
   return req.socket.remoteAddress || '';
 }
 
-// Öffentliche Adresse: im Admin eingestellt > PUBLIC_URL > aus der Anfrage
+// Public address: set in the admin > PUBLIC_URL > from the request
 function configuredBase() {
   return ((store.data.settings || {}).publicUrl) || config.publicUrl;
 }
@@ -93,18 +93,18 @@ function publicBase(req) {
   return configuredBase() || `${protoOf(req)}://${host}`;
 }
 
-// "https://domain:5036/irgendwas" -> "https://domain:5036"; leer = automatisch
+// "https://domain:5036/anything" -> "https://domain:5036"; empty = automatic
 function normalizeBase(value) {
   const text = String(value || '').trim();
   if (!text) return '';
   let u;
   try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text); } catch (e) { u = null; }
-  if (!u || !/^https?:$/.test(u.protocol) || !u.hostname) throw new Error('Bitte eine gültige Adresse eingeben, z. B. https://example.com:5036');
+  if (!u || !/^https?:$/.test(u.protocol) || !u.hostname) throw new Error('Please enter a valid address, e.g. https://example.com:5036');
   return u.origin;
 }
 
-// Adresse für Links in Reset-Mails: nur aus der Konfiguration, nie aus der Anfrage
-// (sonst könnte jemand über einen gefälschten Host-Header den Link umleiten).
+// Address for links in reset mails: only from the configuration, never from the request
+// (otherwise someone could redirect the link with a forged Host header).
 function resetBase() {
   if (config.adminUrl) return config.adminUrl;
   const pub = configuredBase();
@@ -115,7 +115,7 @@ function resetBase() {
   return u.origin;
 }
 
-// Admin nur auf der Admin-Domain, wenn eine eingestellt ist
+// Admin only on the admin domain, if one is set
 function isAdminHost(req) {
   return !config.adminHost || hostOf(req) === config.adminHost;
 }
@@ -156,13 +156,13 @@ function readJson(req, limit = 64 * 1024) {
     req.on('data', c => {
       size += c.length;
       if (size > limit) {
-        reject(new Error('Anfrage zu groß.'));
+        reject(new Error('Request too large.'));
         req.destroy();
       } else chunks.push(c);
     });
     req.on('end', () => {
       if (!chunks.length) return resolve({});
-      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { reject(new Error('Ungültiges JSON.')); }
+      try { resolve(JSON.parse(Buffer.concat(chunks).toString('utf8'))); } catch (e) { reject(new Error('Invalid JSON.')); }
     });
     req.on('error', reject);
   });
@@ -171,9 +171,9 @@ function readJson(req, limit = 64 * 1024) {
 function serveStatic(res, dir, rel) {
   const root = path.join(PUBLIC_DIR, dir);
   let file = path.normalize(path.join(root, rel || 'index.html'));
-  if (!file.startsWith(root)) return send(res, 404, 'Nicht gefunden');
+  if (!file.startsWith(root)) return send(res, 404, 'Not found');
   if (fs.existsSync(file) && fs.statSync(file).isDirectory()) file = path.join(file, 'index.html');
-  if (!fs.existsSync(file)) return send(res, 404, 'Nicht gefunden');
+  if (!fs.existsSync(file)) return send(res, 404, 'Not found');
   const type = TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream';
   res.writeHead(200, {
     'Content-Type': type,
@@ -185,37 +185,36 @@ function serveStatic(res, dir, rel) {
 }
 
 // ======================================================================
-// Selbst-Anmeldung (allgemeiner QR-Code -> /app/ -> Name + Einheit)
+// Self-registration (general QR code -> /app/ -> name + unit)
 // ======================================================================
 
-const registrations = new Map(); // ip -> [zeitpunkte]
+const registrations = new Map(); // ip -> [timestamps]
 const MAX_REG_PER_HOUR = 20;
 
 function registrationEnabled() {
-  return (store.data.registration || {}).enabled !== false; // Standard: an
+  return (store.data.registration || {}).enabled !== false; // default: on
 }
 
 async function handleRegister(req, res) {
   const body = await readJson(req);
-  const en = body.source === 'eud'; // TAK-EUD ist englisch
   if (!registrationEnabled()) {
-    return json(res, 403, { error: en ? 'Streaming sign-up is currently disabled. Please contact the admin.' : 'Die Anmeldung ist gerade gesperrt. Bitte beim Admin melden.' });
+    return json(res, 403, { error: 'Streaming sign-up is currently disabled. Please contact the admin.' });
   }
   const ip = clientIp(req);
   const now = Date.now();
   const list = (registrations.get(ip) || []).filter(t => now - t < 3600 * 1000);
-  if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: en ? 'Too many sign-ups. Please try again later.' : 'Zu viele Anmeldungen. Bitte später erneut versuchen.' });
+  if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: 'Too many sign-ups. Please try again later.' });
   const entry = hub.register(body.name, body.unit, body.source === 'eud');
   list.push(now);
   registrations.set(ip, list);
-  log('Selbst-Anmeldung', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
-  hub.event(StreamHub.id(entry.user, entry.streamId), 'register', `${entry.label} hat sich angemeldet`);
+  log('Self-registration', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
+  hub.event(StreamHub.id(entry.user, entry.streamId), 'register', `${entry.label} signed up`);
   takVideo.touch(StreamHub.id(entry.user, entry.streamId));
   return json(res, 200, { u: entry.user, s: entry.streamId, k: entry.key, label: entry.label });
 }
 
 // ======================================================================
-// EUD (TAK-Client im Browser): Zertifikat anfordern, .p12 lesen
+// EUD (TAK client in the browser): request a certificate, read .p12
 // ======================================================================
 
 const VENDOR = {
@@ -229,8 +228,8 @@ const VENDOR = {
   'leaflet-rotate.js': 'leaflet-rotate/dist/leaflet-rotate.js',
   'milsymbol.js': 'milsymbol/dist/milsymbol.js',
   'jsQR.js': 'jsqr/dist/jsQR.js',
-  'hls.min.js': 'hls.js/dist/hls.min.js', // HLS-Feeds in Chrome/Edge (Safari kann es selbst)
-  // 3D-Karte (ES-Module; der Worker wird relativ zum Modul geladen)
+  'hls.min.js': 'hls.js/dist/hls.min.js', // HLS feeds in Chrome/Edge (Safari can do it itself)
+  // 3D map (ES modules; the worker is loaded relative to the module)
   'maplibre-gl.mjs': 'maplibre-gl/dist/maplibre-gl.mjs',
   'maplibre-gl-worker.mjs': 'maplibre-gl/dist/maplibre-gl-worker.mjs',
   'maplibre-gl.css': 'maplibre-gl/dist/maplibre-gl.css',
@@ -238,7 +237,7 @@ const VENDOR = {
 
 function serveVendor(res, name) {
   const rel = VENDOR[name];
-  if (!rel) return send(res, 404, 'Nicht gefunden');
+  if (!rel) return send(res, 404, 'Not found');
   const file = require.resolve(rel.split('/')[0] + '/package.json').replace(/package\.json$/, '') + rel.split('/').slice(1).join('/');
   res.writeHead(200, {
     'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
@@ -251,61 +250,61 @@ const tiles = new TileCache(path.join(config.dataDir, 'tiles'), 'WebTAK/1.0 (TAK
 
 async function serveTile(res, rel) {
   const t = TileCache.parse(rel);
-  if (!t) return send(res, 404, 'Nicht gefunden');
+  if (!t) return send(res, 404, 'Not found');
   try {
     const { data, type } = await tiles.get(t);
     res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800', 'Content-Length': data.length });
     res.end(data);
   } catch (e) {
-    send(res, 502, 'Kachel nicht verfügbar');
+    send(res, 502, 'Tile not available');
   }
 }
 
 // ======================================================================
-// TAK-Zugänge (OpenTAKServer): Registrierung, Zugangsseite, Verwaltung
+// TAK access (OpenTAKServer): registration, access page, management
 // ======================================================================
 
 const takUsers = new TakUsers(store, { log });
-// Rufname/Team/Rolle für neue Geräte regelmäßig als OTS-Profil setzen
-// Gruppen beim Start einmal auf den Soll-Stand bringen (z. B. alte TEAM_-Gruppen entfernen, wenn niemand gesperrt ist)
-setTimeout(() => takUsers.syncAllGroups().then(errs => { for (const e of errs) log('OTS-Gruppen:', e); })
-  .catch(e => log('OTS-Gruppen:', e.message)), 10000).unref();
-setInterval(() => takUsers.syncProfiles().then(r => { if (r.updated) log('OTS-Profile aktualisiert:', r.updated); })
-  .catch(e => log('OTS-Profile:', e.message)), 2 * 60 * 1000).unref();
+// regularly set callsign/team/role for new devices as an OTS profile
+// bring groups to the wanted state once at startup (e.g. remove old TEAM_ groups when nothing is blocked)
+setTimeout(() => takUsers.syncAllGroups().then(errs => { for (const e of errs) log('OTS groups:', e); })
+  .catch(e => log('OTS groups:', e.message)), 10000).unref();
+setInterval(() => takUsers.syncProfiles().then(r => { if (r.updated) log('OTS profiles updated:', r.updated); })
+  .catch(e => log('OTS profiles:', e.message)), 2 * 60 * 1000).unref();
 
-// Kamera-Streams automatisch als Video-Feed im TAK-Server eintragen.
-// Adresse für den HLS-Link: eingestellte öffentliche Adresse, sonst die zuletzt im Admin benutzte.
+// Register camera streams as video feeds in the TAK server automatically.
+// Address for the HLS link: the configured public address, otherwise the one last used in the admin.
 const takVideo = new TakVideo({
   store, hub, takUsers, log,
   base: () => configuredBase() || ((store.data.takVideo || {}).lastBase) || '',
 });
-setTimeout(() => takVideo.syncAll().catch(e => log('TAK-Video:', e.message)), 5000).unref();
+setTimeout(() => takVideo.syncAll().catch(e => log('TAK video:', e.message)), 5000).unref();
 let takVideoTick = 0;
 setInterval(() => {
-  // Modus "nur live": alle 30 s prüfen, sonst alle 10 min zur Sicherheit alles abgleichen
-  if (takVideo.s.when === 'live' || ++takVideoTick % 20 === 0) takVideo.syncAll().catch(e => log('TAK-Video:', e.message));
+  // mode "live only": check every 30 s, otherwise sync everything every 10 min to be safe
+  if (takVideo.s.when === 'live' || ++takVideoTick % 20 === 0) takVideo.syncAll().catch(e => log('TAK video:', e.message));
 }, 30 * 1000).unref();
 
-const accessLimits = new Map(); // ip -> [zeitpunkte] für Registrierungen
+const accessLimits = new Map(); // ip -> [timestamps] for registrations
 function mailReady() { return smtpConfigured(store.data.smtp); }
-// Mail an einen Nutzer. Sicherheitsnetz: Links zum Admin-Bereich gehen nie an Nutzer.
+// Mail to a user. Safety net: links to the admin area are never sent to users.
 function mailUser(to, subject, text) {
   if (!mailReady() || !to) return Promise.resolve(false);
   if (/\/admin\b/i.test(text)) {
-    log('E-Mail an', to, 'NICHT gesendet: enthält einen Link zum Admin-Bereich');
+    log('E-mail to', to, 'NOT sent: contains a link to the admin area');
     return Promise.resolve(false);
   }
-  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
+  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-mail failed:', e.message); return false; });
 }
-// Mail nur an die Admin-Adresse (Einstellungen → System), nie an die anfragende Person
+// Mail only to the admin address (Settings → System), never to the requesting person
 function mailAdmin(subject, text, notTo) {
   const to = String(auth.admin.email || '').trim();
   if (!mailReady() || !to) return Promise.resolve(false);
   if (notTo && to.toLowerCase() === String(notTo).trim().toLowerCase()) {
-    log('Admin-Hinweis nicht gesendet: Admin-E-Mail ist gleich der E-Mail der Anfrage');
+    log('Admin notification not sent: admin e-mail equals the e-mail of the request');
     return Promise.resolve(false);
   }
-  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
+  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-mail failed:', e.message); return false; });
 }
 const accessLink = (req, u) => `${publicBase(req)}/access/#t=${u.token}`;
 
@@ -317,17 +316,17 @@ function requestMail(u, link) {
     + `${link}\n\nKeep this link private – it is your personal access.\n`;
 }
 
-// Neue Anfrage: Hinweis im Admin-Fenster und Mail an die Admin-Adresse
+// New request: notification in the admin window and mail to the admin address
 function newRequest(u, suffix) {
-  const text = `WebTAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}${suffix}`;
+  const text = `WebTAK access requested: ${u.name}${u.unit ? ' – ' + u.unit : ''}${suffix}`;
   hub.event('tak', 'takreg', text);
-  // Link zum Admin-Bereich nur in dieser Mail an die Admin-Adresse – und nur aus einer vertrauenswürdigen Quelle:
-  // eingestellte Adresse (ADMIN_URL/öffentliche Adresse) oder die, unter der der Admin selbst angemeldet war.
-  // Nie aus dem Host-Header der Anfrage (den bestimmt der, der sich registriert).
+  // Link to the admin area only in this mail to the admin address – and only from a trusted source:
+  // the configured address (ADMIN_URL/public address) or the one the admin was logged in under.
+  // Never from the Host header of the request (that is controlled by whoever registers).
   const base = resetBase() || ((store.data.takVideo || {}).lastBase) || '';
-  mailAdmin('WebTAK – neue Registrierungsanfrage',
-    `${text}\nE-Mail: ${u.email}\n${u.requestedCallsign ? `Gewünschter Rufname: ${u.requestedCallsign}\n` : ''}\n`
-    + 'Bitte im WebTAK-Admin unter „Benutzer & Anfragen“ prüfen und freigeben oder ablehnen'
+  mailAdmin('WebTAK – new registration request',
+    `${text}\nE-mail: ${u.email}\n${u.requestedCallsign ? `Requested callsign: ${u.requestedCallsign}\n` : ''}\n`
+    + 'Please review it in the WebTAK admin under "Users & requests" and approve or decline it'
     + (base ? `:\n${base}/admin/#users\n` : '.\n'), u.email);
 }
 
@@ -365,7 +364,7 @@ async function handleAccessApi(req, res, route) {
     const body = await readJson(req);
     const u = takUsers.confirmEmail(String(body.code || ''));
     if (!u) return json(res, 400, { error: 'This confirmation link is invalid or was already used.' });
-    newRequest(u, ' (E-Mail bestätigt)');
+    newRequest(u, ' (e-mail confirmed)');
     return json(res, 200, { status: u.status });
   }
   const u = takUsers.byToken(String(token));
@@ -375,15 +374,15 @@ async function handleAccessApi(req, res, route) {
   const o = takUsers.t.ots;
   const host = takUsers.takHost();
   const qr = text => QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
-  // ATAK-QR: normaler https-Link (Handy-Kamera öffnet ihn im Browser) zur Seite mit dem Einrichtungspaket
+  // ATAK QR: plain https link (the phone camera opens it in the browser) to the page with the setup package
   if (route === 'qr/atak.svg') return send(res, 200, await qr(`${publicBase(req)}/access/atak.html#t=${encodeURIComponent(String(token))}`), 'image/svg+xml');
-  // tak://-Link von OTS (nur mit vertrauenswürdigem Server-Zertifikat, z. B. Let's Encrypt)
+  // tak:// link from OTS (only with a trusted server certificate, e.g. Let's Encrypt)
   if (route === 'qr/atak-direct.svg') {
-    if (!u.atakQr) return send(res, 404, 'Kein QR-Code');
+    if (!u.atakQr) return send(res, 404, 'No QR code');
     return send(res, 200, await qr(u.atakQr), 'image/svg+xml');
   }
   if (route === 'atak-link') return json(res, 200, { link: u.atakQr || '' });
-  // Einrichtungspaket: Truststore + Server + Benutzer + Passwort + Rufname/Team – ATAK richtet alles ein
+  // Setup package: truststore + server + user + password + callsign/team – ATAK sets up everything
   if (route === 'atak-package.zip') {
     let truststore;
     try { truststore = await takUsers.ots().truststore(); } catch (e) { return json(res, 502, { error: 'Truststore not available: ' + e.message }); }
@@ -409,11 +408,11 @@ async function handleAccessApi(req, res, route) {
 }
 
 // ======================================================================
-// TAK-Server verwalten (wie die OTS-Oberfläche): Benutzer, Rollen, Gruppen, Missionen, Feeds, Meshtastic
+// Manage the TAK server (like the OTS UI): users, roles, groups, missions, feeds, Meshtastic
 // ======================================================================
 
 async function handleOtsAdmin(req, res, route) {
-  if (!takUsers.otsConfigured()) return json(res, 400, { error: 'OpenTAKServer ist nicht verbunden (Einstellungen → OpenTAKServer & Registrierung).' });
+  if (!takUsers.otsConfigured()) return json(res, 400, { error: 'OpenTAKServer is not connected (Settings → OpenTAKServer & registration).' });
   const ots = takUsers.ots();
   const method = req.method;
   const body = method === 'GET' || method === 'DELETE' ? {} : await readJson(req);
@@ -436,9 +435,9 @@ async function handleOtsAdmin(req, res, route) {
     });
   }
   if (route === 'users' && method === 'POST') {
-    if (req.webtakHelper) body.admin = false; // Helfer legen nur normale Nutzer an
+    if (req.webtakHelper) body.admin = false; // helpers only create normal users
     const u = await takUsers.createDirect(body);
-    log('Admin: TAK-Benutzer angelegt', u.username);
+    log('Admin: TAK user created', u.username);
     return json(res, 200, { ok: true, user: takUsers.adminView(u), password: u.password, link: accessLink(req, u) });
   }
   if (seg[0] === 'users' && seg[1]) {
@@ -471,7 +470,7 @@ async function handleOtsAdmin(req, res, route) {
     if (action === 'groups' && method === 'POST') {
       const group = String(body.group || '').trim();
       const direction = body.direction === 'OUT' ? 'OUT' : 'IN';
-      if (!group) return json(res, 400, { error: 'Gruppe fehlt.' });
+      if (!group) return json(res, 400, { error: 'Group missing.' });
       if (body.remove) await ots.removeFromGroup(name, group, direction);
       else { await ots.ensureGroup(group); await ots.addToGroup(name, group, direction); }
       return json(res, 200, { ok: true });
@@ -479,7 +478,7 @@ async function handleOtsAdmin(req, res, route) {
     if (!action && method === 'DELETE') {
       const m = takUsers.byUsername(name);
       if (m) await takUsers.remove(m.id); else await ots.deleteUser(name);
-      log('Admin: TAK-Benutzer gelöscht', name);
+      log('Admin: TAK user deleted', name);
       return json(res, 200, { ok: true });
     }
   }
@@ -487,12 +486,12 @@ async function handleOtsAdmin(req, res, route) {
   if (route === 'groups' && method === 'GET') return json(res, 200, { groups: await ots.allGroups() });
   if (route === 'groups' && method === 'POST') {
     const name = String(body.name || '').trim();
-    if (!/^[\w.-]{1,60}$/.test(name)) return json(res, 400, { error: 'Gruppenname: 1–60 Zeichen, Buchstaben, Ziffern, _ . -' });
+    if (!/^[\w.-]{1,60}$/.test(name)) return json(res, 400, { error: 'Group name: 1–60 characters, letters, digits, _ . -' });
     await ots.createGroup(name, String(body.description || '').slice(0, 200));
     return json(res, 200, { ok: true });
   }
   if (seg[0] === 'groups' && seg[1] && method === 'DELETE') {
-    if (seg[1] === '__ANON__') return json(res, 400, { error: '__ANON__ ist die Standardgruppe von OTS und bleibt.' });
+    if (seg[1] === '__ANON__') return json(res, 400, { error: '__ANON__ is the OTS default group and stays.' });
     await ots.deleteGroup(seg[1]);
     return json(res, 200, { ok: true });
   }
@@ -502,8 +501,8 @@ async function handleOtsAdmin(req, res, route) {
     return json(res, 200, { euds: euds.map(e => ({ uid: e.uid, callsign: e.callsign, username: e.username || '', lastStatus: e.last_status || '' })) });
   }
 
-  // OTS zeigt Nutzern mit Gruppen nur Missionen ihrer IN-Gruppen; eine Mission ohne Gruppe sieht dann niemand.
-  // Keine Auswahl heißt deshalb: alle Gruppen (wie „für alle sichtbar“)
+  // OTS shows users with groups only missions of their IN groups; nobody then sees a mission without a group.
+  // So no selection means: all groups (like "visible to everyone")
   const missionGroupIds = async names => {
     const all = await ots.allGroups();
     const pick = Array.isArray(names) && names.length ? all.filter(g => names.includes(g.name)) : all;
@@ -518,23 +517,23 @@ async function handleOtsAdmin(req, res, route) {
   }
   if (route === 'missions' && method === 'POST') {
     const name = String(body.name || '').trim();
-    if (!name || name.length > 100) return json(res, 400, { error: 'Bitte einen Missionsnamen eingeben.' });
+    if (!name || name.length > 100) return json(res, 400, { error: 'Please enter a mission name.' });
     let creatorUid = String(body.creatorUid || '').trim();
     if (!creatorUid) {
       const euds = await ots.allEuds();
-      if (!euds.length) return json(res, 400, { error: 'OTS braucht ein bekanntes Gerät als Ersteller – es war noch keins verbunden.' });
+      if (!euds.length) return json(res, 400, { error: 'OTS needs a known device as creator – none has connected yet.' });
       creatorUid = euds[0].uid;
     }
     const groupIds = await missionGroupIds(body.groups);
     await ots.createMission({ name, description: String(body.description || '').slice(0, 500), password: String(body.password || ''), creatorUid, groups: groupIds });
-    log('Admin: Mission angelegt', name);
+    log('Admin: mission created', name);
     return json(res, 200, { ok: true });
   }
   if (seg[0] === 'missions' && seg[1] && seg[2] === 'groups' && method === 'PUT') {
     const m = (await ots.missions()).find(x => x.name === seg[1]);
-    if (!m) return json(res, 404, { error: 'Mission nicht gefunden.' });
+    if (!m) return json(res, 404, { error: 'Mission not found.' });
     await ots.setMissionGroups(m.name, m.creator_uid || m.creatorUid, await missionGroupIds(body.groups));
-    log('Admin: Missions-Gruppen gesetzt', m.name);
+    log('Admin: mission groups set', m.name);
     return json(res, 200, { ok: true });
   }
   if (seg[0] === 'missions' && seg[1] && method === 'DELETE') {
@@ -542,13 +541,13 @@ async function handleOtsAdmin(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
-  // Video-Feeds im TAK-Server (MediaMTX): alle Pfade, Feed anlegen (Quelle wird bei Bedarf geholt), löschen
+  // Video feeds in the TAK server (MediaMTX): all paths, create a feed (source pulled on demand), delete
   if (route === 'feeds' && method === 'GET') return json(res, 200, { feeds: await ots.videoStreams(), rtspHost: takUsers.takHost() });
   if (route === 'feeds' && method === 'POST') {
     const p = String(body.path || '').trim().replace(/^\/+|\/+$/g, '');
     const source = String(body.source || '').trim();
-    if (!TakVideo.validPath(p)) return json(res, 400, { error: 'Pfad: nur Buchstaben, Ziffern, - _ . und /' });
-    if (source && !/^(rtsp|rtsps|rtmp|rtmps|http|https|srt|udp):\/\//i.test(source)) return json(res, 400, { error: 'Quelle: rtsp://, rtmp://, http(s):// (HLS), srt:// oder udp://' });
+    if (!TakVideo.validPath(p)) return json(res, 400, { error: 'Path: only letters, digits, - _ . and /' });
+    if (source && !/^(rtsp|rtsps|rtmp|rtmps|http|https|srt|udp):\/\//i.test(source)) return json(res, 400, { error: 'Source: rtsp://, rtmp://, http(s):// (HLS), srt:// or udp://' });
     await ots.addStream(p, source);
     return json(res, 200, { ok: true });
   }
@@ -557,7 +556,7 @@ async function handleOtsAdmin(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
-  // Meshtastic-Kanäle
+  // Meshtastic channels
   if (route === 'mesh' && method === 'GET') return json(res, 200, { channels: await ots.meshChannels() });
   if (route === 'mesh/psk' && method === 'GET') return json(res, 200, { psk: await ots.meshPsk() });
   if (route === 'mesh' && method === 'POST') {
@@ -565,7 +564,7 @@ async function handleOtsAdmin(req, res, route) {
     if (body.url) b.url = String(body.url).trim();
     else {
       const name = String(body.name || '').trim();
-      if (!name || name.length > 11) return json(res, 400, { error: 'Kanalname: 1–11 Zeichen (Meshtastic-Grenze).' });
+      if (!name || name.length > 11) return json(res, 400, { error: 'Channel name: 1–11 characters (Meshtastic limit).' });
       Object.assign(b, {
         name, psk: String(body.psk || ''), modem_preset: String(body.modemPreset || 'LONG_FAST'), lora_region: String(body.region || 'EU_868'),
         uplink_enabled: body.uplink !== false, downlink_enabled: body.downlink !== false, lora_tx_enabled: true, lora_hop_limit: 3,
@@ -577,11 +576,11 @@ async function handleOtsAdmin(req, res, route) {
   }
   if (route === 'mesh' && method === 'DELETE') {
     const u = new URL(req.url, 'http://x').searchParams.get('url');
-    if (!u) return json(res, 400, { error: 'Kanal fehlt.' });
+    if (!u) return json(res, 400, { error: 'Channel missing.' });
     await ots.deleteMeshChannel(u);
     return json(res, 200, { ok: true });
   }
-  return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  return json(res, 404, { error: 'Unknown request.' });
 }
 
 async function handleTakAdmin(req, res, route) {
@@ -600,14 +599,14 @@ async function handleTakAdmin(req, res, route) {
   if (method === 'GET') {
     const m = /^user\/([a-f0-9]+)\/link$/.exec(route);
     if (m) return json(res, 200, { link: accessLink(req, takUsers.get(m[1])) });
-    return json(res, 404, { error: 'Unbekannte Anfrage.' });
+    return json(res, 404, { error: 'Unknown request.' });
   }
   const body = method === 'DELETE' ? {} : await readJson(req);
   if (route === 'ots') { takUsers.setOts(body); return json(res, 200, { ok: true }); }
   if (route === 'ots/test') {
     const r = await takUsers.ots().test();
     let groups = [];
-    try { groups = await takUsers.ots().groups(); } catch (e) { /* Gruppen evtl. per LDAP */ }
+    try { groups = await takUsers.ots().groups(); } catch (e) { /* groups possibly via LDAP */ }
     return json(res, 200, { ok: r.ok, groups });
   }
   if (route === 'registration') { takUsers.setRegistration(body); return json(res, 200, { ok: true }); }
@@ -621,7 +620,7 @@ async function handleTakAdmin(req, res, route) {
     return json(res, 200, { ok: true, updated: r.updated, errors: [...groupErrors, ...r.errors] });
   }
   const m = /^user\/([a-f0-9]+)(?:\/([a-z]*))?$/.exec(route);
-  if (!m) return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  if (!m) return json(res, 404, { error: 'Unknown request.' });
   const [, id, action] = m;
   if (method === 'DELETE' && !action) { await takUsers.remove(id); return json(res, 200, { ok: true }); }
   let u;
@@ -641,7 +640,7 @@ async function handleTakAdmin(req, res, route) {
   else if (action === 'unblock') u = await takUsers.unblock(id);
   else if (action === 'password') u = await takUsers.newPassword(id);
   else if (action === 'qr') u = await takUsers.newQr(id);
-  else return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  else return json(res, 404, { error: 'Unknown request.' });
   return json(res, 200, { ok: true, user: takUsers.adminView(u) });
 }
 
@@ -650,15 +649,15 @@ function takSettings() {
   return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
 }
 
-const eudLimits = new Map(); // ip -> [zeitpunkte] für Zertifikatsanforderungen
-const martiLimits = new Map(); // ip -> [zeitpunkte] für Anfragen an die TAK-Server-API
+const eudLimits = new Map(); // ip -> [timestamps] for certificate requests
+const martiLimits = new Map(); // ip -> [timestamps] for TAK server API requests
 
 async function handleEudApi(req, res, route) {
   if (route === 'config' && req.method === 'GET') {
     const t = takSettings();
     return json(res, 200, { preset: t.preset, restricted: !!t.allowedHosts.trim() });
   }
-  // Video-Feeds (HLS) über den eigenen Server, damit der Browser sie abspielen darf
+  // video feeds (HLS) through our own server so the browser may play them
   if (route === 'media' && req.method === 'GET') {
     return proxyMedia(req, res, { allowed: host => tak.targetAllowed(takSettings().allowedHosts, host), log });
   }
@@ -674,14 +673,14 @@ async function handleEudApi(req, res, route) {
     return json(res, 200, { ...r, info: r.certPem ? tak.certInfo(r.certPem) : null });
   }
   if (route === 'pem') {
-    // Truststore als PEM-Datei (eine oder mehrere CAs)
+    // truststore as a PEM file (one or more CAs)
     const body = await readJson(req, 512 * 1024);
     const pems = String(body.data || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
     if (!pems.length) throw new Error('No certificates found in file.');
     return json(res, 200, { kind: 'truststore', caPems: pems.map(p => p + '\n'), caInfo: pems.map(p => tak.certInfo(p)) });
   }
   if (route === 'extract') {
-    // Eigene Datei (KML/KMZ/Datenpaket) als Overlay laden
+    // load an own file (KML/KMZ/data package) as an overlay
     const body = await readJson(req, 120 * 1024 * 1024);
     return json(res, 200, tak.extractContent(String(body.name || ''), Buffer.from(String(body.data || ''), 'base64')));
   }
@@ -699,7 +698,7 @@ async function handleEudApi(req, res, route) {
     try {
       return json(res, 200, await tak.marti({ ...conn, host }, String(body.action || ''), body.args || {}));
     } catch (e) {
-      log('EUD TAK-API', host, String(body.action || ''), 'Fehler:', e.message);
+      log('EUD TAK-API', host, String(body.action || ''), 'error:', e.message);
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
       throw e;
     }
@@ -720,7 +719,7 @@ async function handleEudApi(req, res, route) {
         uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
         fingerprint: String(body.fingerprint || ''),
       });
-      log('EUD: Zertifikat angefordert', host, r.info.subject);
+      log('EUD: certificate requested', host, r.info.subject);
       return json(res, 200, r);
     } catch (e) {
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
@@ -731,10 +730,10 @@ async function handleEudApi(req, res, route) {
 }
 
 // ======================================================================
-// Admin-API
+// Admin API
 // ======================================================================
 
-// Was Helfer im Admin dürfen (Methode, Route ohne Query)
+// what helpers may do in the admin (method, route without query)
 const HELPER_ROUTES = [
   ['GET', /^streams$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
   ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/link$/],
@@ -748,17 +747,17 @@ async function handleAdminApi(req, res, route) {
   const secure = protoOf(req) === 'https';
   const cookieAttrs = `Path=/; HttpOnly; SameSite=Strict${secure ? '; Secure' : ''}`;
 
-  // Schutz gegen fremde Seiten (CSRF): schreibende Anfragen brauchen diesen Header
+  // protection against foreign pages (CSRF): writing requests need this header
   if (method !== 'GET' && req.headers['x-requested-with'] !== 'helm') {
-    return json(res, 403, { error: 'Ungültige Anfrage.' });
+    return json(res, 403, { error: 'Invalid request.' });
   }
 
-  // --- ohne Anmeldung ---
+  // --- without login ---
   if (route === 'login' && method === 'POST') {
     const body = await readJson(req);
     const newSid = auth.login(clientIp(req), body.username, body.password);
     const ses = auth.check(newSid);
-    log(ses.role === 'helper' ? 'Helfer angemeldet' : 'Admin angemeldet', String(body.username || '').slice(0, 64), 'von', clientIp(req));
+    log(ses.role === 'helper' ? 'Helper logged in' : 'Admin logged in', String(body.username || '').slice(0, 64), 'from', clientIp(req));
     return json(res, 200, { ok: true, role: ses.role, mustChange: ses.role === 'admin' && !!auth.admin.mustChange }, { 'Set-Cookie': `sid=${newSid}; ${cookieAttrs}; Max-Age=43200` });
   }
   if (route === 'forgot' && method === 'POST') {
@@ -767,32 +766,32 @@ async function handleAdminApi(req, res, route) {
     const admin = auth.admin;
     if (who && admin.email && (who === admin.username.toLowerCase() || who === admin.email.toLowerCase())) {
       if (!resetBase()) {
-        log('Passwort-Reset angefordert, aber PUBLIC_URL/ADMIN_URL ist nicht gesetzt – keine Mail gesendet.');
+        log('Password reset requested, but PUBLIC_URL/ADMIN_URL is not set – no mail sent.');
       } else if (smtpConfigured(store.data.smtp)) {
         const token = auth.createResetToken();
         const link = `${resetBase()}/admin/#reset=${token}`;
         sendMail(store.data.smtp, {
           to: admin.email,
-          subject: 'WebTAK – Passwort zurücksetzen',
-          text: `Hallo,\n\nüber diesen Link kannst du ein neues Admin-Passwort festlegen (1 Stunde gültig):\n\n${link}\n\nWenn du das nicht angefordert hast, ignoriere diese E-Mail.\n`,
-        }).then(() => log('Reset-Mail gesendet')).catch(e => log('Reset-Mail fehlgeschlagen:', e.message));
+          subject: 'WebTAK – reset password',
+          text: `Hello,\n\nyou can set a new admin password with this link (valid for 1 hour):\n\n${link}\n\nIf you did not request this, ignore this e-mail.\n`,
+        }).then(() => log('Reset mail sent')).catch(e => log('Reset mail failed:', e.message));
       } else {
-        log('Passwort-Reset angefordert, aber SMTP ist nicht eingerichtet.');
+        log('Password reset requested, but SMTP is not set up.');
       }
     }
-    // Immer gleiche Antwort, damit niemand Benutzernamen ausprobieren kann
+    // always the same answer so nobody can probe usernames
     return json(res, 200, { ok: true });
   }
   if (route === 'reset' && method === 'POST') {
     const body = await readJson(req);
     auth.resetPassword(String(body.token || ''), body.password ? String(body.password) : '');
-    log('Admin-Passwort per Link zurückgesetzt');
+    log('Admin password reset via link');
     return json(res, 200, { ok: true });
   }
 
-  // --- ab hier angemeldet ---
+  // --- logged in from here on ---
   const session = auth.check(sid);
-  if (!session) return json(res, 401, { error: 'Bitte anmelden.' });
+  if (!session) return json(res, 401, { error: 'Please log in.' });
   const helper = session.role === 'helper';
   const me = helper ? auth.helpers[session.helperId] : auth.admin;
 
@@ -819,17 +818,17 @@ async function handleAdminApi(req, res, route) {
       password: body.password,
       email: body.email,
     });
-    log('Admin-Zugangsdaten geändert');
+    log('Admin login details changed');
     return json(res, 200, { ok: true });
   }
   if (route === 'own-password' && method === 'POST') {
     const body = await readJson(req);
     auth.changeHelperPassword(sid, body.current, body.password);
-    log('Helfer hat sein Passwort geändert:', me.username);
+    log('Helper changed their password:', me.username);
     return json(res, 200, { ok: true });
   }
 
-  // Adresse, unter der der Admin uns erreicht, als Rückfall für den HLS-Link im TAK-Server merken
+  // remember the address the admin reaches us under, as a fallback for the HLS link in the TAK server
   if (!configuredBase() && !helper) {
     const b = publicBase(req);
     if (b && !/\/\/(localhost|127\.|\[::1\])/.test(b) && (store.data.takVideo || {}).lastBase !== b) {
@@ -838,16 +837,16 @@ async function handleAdminApi(req, res, route) {
     }
   }
 
-  // Erst nach dem ersten Passwortwechsel ist der Rest erlaubt
-  if (!helper && auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
+  // the rest is only allowed after the first password change
+  if (!helper && auth.admin.mustChange) return json(res, 403, { error: 'Please change the password first.', mustChange: true });
 
-  // Helfer: nur Anfragen freigeben/bearbeiten und Nutzer anlegen – keine Einstellungen, keine Löschungen
+  // helpers: only approve/edit requests and create users – no settings, no deletions
   if (helper) {
     const allowed = HELPER_ROUTES.some(([m, re]) => m === method && re.test(route.split('?')[0]));
-    if (!allowed) return json(res, 403, { error: 'Als Helfer nicht erlaubt – bitte den Admin fragen.' });
+    if (!allowed) return json(res, 403, { error: 'Not allowed as a helper – please ask the admin.' });
     req.webtakHelper = true;
     if (route.startsWith('streams') && method === 'GET') {
-      // keine Stream-Schlüssel/Links, nur die Hinweise (neue Anfragen usw.)
+      // no stream keys/links, only the notifications (new requests etc.)
       const q = new URL(req.url, 'http://x').searchParams;
       const since = Number(q.get('since'));
       const events = (Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : []).filter(e => e.kind === 'takreg');
@@ -856,16 +855,16 @@ async function handleAdminApi(req, res, route) {
     }
   }
 
-  // Helfer verwalten (nur Haupt-Admin)
+  // manage helpers (main admin only)
   if (route === 'helpers' && method === 'GET') return json(res, 200, { helpers: auth.listHelpers() });
   if (route === 'helpers' && method === 'POST') {
     const body = await readJson(req);
     const h = auth.addHelper(body);
-    log('Helfer angelegt', h.username);
+    log('Helper created', h.username);
     return json(res, 200, { ok: true, helper: h });
   }
   const hm = route.match(/^helpers\/([A-Za-z0-9_-]+)(?:\/(password))?$/);
-  if (hm && method === 'DELETE' && !hm[2]) { auth.removeHelper(hm[1]); log('Helfer gelöscht', hm[1]); return json(res, 200, { ok: true }); }
+  if (hm && method === 'DELETE' && !hm[2]) { auth.removeHelper(hm[1]); log('Helper deleted', hm[1]); return json(res, 200, { ok: true }); }
   if (hm && method === 'POST' && hm[2]) { const body = await readJson(req); auth.setHelperPassword(hm[1], String(body.password || '')); return json(res, 200, { ok: true }); }
 
   if (route === 'registration' && method === 'GET') {
@@ -875,8 +874,8 @@ async function handleAdminApi(req, res, route) {
       liveMode: hub.liveMode(),
       userCanStart: hub.userCanStart(),
       appUrl: publicBase(req) + '/app/',
-      publicUrl: (store.data.settings || {}).publicUrl || '',           // im Admin eingestellt
-      autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
+      publicUrl: (store.data.settings || {}).publicUrl || '',           // set in the admin
+      autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // without a setting
     });
   }
   if (route.startsWith('takusers/')) return await handleTakAdmin(req, res, route.slice(9));
@@ -914,14 +913,14 @@ async function handleAdminApi(req, res, route) {
     const url = normalizeBase(body.url);
     store.data.settings = { ...(store.data.settings || {}), publicUrl: url };
     store.save();
-    log('Öffentliche Adresse', url || '(automatisch)');
+    log('Public address', url || '(automatic)');
     return json(res, 200, { ok: true, publicUrl: url });
   }
   if (route === 'registration' && method === 'POST') {
     const body = await readJson(req);
     store.data.registration = { enabled: !!body.enabled };
     store.save();
-    log('Selbst-Anmeldung', body.enabled ? 'erlaubt' : 'gesperrt');
+    log('Self-registration', body.enabled ? 'allowed' : 'blocked');
     return json(res, 200, { ok: true });
   }
   if (route === 'app-qr.svg' && method === 'GET') {
@@ -952,11 +951,11 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, { ok: true });
   }
   if (route === 'smtp/test' && method === 'POST') {
-    if (!auth.admin.email) throw new Error('Bitte zuerst eine Admin-E-Mail-Adresse eintragen.');
+    if (!auth.admin.email) throw new Error('Please enter an admin e-mail address first.');
     await sendMail(store.data.smtp, {
       to: auth.admin.email,
       subject: 'WebTAK – Test',
-      text: 'SMTP funktioniert. Passwort-Reset-Mails kommen an diese Adresse.\n',
+      text: 'SMTP works. Password reset mails and notifications are sent to this address.\n',
     });
     return json(res, 200, { ok: true });
   }
@@ -982,18 +981,18 @@ async function handleAdminApi(req, res, route) {
       const id = StreamHub.id(s.user, s.streamId);
       return { ...s, links: links(req, store.data.streams[id]), tak: takVideo.view(id) };
     });
-    // Hinweise seit der letzten Abfrage; ohne "since" nur die aktuelle Nummer (alte nicht erneut zeigen)
+    // notifications since the last request; without "since" only the current number (do not show old ones again)
     const q = new URL(req.url, 'http://x').searchParams;
     const since = Number(q.get('since'));
     const events = Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : [];
-    // beim ersten Abruf die letzten Hinweise für die Hinweisliste (ohne Popup)
+    // on the first request the latest notifications for the notification list (without popup)
     const history = q.get('history') ? hub.events.slice(-40) : undefined;
     return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, history, eventSeq: hub.eventSeq, takVideo: { ready: takVideo.ready(), auto: takVideo.s.auto, when: takVideo.s.when, prefix: takVideo.s.prefix } });
   }
   if (route === 'streams' && method === 'POST') {
     const body = await readJson(req);
     const entry = hub.create(body.user, body.label);
-    log('Stream angelegt', entry.user + '/' + entry.streamId);
+    log('Stream created', entry.user + '/' + entry.streamId);
     takVideo.touch(StreamHub.id(entry.user, entry.streamId));
     return json(res, 200, { ok: true, stream: { ...hub.status(StreamHub.id(entry.user, entry.streamId)), links: links(req, entry) } });
   }
@@ -1004,18 +1003,18 @@ async function handleAdminApi(req, res, route) {
     if (body.userCanStart !== undefined) store.data.settings.userCanStart = !!body.userCanStart;
     store.save();
     hub.broadcastLive();
-    log('Live-Modus', hub.liveMode() === 'admin' ? 'Admin schaltet live' : 'Nutzer startet selbst');
+    log('Live mode', hub.liveMode() === 'admin' ? 'admin puts live' : 'user starts by themselves');
     return json(res, 200, { ok: true, mode: hub.liveMode(), userCanStart: hub.userCanStart() });
   }
   if (route === 'streams/live-off-all' && method === 'POST') {
     for (const id of Object.keys(store.data.streams)) hub.setOnAir(id, false);
-    log('Alle Streams auf Bereit');
+    log('All streams set to ready');
     return json(res, 200, { ok: true });
   }
 
   if (route === 'streams/stop-all' && method === 'POST') {
     hub.stopAll();
-    log('Alle Streams gestoppt');
+    log('All streams stopped');
     return json(res, 200, { ok: true });
   }
 
@@ -1023,7 +1022,7 @@ async function handleAdminApi(req, res, route) {
   if (m) {
     const id = StreamHub.id(decodeURIComponent(m[1]), decodeURIComponent(m[2]));
     const entry = store.data.streams[id];
-    if (!entry) return json(res, 404, { error: 'Stream nicht gefunden.' });
+    if (!entry) return json(res, 404, { error: 'Stream not found.' });
     const action = m[3] || '';
     if (action === 'qr.svg' && method === 'GET') {
       const svg = await QRCode.toString(links(req, entry).app, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
@@ -1038,37 +1037,37 @@ async function handleAdminApi(req, res, route) {
       const body = await readJson(req);
       hub.setOnAir(id, !!body.on);
       takVideo.touch(id);
-      log(body.on ? 'Live geschaltet' : 'Live beendet', id);
+      log(body.on ? 'Put live' : 'Live ended', id);
       return json(res, 200, { ok: true });
     }
-    if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); takVideo.touch(id); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
-    if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); takVideo.touch(id); log('Stream freigegeben', id); return json(res, 200, { ok: true }); }
-    if (method === 'POST' && action === 'revoke') { hub.revoke(id); log('Zugang entzogen', id); return json(res, 200, { ok: true, links: links(req, entry) }); }
-    if (method === 'DELETE' && action === '') { hub.remove(id); takVideo.removed(id); log('Stream gelöscht', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); takVideo.touch(id); log('Stream stopped', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); takVideo.touch(id); log('Stream enabled', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'revoke') { hub.revoke(id); log('Access revoked', id); return json(res, 200, { ok: true, links: links(req, entry) }); }
+    if (method === 'DELETE' && action === '') { hub.remove(id); takVideo.removed(id); log('Stream deleted', id); return json(res, 200, { ok: true }); }
     if (method === 'POST' && action === 'tak') {
       const body = await readJson(req);
       return json(res, 200, { ok: true, video: await takVideo.set(id, { path: body.path, enabled: body.enabled }) });
     }
   }
-  return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  return json(res, 404, { error: 'Unknown request.' });
 }
 
 // ======================================================================
-// Stream-Ausgabe
+// Stream output
 // ======================================================================
 
 const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-// Vollbild-Ansicht für den Stream-Link im Browser (Tippen: ganzes Bild / füllen, Doppeltippen: Vollbild)
+// fullscreen view for the stream link in the browser (tap: whole image / fill, double tap: fullscreen)
 function viewerPage(entry) {
   const title = escapeHtml(entry.label || entry.user);
-  return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+  return `<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
 <style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
 img{display:block;width:100vw;height:100vh;object-fit:contain}body.fill img{object-fit:cover}
 #hint{position:fixed;left:10px;bottom:8px;color:#ccc;font:13px system-ui,sans-serif;text-shadow:0 1px 2px #000}</style>
 </head><body><img src="?raw=1" alt="${title}">
-<div id="hint">${title} · Tippen: füllen / ganzes Bild · Doppeltippen: Vollbild</div>
+<div id="hint">${title} · Tap: fill / whole image · Double tap: fullscreen</div>
 <script>
 document.body.onclick=function(){document.body.classList.toggle('fill')};
 document.body.ondblclick=function(){var d=document.documentElement;if(document.fullscreenElement)document.exitFullscreen();else if(d.requestFullscreen)d.requestFullscreen()};
@@ -1078,25 +1077,25 @@ setTimeout(function(){var h=document.getElementById('hint');if(h)h.remove()},500
 
 async function handleStream(req, res, user, streamId, rest) {
   const entry = hub.get(user, streamId);
-  if (!entry) return send(res, 404, 'Stream nicht gefunden');
+  if (!entry) return send(res, 404, 'Stream not found');
   const id = StreamHub.id(user, streamId);
   const live = hub.live(id);
 
   if (rest === '' || rest === '/') {
     if (req.method === 'HEAD') return send(res, 200, '', 'multipart/x-mixed-replace');
-    // Browser bekommt eine Vollbild-Seite, Player (ATAK, VLC …) den MJPEG-Stream
+    // browsers get a fullscreen page, players (ATAK, VLC …) the MJPEG stream
     const wantsHtml = /text\/html/.test(req.headers.accept || '') && !/[?&]raw\b/.test(req.url);
     if (wantsHtml) return send(res, 200, viewerPage(entry), 'text/html; charset=utf-8');
     return hub.addMjpegViewer(id, res);
   }
   if (rest === '/snapshot.jpg') {
-    if (!live.frame) return send(res, 404, 'Noch kein Bild');
+    if (!live.frame) return send(res, 404, 'No image yet');
     return send(res, 200, live.frame, 'image/jpeg', { 'Access-Control-Allow-Origin': '*' });
   }
 
   if (rest === '/index.m3u8' || rest === '/stream.ts' || /^\/seg\d+\.ts$/.test(rest)) {
     const tc = hub.transcoder(id);
-    if (!tc) return send(res, 503, 'HLS/MPEG-TS nicht verfügbar: ffmpeg ist auf dem Server nicht installiert.');
+    if (!tc) return send(res, 503, 'HLS/MPEG-TS not available: ffmpeg is not installed on the server.');
     if (rest === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'X-Accel-Buffering': 'no' });
       res.flushHeaders();
@@ -1105,14 +1104,14 @@ async function handleStream(req, res, user, streamId, rest) {
     tc.touch();
     if (rest === '/index.m3u8') {
       const file = await tc.waitForPlaylist();
-      if (!file) return send(res, 503, 'Stream startet noch, bitte erneut versuchen');
+      if (!file) return send(res, 503, 'Stream is still starting, please try again');
       return send(res, 200, fs.readFileSync(file), 'application/vnd.apple.mpegurl', { 'Access-Control-Allow-Origin': '*' });
     }
     const seg = path.join(tc.dir, path.basename(rest));
-    if (!fs.existsSync(seg)) return send(res, 404, 'Segment nicht gefunden');
+    if (!fs.existsSync(seg)) return send(res, 404, 'Segment not found');
     return send(res, 200, fs.readFileSync(seg), 'video/mp2t', { 'Access-Control-Allow-Origin': '*' });
   }
-  return send(res, 404, 'Nicht gefunden');
+  return send(res, 404, 'Not found');
 }
 
 // ======================================================================
@@ -1136,11 +1135,11 @@ async function handle(req, res) {
     }
     if (p === '/admin') return send(res, 302, '', 'text/plain', { Location: '/admin/' });
     if (p.startsWith('/admin/')) {
-      if (!admin) return send(res, 404, 'Nicht gefunden');
+      if (!admin) return send(res, 404, 'Not found');
       return serveStatic(res, 'admin', decodeURIComponent(p.slice(7)));
     }
     if (p.startsWith('/api/admin/')) {
-      if (!admin) return json(res, 404, { error: 'Nicht gefunden' });
+      if (!admin) return json(res, 404, { error: 'Not found' });
       return await handleAdminApi(req, res, p.slice(11));
     }
     if (p === '/api/app/register' && req.method === 'POST') return await handleRegister(req, res);
@@ -1162,7 +1161,7 @@ async function handle(req, res) {
 
     const m = p.match(/^\/([a-z0-9][a-z0-9_-]{0,31})\/([a-z0-9]{4,32})(\/.*)?$/);
     if (m && (req.method === 'GET' || req.method === 'HEAD')) return await handleStream(req, res, m[1], m[2], m[3] || '');
-    return send(res, 404, 'Nicht gefunden');
+    return send(res, 404, 'Not found');
   } catch (e) {
     if (!res.headersSent) json(res, 400, { error: e.message });
     else res.end();
@@ -1170,15 +1169,15 @@ async function handle(req, res) {
 }
 
 // ======================================================================
-// WebSocket: Handy sendet Bilder
+// WebSocket: phone sends images
 // ======================================================================
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
 const takWss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
-const takLinks = new Map(); // ws -> Verbindungsinfo (für die Admin-Übersicht)
+const takLinks = new Map(); // ws -> connection info (for the admin overview)
 const MAX_TAK_PER_IP = 5;
 
-// Eigene Position (SA) eines verwalteten Zugangs: Rufname, Team und Rolle wie vom Admin festgelegt
+// own position (SA) of a managed access: callsign, team and role as set by the admin
 function enforceAssignment(xml, uid, a) {
   const m = /<event\b[^>]*\buid="([^"]*)"/.exec(xml);
   if (!m || m[1] !== uid || !/\btype="a-/.test(xml.slice(0, 400))) return xml;
@@ -1190,7 +1189,7 @@ function enforceAssignment(xml, uid, a) {
     .replace(/(<__group\b[^>]*\brole=")[^"]*(")/, `$1${attr(a.role)}$2`);
 }
 
-// EUD <-> TAK-Server: der Browser schickt Zugangsdaten und CoT, wir reichen nur durch
+// EUD <-> TAK server: the browser sends credentials and CoT, we only relay
 function handleTakSocket(ws, req) {
   const ip = clientIp(req);
   const perIp = [...takLinks.values()].filter(l => l.ip === ip).length;
@@ -1199,7 +1198,7 @@ function handleTakSocket(ws, req) {
     return ws.close(4002, 'limit');
   }
   let link = null;
-  let assigned = null; // vom Admin festgelegter Rufname/Team/Rolle (verwalteter TAK-Zugang)
+  let assigned = null; // callsign/team/role set by the admin (managed TAK access)
   let eudUid = '';
   const entry = { ip, since: Date.now(), host: '', callsign: '', state: 'idle', info() {
     return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
@@ -1224,12 +1223,12 @@ function handleTakSocket(ws, req) {
       entry.host = `${host}:${msg.port}`;
       entry.callsign = String(msg.callsign || '').slice(0, 40);
       eudUid = String(msg.uid || '');
-      // Verwalteter Zugang? Benutzername steht im Client-Zertifikat (CN)
+      // managed access? The username is in the client certificate (CN)
       assigned = null;
       try {
         const cn = msg.certPem ? (/(?:^|, )CN=([^,]+)/.exec(tak.certInfo(msg.certPem).subject) || [])[1] : '';
         assigned = takUsers.assignmentFor(cn);
-      } catch (e) { /* kein lesbares Zertifikat */ }
+      } catch (e) { /* no readable certificate */ }
       if (assigned) {
         entry.callsign = assigned.callsign;
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign', ...assigned }));
@@ -1241,7 +1240,7 @@ function handleTakSocket(ws, req) {
         onCot: xml => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'cot', xml })); },
       });
       link.start();
-      log('EUD verbindet', entry.callsign, '->', entry.host, msg.proto);
+      log('EUD connecting', entry.callsign, '->', entry.host, msg.proto);
     } else if (msg.type === 'cot' && link && typeof msg.xml === 'string' && msg.xml.length < 256 * 1024) {
       if (/^\s*<event[\s>]/.test(msg.xml)) link.send(assigned ? enforceAssignment(msg.xml, eudUid, assigned) : msg.xml);
     } else if (msg.type === 'disconnect') {
@@ -1271,7 +1270,7 @@ function handleUpgrade(req, socket, head) {
     hub.attachPublisher(id, ws);
     if (takVideo.s.when === 'live') takVideo.touch(id);
     const live = hub.live(id);
-    log('Handy verbunden', id, clientIp(req));
+    log('Phone connected', id, clientIp(req));
     ws.send(JSON.stringify({
       type: 'welcome',
       user: entry.user,
@@ -1306,33 +1305,33 @@ function handleUpgrade(req, socket, head) {
           if (msg.resolution !== undefined) live.resolution = String(msg.resolution).slice(0, 20);
         } else if (msg.type === 'state') {
           const was = live.ready;
-          live.ready = !!msg.ready; // Kamera am Handy verbunden
-          if (!was && live.ready) hub.event(id, 'camera', `${hub.labelOf(id)} hat die Kamera aktiviert`);
+          live.ready = !!msg.ready; // camera connected on the phone
+          if (!was && live.ready) hub.event(id, 'camera', `${hub.labelOf(id)} activated the camera`);
         } else if (msg.type === 'golive') {
-          // Nutzer drückt "Stream starten"/"Stream stoppen"
+          // user presses "start stream"/"stop stream"
           if (hub.liveMode() === 'admin') {
             if (hub.userCanStart() || entry.eud) {
               if (!!msg.on !== live.onAir) {
                 hub.setOnAir(id, !!msg.on);
-                hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} hat den Stream ${msg.on ? 'gestartet' : 'beendet'}`);
-                log(msg.on ? 'Nutzer startet' : 'Nutzer beendet', id);
+                hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} ${msg.on ? 'started' : 'stopped'} the stream`);
+                log(msg.on ? 'User starts' : 'User stops', id);
               }
             } else {
-              hub.sendLive(id); // nicht erlaubt: Handy bleibt beim aktuellen Zustand
+              hub.sendLive(id); // not allowed: the phone keeps its current state
             }
           } else {
-            hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} hat den Stream ${msg.on ? 'gestartet' : 'beendet'}`);
+            hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} ${msg.on ? 'started' : 'stopped'} the stream`);
           }
         } else if (msg.type === 'options') {
-          // Nutzer richtet am Handy selbst aus (Drehung/Spiegeln); Admin sieht und kann es ändern
+          // user adjusts on the phone (rotation/mirroring); the admin sees it and can change it
           hub.setOptions(id, { rotate: msg.rotate, mirror: msg.mirror });
         }
-      } catch (e) { /* ignorieren */ }
+      } catch (e) { /* ignore */ }
     });
     ws.on('close', () => {
       clearInterval(timer);
       hub.detachPublisher(id, ws);
-      log('Handy getrennt', id);
+      log('Phone disconnected', id);
     });
     ws.on('error', () => {});
   });
@@ -1345,7 +1344,7 @@ const server = config.tlsCert && config.tlsKey
   : http.createServer(handle);
 server.on('upgrade', handleUpgrade);
 
-// Erneuertes Zertifikat (z. B. Let's Encrypt) ohne Neustart übernehmen
+// pick up a renewed certificate (e.g. Let's Encrypt) without restart
 if (config.tlsCert && config.tlsKey) {
   let stamp = fs.statSync(config.tlsCert).mtimeMs;
   setInterval(() => {
@@ -1354,9 +1353,9 @@ if (config.tlsCert && config.tlsKey) {
       if (now === stamp) return;
       server.setSecureContext({ cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey) });
       stamp = now;
-      log('Neues TLS-Zertifikat geladen');
+      log('New TLS certificate loaded');
     } catch (e) {
-      log('Zertifikat konnte nicht neu geladen werden:', e.message);
+      log('Certificate could not be reloaded:', e.message);
     }
   }, 60 * 60 * 1000).unref();
 }
@@ -1364,23 +1363,23 @@ server.keepAliveTimeout = 65000;
 
 server.on('error', e => {
   if (e.code === 'EADDRINUSE') {
-    console.error(`\nPort ${config.port} ist schon belegt – läuft der Server schon in einem anderen Fenster?`);
-    console.error('Das andere Fenster schließen (oder im Task-Manager "Node.js" beenden) und neu starten.\n');
+    console.error(`\nPort ${config.port} is already in use – is the server already running in another window?`);
+    console.error('Close the other window (or end "Node.js" in the Task Manager) and start again.\n');
   } else {
-    console.error('Server-Fehler:', e.message);
+    console.error('Server error:', e.message);
   }
   process.exit(1);
 });
 
 server.listen(config.port, config.bind, () => {
-  log(`WebTAK läuft auf ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
-  log(`Öffentliche Adresse: ${config.publicUrl || '(aus Anfrage)'}${config.adminHost ? ', Admin-Domain: ' + config.adminHost : ''}`);
-  log(ffmpegOk ? 'ffmpeg gefunden: HLS und MPEG-TS verfügbar' : 'ffmpeg nicht gefunden: nur MJPEG verfügbar');
-  if (store.data.admin.mustChange) log('Erster Start: Admin-Login admin / admin123 – Passwort wird beim ersten Login geändert.');
+  log(`WebTAK running on ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
+  log(`Public address: ${config.publicUrl || '(from request)'}${config.adminHost ? ', admin domain: ' + config.adminHost : ''}`);
+  log(ffmpegOk ? 'ffmpeg found: HLS and MPEG-TS available' : 'ffmpeg not found: MJPEG only');
+  if (store.data.admin.mustChange) log('First start: admin login admin / admin123 – the password is changed at the first login.');
 });
 
 function shutdown() {
-  log('Server wird beendet');
+  log('Server shutting down');
   hub.shutdown();
   for (const c of wss.clients) c.close(1001, 'server shutdown');
   server.close(() => process.exit(0));

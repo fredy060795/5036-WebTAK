@@ -1,9 +1,9 @@
-# systemd-Dienst ohne Docker, HTTPS direkt auf Port 5036:
-#   sudo cp deploy/helm-camera.service /etc/systemd/system/   (Domain unten anpassen)
+# systemd service without Docker, HTTPS directly on port 5036:
+#   sudo cp deploy/helm-camera.service /etc/systemd/system/   (adjust the domain below)
 #   sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 #
-# Das Zertifikat wird per LoadCredential übergeben (der Dienst läuft nicht als root).
-# Nach einer Erneuerung neu starten, z. B. in certbot:
+# The certificate is passed via LoadCredential (the service does not run as root).
+# Restart after a renewal, e.g. in certbot:
 #   certbot renew --deploy-hook "systemctl restart helm-camera"
 [Unit]
 Description=Helm Camera Streams
@@ -20,8 +20,8 @@ LoadCredential=cert:/etc/letsencrypt/live/tak.example.com/fullchain.pem
 LoadCredential=key:/etc/letsencrypt/live/tak.example.com/privkey.pem
 Environment=TLS_CERT=%d/cert
 Environment=TLS_KEY=%d/key
-# Hinter einem Reverse-Proxy stattdessen: die vier Zeilen oben entfernen,
-# Environment=BIND=127.0.0.1 setzen und PUBLIC_URL auf die Proxy-Adresse ändern.
+# Behind a reverse proxy instead: remove the four lines above,
+# set Environment=BIND=127.0.0.1 and change PUBLIC_URL to the proxy address.
 ExecStart=/usr/bin/node server.js
 Restart=always
 RestartSec=3

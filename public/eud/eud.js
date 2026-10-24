@@ -1,12 +1,12 @@
-// TAK-EUD im Browser: Karte + Lagebild von einem oder mehreren TAK-Servern (CoT), eigene Position,
-// Marker, Chat. Der eigene Server reicht nur durch (WebSocket /ws/tak); Zertifikate bleiben auf diesem Gerät.
+// TAK EUD in the browser: map + situational picture from one or more TAK servers (CoT), own position,
+// markers, chat. Our own server only relays (WebSocket /ws/tak); certificates stay on this device.
 'use strict';
 
 const $ = id => document.getElementById(id);
 const store = {
   get(k, d) { try { const v = localStorage.getItem(k); return v ? JSON.parse(v) : d; } catch (e) { return d; } },
-  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* Speicher voll / privat */ } },
-  del(k) { try { localStorage.removeItem(k); } catch (e) { /* egal */ } },
+  set(k, v) { try { localStorage.setItem(k, JSON.stringify(v)); } catch (e) { /* storage full / private mode */ } },
+  del(k) { try { localStorage.removeItem(k); } catch (e) { /* ignore */ } },
 };
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const xmlEsc = esc;
@@ -22,7 +22,7 @@ const ROLES = ['Team Member', 'Team Lead', 'HQ', 'Sniper', 'Medic', 'Forward Obs
 const DEFAULT_PORT = { ssl: 8089, tcp: 8087, udp: 8087 };
 
 // ======================================================================
-// Profil und Serverliste (nur auf diesem Gerät)
+// Profile and server list (only on this device)
 // ======================================================================
 
 const profile = Object.assign({
@@ -32,7 +32,7 @@ if (!profile.uid) profile.uid = 'EUD-' + rnd(6).toUpperCase();
 
 let servers = store.get('eud.servers', null);
 if (!servers) {
-  // Ältere Version: ein Server im Profil
+  // older version: one server in the profile
   servers = [];
   if (profile.host) {
     servers.push({
@@ -56,18 +56,18 @@ function newServer(fields) {
 }
 
 // ======================================================================
-// Karte
+// Map
 // ======================================================================
 
 const view = store.get('eud.view', [51.1, 10.4, 6]);
-// Drehbare Karte (leaflet-rotate): Kompass schaltet zwischen Nord oben und Blickrichtung oben
+// rotatable map (leaflet-rotate): the compass switches between north up and heading up
 const map = L.map('map', {
   zoomControl: false, attributionControl: true, worldCopyJump: true,
-  // Drehen mit zwei Fingern (wie ATAK), am PC mit Umschalt + Mausrad
+  // rotate with two fingers (like ATAK), on a PC with Shift + mouse wheel
   rotate: true, bearing: 0, touchRotate: true, shiftKeyRotate: true, rotateControl: false, compassBearing: false,
 }).setView([view[0], view[1]], view[2]);
 map.attributionControl.setPosition('bottomleft');
-// Kartenquellen: über den eigenen Server (gleiche Herkunft, dort zwischengespeichert) oder eigene URL
+// map sources: through our own server (same origin, cached there) or a custom URL
 const SOURCES = {
   osm: { name: 'OpenStreetMap', maxZoom: 19, attribution: '© OpenStreetMap' },
   topo: { name: 'OpenTopoMap', maxZoom: 17, attribution: '© OpenTopoMap, © OpenStreetMap' },
@@ -91,7 +91,7 @@ function setTiles(id) {
     maxZoom: sourceMaxZoom(id), maxNativeZoom: sourceMaxZoom(id),
     attribution: id === 'custom' ? '' : SOURCES[id].attribution, keepBuffer: 4,
   });
-  // Kachel nicht geladen (z. B. kurz kein Netz): einmal nachladen statt halb leerer Karte
+  // tile not loaded (e.g. briefly no network): reload once instead of a half-empty map
   baseLayer.on('tileerror', e => {
     const img = e.tile;
     if (img.dataset.retry) return;
@@ -109,7 +109,7 @@ const shapesLayer = L.layerGroup().addTo(map);
 const pointsLayer = L.layerGroup().addTo(map);
 
 // ======================================================================
-// Hilfen
+// Helpers
 // ======================================================================
 
 let toastTimer;
@@ -148,7 +148,7 @@ function ago(ts) {
 }
 const hhmm = d => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
-// ARGB-Zahl aus ATAK (-1 = weiß) -> CSS-Farbe
+// ARGB number from ATAK (-1 = white) -> CSS color
 function argb(v, fallback) {
   if (v == null || v === '') return fallback;
   const n = Number(v) >>> 0;
@@ -156,7 +156,7 @@ function argb(v, fallback) {
   return `rgba(${(n >>> 16) & 255},${(n >>> 8) & 255},${n & 255},${a.toFixed(2)})`;
 }
 
-// CoT-Typ -> Symbolcode (MIL-STD-2525C) für milsymbol
+// CoT type -> symbol code (MIL-STD-2525C) for milsymbol
 function sidcFor(type) {
   const p = type.split('-');
   if (p[0] !== 'a' || p.length < 3) return null;
@@ -180,11 +180,11 @@ function symbolSvg(sidc, size = 26) {
 }
 
 // ======================================================================
-// Statusleiste: Uhr, Akku, Rufname
+// Status bar: clock, battery, callsign
 // ======================================================================
 
 let battery = null;
-// Akku nur für die eigene Position (ATAK zeigt ihn beim Kontakt)
+// battery only for the own position (ATAK shows it on the contact)
 if (navigator.getBattery) navigator.getBattery().then(b => {
   const upd = () => { battery = Math.round(b.level * 100); };
   upd();
@@ -196,12 +196,12 @@ function showMe() {
 }
 
 // ======================================================================
-// Menü und Fenster
+// Menu and windows
 // ======================================================================
 
 const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts & Markers', map: 'Map', data: 'TAK Data', clear: 'Clear Content' };
 let popupSec = null;
-// Wie ATAK: immer nur ein Sheet unten offen
+// like ATAK: only one sheet open at the bottom at a time
 function closeSheets(except) {
   if (except !== 'sidebar') closeSidebar();
   if (except !== 'popup') closePopup();
@@ -223,7 +223,7 @@ function openPopup(sec, title) {
   document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
 }
 function closePopup() {
-  // Server bearbeiten mit ✕ geschlossen: wie ATAK übernehmen statt Zertifikat/Truststore zu verwerfen
+  // server edit closed with ✕: apply like ATAK instead of discarding certificate/truststore
   if (popupSec === 'edit' && draft) {
     readEdit();
     if (draft.host && !LOCAL_HOST.test(draft.host)) saveDraft();
@@ -255,13 +255,13 @@ for (const t of document.querySelectorAll('[data-open]')) {
 $('connBtn').addEventListener('click', () => openPopup('server'));
 
 // ======================================================================
-// Lagebild: CoT empfangen und zeichnen
+// Situational picture: receive and draw CoT
 // ======================================================================
 
 const items = new Map(); // uid -> { uid, c, xml, layer, own, stale }
 let chat = store.get('eud.chat', []);
 let unread = 0;
-let me = null; // eigene Position
+let me = null; // own position
 
 function parseCot(xml) {
   const doc = new DOMParser().parseFromString(xml, 'application/xml');
@@ -314,7 +314,7 @@ function videoUrl(c) {
   return c.video || '';
 }
 
-// Video-Link für den Browser: eigene Streams (…/stream.ts) als Vollbild-Seite öffnen
+// video link for the browser: open own streams (…/stream.ts) as a fullscreen page
 function browserVideoUrl(u) {
   try {
     const url = new URL(u);
@@ -327,7 +327,7 @@ function iconFor(c, stale) {
   const label = `<span class="lbl" style="top:{T}px">${esc(c.callsign || '')}</span>`;
   const cls = 'cot-icon' + (stale ? ' stale' : '');
   if (c.type.startsWith('a-') && c.team) {
-    // ATAK-Nutzer: Kreis in Teamfarbe mit Kurz-Rufname, Pfeil für die Richtung
+    // ATAK user: circle in team color with short callsign, arrow for the direction
     const col = TEAMS[c.team] || '#00FFFF';
     const light = ['White', 'Yellow', 'Cyan', 'Green', 'Orange', 'Magenta'].includes(c.team);
     const short = esc((c.callsign || '?').slice(0, 4));
@@ -369,7 +369,7 @@ function popupHtml(it) {
 
 const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c';
 
-// Eigenen Marker ändern (Position und/oder Name) und an alle Server senden
+// change an own marker (position and/or name) and send it to all servers
 function updateOwn(it, { lat, lon, name }) {
   const doc = new DOMParser().parseFromString(it.xml, 'application/xml');
   const ev = doc.documentElement;
@@ -423,7 +423,7 @@ function drawItem(it) {
       || (pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]);
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
-    // Eigene Marker lassen sich verschieben (Drag & Drop), Änderung geht wie bei ATAK mit gleicher UID raus
+    // own markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
     it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: !!it.own, autoPan: true }).addTo(pointsLayer);
     if (it.own) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
   }
@@ -441,13 +441,13 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
     return;
   }
   if (c.type === 'b-t-f') return receiveChat(c, local);
-  // Vom TAK-Server geschickt (wie bei ATAK automatisch übernehmen): Datei/Paket, Missions-Einladung, Missions-Änderung
+  // sent by the TAK server (taken over automatically like ATAK): file/package, mission invitation, mission change
   if (c.type === 'b-f-t-r') { if (!local) document.dispatchEvent(new CustomEvent('eud-file-push', { detail: { xml, srv } })); return; }
   if (c.type === 't-x-m-i') { if (!local) document.dispatchEvent(new CustomEvent('eud-mission-invite', { detail: { xml, srv } })); return; }
   if (c.type.startsWith('t-x-m-')) { document.dispatchEvent(new CustomEvent('eud-mission-change', { detail: { xml, srv } })); return; }
-  if (c.uid === profile.uid) return; // eigenes Echo
+  if (c.uid === profile.uid) return; // own echo
   const prev = items.get(c.uid);
-  if (prev && prev.c.time > c.time && !local) return; // älter als bekannt (z. B. über zweiten Server)
+  if (prev && prev.c.time > c.time && !local) return; // older than known (e.g. via a second server)
   const it = prev || { uid: c.uid };
   it.c = c;
   it.xml = xml;
@@ -458,7 +458,7 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
   if (popupSec === 'contacts') renderList();
 }
 
-// Lagebild auf dem Gerät halten (für Start ohne Netz)
+// keep the situational picture on the device (for starting without network)
 let persistTimer;
 function persistSoon() {
   clearTimeout(persistTimer);
@@ -473,7 +473,7 @@ function loadPicture() {
   for (const e of store.get('eud.picture', [])) handleCot(e.xml, { local: true, own: e.own });
 }
 
-// Veraltete Kontakte blasser, sehr alte entfernen
+// fade stale contacts, remove very old ones
 setInterval(() => {
   const now = Date.now();
   for (const it of [...items.values()]) {
@@ -484,7 +484,7 @@ setInterval(() => {
 }, 15000);
 
 // ======================================================================
-// Chat (GeoChat, „All Chat Rooms“)
+// Chat (GeoChat, "All Chat Rooms")
 // ======================================================================
 
 function receiveChat(c, local) {
@@ -494,7 +494,7 @@ function receiveChat(c, local) {
   if (chat.some(m => m.id === c.uid)) return;
   const toMe = ch && (ch.getAttribute('id') === profile.uid || room === profile.callsign);
   const fromMe = c.uid.startsWith('GeoChat.' + profile.uid + '.');
-  chat.push({ id: c.uid, from: sender, room: toMe ? 'Direkt' : room, text: c.remarks, time: c.time, me: fromMe });
+  chat.push({ id: c.uid, from: sender, room: toMe ? 'Direct' : room, text: c.remarks, time: c.time, me: fromMe });
   chat = chat.slice(-200);
   store.set('eud.chat', chat);
   if (!local && !fromMe && $('chatWin').classList.contains('hidden')) {
@@ -580,7 +580,7 @@ $('chatForm').addEventListener('submit', e => {
 });
 
 // ======================================================================
-// Verbindungen zu den TAK-Servern (je Server ein WebSocket zur Durchreiche)
+// Connections to the TAK servers (one WebSocket to the relay per server)
 // ======================================================================
 
 const conns = new Map(); // server.id -> { ws, retry, timer, state, message }
@@ -596,7 +596,7 @@ function updateStatus() {
   const active = servers.filter(s => s.auto);
   const ok = active.filter(s => connOf(s).state === 'connected').length;
   const anyErr = active.some(s => ['error', 'untrusted'].includes(connOf(s).state));
-  // Kopfzeile: grün = alle verbunden, orange = nur ein Teil, rot = offline/getrennt/Fehler
+  // header: green = all connected, orange = only some, red = offline/disconnected/error
   let kind = '', text = 'OFFLINE';
   if (!servers.length) text = 'SETUP';
   else if (!active.length) text = 'DISCONNECTED';
@@ -612,7 +612,7 @@ function updateStatus() {
   if (popupSec === 'server') renderServers();
 }
 
-// An alle verbundenen Server senden; wer gerade nicht verbunden ist, bekommt es später (queue)
+// send to all connected servers; those not connected right now get it later (queue)
 function sendCot(xml, queue) {
   let sent = false;
   for (const srv of servers.filter(s => s.auto)) {
@@ -653,7 +653,7 @@ function openConn(srv) {
       certPem: srv.proto === 'ssl' ? srv.certPem : '', keyPem: srv.proto === 'ssl' ? srv.keyPem : '',
       caPems: srv.caPems, fingerprint: srv.fingerprint,
     }));
-    flushOutbox(srv); // die Durchreiche puffert, bis der TAK-Server verbunden ist
+    flushOutbox(srv); // the relay buffers until the TAK server is connected
     sendSelfTo(srv);
   };
   sock.onmessage = ev => {
@@ -690,7 +690,7 @@ function closeSock(srv) {
   const c = connOf(srv);
   clearTimeout(c.timer);
   if (c.ws) {
-    try { c.ws.send(JSON.stringify({ type: 'disconnect' })); } catch (e) { /* egal */ }
+    try { c.ws.send(JSON.stringify({ type: 'disconnect' })); } catch (e) { /* ignore */ }
     const s = c.ws;
     c.ws = null;
     s.onclose = null;
@@ -739,7 +739,7 @@ document.addEventListener('visibilitychange', () => {
 });
 
 // ======================================================================
-// Eigene Position (SA)
+// Own position (SA)
 // ======================================================================
 
 let meMarker = null, meCircle = null, follow = true, lastSent = 0, sentAt = null;
@@ -816,10 +816,10 @@ $('btnLocate').addEventListener('click', () => {
 $('btnLocate').classList.add('active');
 
 // ======================================================================
-// Marker setzen: Symbol wählen -> Fadenkreuz -> PUNKT SETZEN
+// Placing markers: choose a symbol -> crosshair -> PLACE POINT
 // ======================================================================
 
-// Marker wie ATAK: Zugehörigkeit + Dimension + MIL-STD-2525-Funktion (CoT-Typ a-<aff>-<dim>-<funktion>)
+// markers like ATAK: affiliation + dimension + MIL-STD-2525 function (CoT type a-<aff>-<dim>-<function>)
 const AFF_LABEL = { u: 'Unknown', n: 'Neutral', h: 'Hostile', f: 'Friendly' };
 const DIM_LABEL = { G: 'Ground', A: 'Air', S: 'Sea', U: 'Subsurface', P: 'Space' };
 const FUNCTIONS = {
@@ -835,7 +835,7 @@ const FUNCTIONS = {
 };
 const fnLabel = {};
 for (const [dim, list] of Object.entries(FUNCTIONS)) for (const [fn, label] of list) fnLabel[`${dim}-${fn}`] = label;
-// Nur Funktionen anbieten, die milsymbol als gültiges 2525-Symbol kennt
+// only offer functions that milsymbol knows as a valid 2525 symbol
 const validType = type => { try { return new ms.Symbol(sidcFor(type), { size: 20 }).isValid(); } catch (e) { return false; } };
 for (const dim of Object.keys(FUNCTIONS)) FUNCTIONS[dim] = FUNCTIONS[dim].filter(([fn]) => validType(`a-f-${dim}-${fn}`));
 
@@ -885,7 +885,7 @@ function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
   $('placeHint').classList.toggle('hidden', !t);
-  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing); // Antippen trifft die Karte
+  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing); // a tap hits the map
   if (t) { follow = false; $('btnLocate').classList.remove('active'); setPitch(0); }
 }
 
@@ -893,7 +893,7 @@ function placeMarker(latlng) {
   const now = new Date();
   const type = tool;
   const uid = profile.uid + '-' + rnd(4);
-  // Name wie ATAK: Präfix + laufende Nummer (ohne Präfix: Art + Uhrzeit)
+  // name like ATAK: prefix + running number (without prefix: type + time)
   const prefix = ($('mkPrefix').value || '').trim();
   let name = `${toolName(type)} ${hhmm(now)}`;
   if (prefix) {
@@ -916,7 +916,7 @@ function placeMarker(latlng) {
 }
 
 
-// Knöpfe im Marker-Popup (Video, Umbenennen, Löschen) – für die 2D- und die 3D-Karte
+// buttons in the marker popup (video, rename, delete) – for the 2D and the 3D map
 function wirePopup(root, close) {
   const play = root.querySelector('[data-play]');
   if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
@@ -940,11 +940,11 @@ function wirePopup(root, close) {
 map.on('popupopen', e => wirePopup(e.popup.getElement(), () => map.closePopup()));
 
 // ======================================================================
-// Kontakte
+// Contacts
 // ======================================================================
 
-// Inhalte nach Art getrennt, wie im ATAK Overlay Manager: Kontakte (Nutzer), Marker nach Zugehörigkeit,
-// sonstige Punkte und Zeichnungen. Jede Gruppe lässt sich einzeln bereinigen.
+// content split by type, like the ATAK overlay manager: contacts (users), markers by affiliation,
+// other points and drawings. Every group can be cleared on its own.
 const CATS = [
   { id: 'contacts', label: 'Contacts', color: '#2fd8ff' },
   { id: 'f', label: 'Friendly', color: '#80e0ff' },
@@ -954,7 +954,7 @@ const CATS = [
   { id: 'points', label: 'Other points', color: '#d0d0d0' },
   { id: 'shapes', label: 'Drawings & routes', color: '#ffd400' },
 ];
-// 2525-Zugehörigkeit (3. Zeichen des CoT-Typs) -> eine der vier ATAK-Gruppen
+// 2525 affiliation (3rd character of the CoT type) -> one of the four ATAK groups
 const AFF_GROUP = { f: 'f', a: 'f', d: 'f', m: 'f', h: 'h', s: 'h', j: 'h', k: 'h', n: 'n', u: 'u', p: 'u', o: 'u', x: 'u', g: 'u' };
 function categoryOf(it) {
   const c = it.c;
@@ -976,7 +976,7 @@ function deleteXml(uid) {
   return `<event version="2.0" uid="${xmlEsc(rnd(8))}" type="t-x-d-d" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 20000))}">`
     + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
 }
-// Gruppen vom Gerät entfernen. Eigene Marker auf Wunsch auch beim TAK-Server löschen (wie "Delete" in ATAK).
+// remove groups from the device. Optionally delete own markers on the TAK server too (like "Delete" in ATAK).
 function clearCats(ids, { serverToo = false } = {}) {
   const groups = itemsByCat();
   let n = 0;
@@ -1071,7 +1071,7 @@ function renderList() {
   box.append(btn);
 }
 
-// Clear Content: mehrere Gruppen auf einmal bereinigen (auch Overlays und Chat)
+// Clear Content: clear several groups at once (also overlays and chat)
 function renderClear() {
   const box = $('clearBody');
   box.textContent = '';
@@ -1114,12 +1114,12 @@ $('clearGo').addEventListener('click', async () => {
 });
 
 // ======================================================================
-// Rufname
+// Callsign
 // ======================================================================
 
 for (const t of Object.keys(TEAMS)) $('fTeam').append(new Option(t, t));
 for (const r of ROLES) $('fRole').append(new Option(r, r));
-// Vom Admin festgelegt (verwalteter TAK-Zugang): übernehmen und im Menü sperren
+// set by the admin (managed TAK access): apply and lock in the menu
 function applyAssignment(a) {
   const changed = profile.callsign !== a.callsign || profile.team !== a.team || profile.role !== a.role;
   profile.assigned = { callsign: String(a.callsign || ''), team: TEAMS[a.team] ? a.team : profile.team, role: ROLES.includes(a.role) ? a.role : profile.role };
@@ -1156,7 +1156,7 @@ $('meSave').addEventListener('click', () => {
 });
 
 // ======================================================================
-// Server: Liste, Bearbeiten, Zertifikat, Dateien, QR
+// Servers: list, edit, certificate, files, QR
 // ======================================================================
 
 const STATE_TEXT = { connected: 'connected', connecting: 'connecting …', offline: 'relay not reachable', idle: 'disconnected' };
@@ -1199,7 +1199,7 @@ function askCallsign() {
   $('fCallsign').focus();
 }
 
-// Bearbeiten arbeitet auf einer Kopie; „Speichern & Verbinden“ übernimmt sie
+// editing works on a copy; "Save & connect" applies it
 let draft = null;
 let draftOrig = null;
 
@@ -1214,7 +1214,7 @@ function openEdit(srv) {
   pendingP12 = null;
 }
 $('addSrvBtn').addEventListener('click', () => openEdit(null));
-$('editCancel').addEventListener('click', () => { draft = null; openPopup('server'); }); // ZURÜCK = verwerfen
+$('editCancel').addEventListener('click', () => { draft = null; openPopup('server'); }); // BACK = discard
 
 function fillEdit() {
   $('fName').value = draft.name || '';
@@ -1257,8 +1257,8 @@ $('fProto').addEventListener('change', () => {
   updateCertState();
 });
 
-// 127.0.0.1 / localhost = dieses Handy (z. B. TAK-Server in der Meshtastic-App). Eine Web-App kann
-// keine TCP/TLS-Verbindungen öffnen, und die Durchreiche erreicht das Handy nicht.
+// 127.0.0.1 / localhost = this phone (e.g. TAK server in the Meshtastic app). A web app cannot
+// open TCP/TLS connections, and the relay cannot reach the phone.
 const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)$/i;
 const LOCAL_MSG = 'This address is the phone itself (e.g. Meshtastic app): a web app cannot reach it – this needs the EUD as an installed app.';
 
@@ -1296,7 +1296,7 @@ async function postJson(path, body) {
     throw new Error('Server not reachable – this needs a connection.');
   }
   let data = {};
-  try { data = await res.json(); } catch (e) { /* leer */ }
+  try { data = await res.json(); } catch (e) { /* empty */ }
   if (!res.ok) { const err = new Error(data.error || 'Error ' + res.status); Object.assign(err, data, { status: res.status }); throw err; }
   return data;
 }
@@ -1343,7 +1343,7 @@ async function requestCert(password) {
 }
 $('enrollBtn').addEventListener('click', () => requestCert($('fPass').value));
 
-// Vertrauensfrage für ein unbekanntes Server-Zertifikat
+// trust question for an unknown server certificate
 function askTrust(host, fingerprint, subject) {
   return new Promise(resolve => {
     $('trustHost').textContent = host;
@@ -1360,7 +1360,7 @@ function askTrust(host, fingerprint, subject) {
   });
 }
 
-// ---------------- Dateien: Datenpaket, .p12, Truststore ----------------
+// ---------------- Files: data package, .p12, truststore ----------------
 
 function fileBase64(file) {
   return new Promise((resolve, reject) => {
@@ -1389,7 +1389,7 @@ async function loadFile(file) {
       if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
       setMsg(msg, 'Data package loaded' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – enter user/password and request a certificate.' : '.'), true);
     } else if (/\.(p12|pfx)$/.test(name)) {
-      // Erst mit dem ATAK-Standardpasswort, sonst Passwortfeld im Formular (prompt() fehlt in iPhone-Web-Apps teils)
+      // first with the ATAK default password, otherwise a password field in the form (prompt() is partly missing in iPhone web apps)
       const data = await fileBase64(file);
       try {
         applyP12(await postJson('/api/eud/p12', { data, password: 'atakatak' }));
@@ -1439,8 +1439,8 @@ $('fileIn').addEventListener('change', e => { const f = e.target.files[0]; e.tar
 
 // ---------------- QR-Codes ----------------
 
-// Unterstützt: ATAK-Enrollment (tak://com.atakmap.app/enroll?...), iTAK (Name,Host,Port,Proto),
-// eigener Link (…/eud/#host=…), JSON {host,port,proto,username,password} und "host:port:ssl"
+// Supported: ATAK enrollment (tak://com.atakmap.app/enroll?...), iTAK (name,host,port,proto),
+// own link (…/eud/#host=…), JSON {host,port,proto,username,password} and "host:port:ssl"
 function parseQr(text) {
   text = String(text || '').trim();
   const out = {};
@@ -1484,7 +1484,7 @@ function parseQr(text) {
   return out;
 }
 
-// Serverdaten übernehmen: in den offenen Entwurf, sonst in den passenden oder einen neuen Server
+// apply server data: into the open draft, otherwise into the matching or a new server
 async function applyConfig(cfg, auto) {
   if (!draft || popupSec !== 'edit') {
     const existing = servers.find(s => s.host === cfg.host && (!cfg.port || s.port === cfg.port));
@@ -1492,7 +1492,7 @@ async function applyConfig(cfg, auto) {
   }
   if (cfg.host !== draft.host) {
     draft.fingerprint = '';
-    if (draft.host) Object.assign(draft, { certPem: '', keyPem: '', certInfo: null, caPems: [] }); // anderer Server: altes Zertifikat passt nicht
+    if (draft.host) Object.assign(draft, { certPem: '', keyPem: '', certInfo: null, caPems: [] }); // another server: the old certificate does not fit
   }
   draft.host = cfg.host;
   if (cfg.name && !draft.name) draft.name = cfg.name;
@@ -1580,14 +1580,14 @@ $('scanFile').addEventListener('change', e => {
 });
 
 // ======================================================================
-// Karte: Kartenart, offline speichern, Bildschirm, Löschen
+// Map: map type, save offline, screen, delete
 // ======================================================================
 
 $('fTiles').addEventListener('change', () => setTiles($('fTiles').value));
 
 let wakeSentinel = null;
 async function wakeLock() {
-  try { if ('wakeLock' in navigator && !wakeSentinel) { wakeSentinel = await navigator.wakeLock.request('screen'); wakeSentinel.onrelease = () => { wakeSentinel = null; }; } } catch (e) { /* nicht erlaubt */ }
+  try { if ('wakeLock' in navigator && !wakeSentinel) { wakeSentinel = await navigator.wakeLock.request('screen'); wakeSentinel.onrelease = () => { wakeSentinel = null; }; } } catch (e) { /* not allowed */ }
 }
 $('f3d').addEventListener('change', () => {
   setPitch(0);
@@ -1653,7 +1653,7 @@ $('customSave').addEventListener('click', () => {
   toast('Map source applied.');
 });
 
-// ---------------- Offline speichern: Ausschnitt oder Korridor ----------------
+// ---------------- Save offline: area or corridor ----------------
 
 let areaMode = 'view';
 let corridor = []; // [[lat, lon], …]
@@ -1686,7 +1686,7 @@ $('fWidth').addEventListener('input', updateEstimate);
 const tileX = (lon, n) => Math.floor((lon + 180) / 360 * n);
 const tileY = (lat, n) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
 
-// Kacheln eines Bereichs: { kind: 'rect', s, w, n, e } oder { kind: 'corridor', points, width }
+// tiles of an area: { kind: 'rect', s, w, n, e } or { kind: 'corridor', points, width }
 function areaTiles(area, zmin, zmax, limit = 50000) {
   const out = new Set();
   const addBox = (s, w, n, e, z) => {
@@ -1705,7 +1705,7 @@ function areaTiles(area, zmin, zmax, limit = 50000) {
     } else {
       const pts = area.points;
       const dLat = area.width / 111320;
-      // Schrittweite kleiner als eine Kachel dieser Zoomstufe
+      // step smaller than one tile of this zoom level
       const step = Math.min(area.width, 40075016 / 2 ** z / 2);
       for (let i = 0; i < pts.length; i++) {
         const a = pts[i], b = pts[i + 1] || pts[i];
@@ -1755,12 +1755,12 @@ function tileUrl(src, key) {
   return new URL(sourceTemplate(src).replace('{z}', z).replace('{x}', x).replace('{y}', y), location.href).href;
 }
 
-// Korridor zeichnen: Punkte antippen
+// drawing a corridor: tap points
 function startDraw() {
   drawing = true;
   setPitch(0);
   if (measuring) toggleMeasure();
-  map.getContainer().classList.add('drawing'); // Antippen trifft die Karte, nicht Marker/Overlays
+  map.getContainer().classList.add('drawing'); // a tap hits the map, not markers/overlays
   corridor = [];
   drawCorridor();
   closePopup();
@@ -1773,7 +1773,7 @@ function drawCorridor() {
   corridorLine = null;
   if (!corridor.length) return;
   const width = Math.max(50, Number($('fWidth').value) || 1000);
-  // Breite grob in Pixel der aktuellen Zoomstufe umrechnen (nur zur Anzeige)
+  // roughly convert the width into pixels of the current zoom level (display only)
   const mpp = 40075016 * Math.cos(corridor[0][0] * Math.PI / 180) / (256 * 2 ** map.getZoom());
   corridorLine = L.layerGroup([
     L.polyline(corridor, { color: '#007bff', weight: Math.max(4, Math.min(200, 2 * width / mpp)), opacity: 0.2, interactive: false }),
@@ -1782,7 +1782,7 @@ function drawCorridor() {
   ]).addTo(map);
 }
 map.on('click', e => {
-  if (tool) return placeMarker(e.latlng); // Symbol gewählt: Antippen setzt den Marker (wie ATAK)
+  if (tool) return placeMarker(e.latlng); // symbol selected: a tap places the marker (like ATAK)
   if (measuring) return addMeasurePoint(e.latlng);
   if (!drawing) return;
   corridor.push([e.latlng.lat, e.latlng.lng]);
@@ -1805,7 +1805,7 @@ $('drawDone').addEventListener('click', () => {
 });
 $('drawBtn').addEventListener('click', startDraw);
 
-// Speichern über den Service Worker (läuft weiter, auch wenn das Fenster zu ist)
+// saving via the service worker (keeps running even when the window is closed)
 let prefetchPort = null;
 async function swReady() {
   const reg = navigator.serviceWorker && await navigator.serviceWorker.ready.catch(() => null);
@@ -1842,7 +1842,7 @@ $('prefetchBtn').addEventListener('click', async () => {
       renderAreas();
     }
   };
-  // Mit 3D-Karte auch die Höhendaten (bis Zoom 15) speichern, damit das Gelände offline da ist
+  // with the 3D map also save the elevation data (up to zoom 15) so the terrain is available offline
   const urls = keys.map(k => tileUrl(profile.tiles, k));
   if (use3d()) {
     const dem = areaTiles(area, zmin, Math.min(zmax, 15), 20000) || [];
@@ -1897,23 +1897,23 @@ function renderAreas() {
 }
 
 // ======================================================================
-// Kompass, Karte drehen und kippen, Entfernung messen, Symbolleiste
+// Compass, rotating and tilting the map, measuring distance, toolbar
 // ======================================================================
 
-// Winkel (Grad, im Uhrzeigersinn), in dem Norden gerade auf dem Bildschirm liegt (= Drehung der Karte)
+// angle (degrees, clockwise) at which north currently lies on the screen (= map rotation)
 function northAngle() {
-  if (window.view3d && view3d.active) return view3d.northAngle(); // 3D-Karte dreht selbst
+  if (window.view3d && view3d.active) return view3d.northAngle(); // the 3D map rotates itself
   const b = map.getBearing ? map.getBearing() : 0;
   return ((b % 360) + 360) % 360;
 }
-// Karte so drehen, dass die Richtung "deg" oben liegt
+// rotate the map so that direction "deg" is at the top
 function headingUp(deg) { map.setBearing(-deg); }
 
-let compassMode = 'north'; // 'north' = Nord oben (wie ATAK Standard), 'heading' = Blickrichtung oben
-let heading = null;        // Gerätekompass in Grad
+let compassMode = 'north'; // 'north' = north up (ATAK default), 'heading' = heading up
+let heading = null;        // device compass in degrees
 let lastTurn = 0;
 
-let needleAngle = 0; // fortlaufend, damit die Nadel immer den kurzen Weg dreht
+let needleAngle = 0; // continuous so the needle always turns the short way
 function updateCompass() {
   const n = northAngle();
   needleAngle += ((n - needleAngle) % 360 + 540) % 360 - 180;
@@ -1933,7 +1933,7 @@ function onOrientation(e) {
   heading = (h + sc + 360) % 360;
   if (compassMode !== 'heading') return;
   const now = Date.now();
-  if (now - lastTurn < 120) return; // ruhig drehen, Akku schonen
+  if (now - lastTurn < 120) return; // rotate smoothly, save battery
   lastTurn = now;
   headingUp(heading);
   updateCompass();
@@ -1942,7 +1942,7 @@ function onOrientation(e) {
 function startHeading() {
   window.addEventListener('deviceorientationabsolute', onOrientation);
   window.addEventListener('deviceorientation', onOrientation);
-  // iPhone (und neuere Chrome) fragen beim Antippen nach Erlaubnis – nicht darauf warten
+  // iPhone (and newer Chrome) ask for permission on tap – do not wait for it
   if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
     DeviceOrientationEvent.requestPermission()
       .then(r => { if (r !== 'granted') throw new Error('denied'); })
@@ -1954,7 +1954,7 @@ function stopHeading() {
   window.removeEventListener('deviceorientation', onOrientation);
 }
 
-// Kompass antippen: von Hand gedrehte Karte wieder nach Norden; ist sie schon genordet, Blickrichtung oben (HDG)
+// tapping the compass: a map rotated by hand goes back to north; if already north up, heading up (HDG)
 $('compass').addEventListener('click', () => {
   const turned = Math.abs(((northAngle() + 180) % 360) - 180) > 0.5;
   if (compassMode === 'north' && turned) {
@@ -1976,14 +1976,14 @@ function resetNorth() {
   map.setBearing(0);
   if (window.view3d && view3d.active) view3d.map().easeTo({ bearing: 0, duration: 300 });
 }
-// Von Hand gedreht (zwei Finger / Umschalt+Mausrad): Blickrichtungs-Modus beenden, sonst dreht der Kompass zurück
+// rotated by hand (two fingers / Shift+mouse wheel): end heading-up mode, otherwise the compass turns it back
 function manualRotate() {
   if (compassMode !== 'heading') return;
   compassMode = 'north';
   stopHeading();
   updateCompass();
 }
-// Zwei Finger: erst ab ~12° bewusster Drehung drehen, damit die Karte beim Zoomen nicht wackelt
+// two fingers: only rotate after ~12° of deliberate rotation so the map does not wobble while zooming
 (() => {
   const orig = map.setBearing.bind(map);
   let gesture = null;
@@ -2003,12 +2003,12 @@ function manualRotate() {
 map.getContainer().addEventListener('touchmove', e => { if (e.touches.length === 2) manualRotate.pending = true; }, { passive: true });
 map.getContainer().addEventListener('wheel', e => { if (e.shiftKey) manualRotate(); }, { passive: true });
 map.on('rotate', () => { if (manualRotate.pending) { manualRotate.pending = false; manualRotate(); } });
-// Ohne Kompass-Sensor: beim Gehen/Fahren nach GPS-Kurs drehen
+// without a compass sensor: rotate by GPS course while walking/driving
 setInterval(() => {
   if (compassMode === 'heading' && heading == null && me && Number.isFinite(me.course) && me.speed > 0.5) headingUp(me.course);
 }, 2000);
 
-// Pfeile der Kontakte und des eigenen Symbols folgen der Kartendrehung
+// arrows of contacts and of the own symbol follow the map rotation
 let rotateTimer = null;
 map.on('rotate', () => {
   updateCompass();
@@ -2022,10 +2022,10 @@ map.on('rotate', () => {
 map.on('moveend zoomend', updateCompass);
 updateCompass();
 
-// ---------------- Kippen (0–60°) ----------------
+// ---------------- Tilt (0–60°) ----------------
 
 let pitch = 0;
-// Mit 3D-Karte (WebGL) wie WinTAK bis knapp an den Horizont, sonst flache Karte schräg gestellt (CSS)
+// with the 3D map (WebGL) like WinTAK almost up to the horizon, otherwise the flat map tilted (CSS)
 const use3d = () => profile.map3d !== false && window.view3d && view3d.supported;
 const pitchMax = () => (use3d() ? 88 : 60);
 function pitchUi(p) {
@@ -2046,11 +2046,11 @@ function setPitch(p, fromView) {
     if (!fromView) { if (p > 0) view3d.show(p); else view3d.hide(); }
   } else {
     if ((was > 0) !== (p > 0)) {
-      el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
+      el.classList.toggle('tilted', p > 0); // map larger so the far part is filled
       map.invalidateSize({ pan: true, animate: false });
     }
     el.style.transform = p ? `rotateX(${p}deg)` : '';
-    el.style.setProperty('--tilt', p + 'deg'); // Symbole stehen dagegen aufrecht (CSS)
+    el.style.setProperty('--tilt', p + 'deg'); // symbols stand upright instead (CSS)
   }
   if (p > 0) { profile.pitch = p; saveProfile(); }
   pitchUi(p);
@@ -2071,9 +2071,9 @@ function setPitch(p, fromView) {
 })();
 setPitch(0);
 
-// Kippen mit zwei Fingern auch auf der flachen Karte (wie ATAK): beide Finger gemeinsam nach oben schieben =
-// kippen (wechselt in die 3D-Karte, dort übernimmt MapLibre), nach unten = flacher. Fingerabstand bleibt dabei
-// gleich – so kommt es nicht mit dem Zoomen (Finger auseinander/zusammen) durcheinander.
+// Tilting with two fingers on the flat map too (like ATAK): pushing both fingers up together =
+// tilt (switches to the 3D map, MapLibre takes over there), down = flatter. The finger distance stays
+// the same – so it does not get mixed up with zooming (fingers apart/together).
 (() => {
   let g = null;
   const box = map.getContainer();
@@ -2096,10 +2096,10 @@ setPitch(0);
   document.addEventListener('touchcancel', () => { g = null; }, { passive: true });
 })();
 
-// 3D als Standard: mit der zuletzt benutzten Neigung starten
+// 3D as default: start with the last used tilt
 if (use3d() && profile.start3d !== false) setTimeout(() => setPitch(Math.max(45, profile.pitch || 60)), 300);
 
-// ---------------- Entfernung messen ----------------
+// ---------------- Measuring distance ----------------
 
 let measuring = false;
 let measurePts = [];
@@ -2136,7 +2136,7 @@ function toggleMeasure() {
 }
 $('btnMeasure').addEventListener('click', toggleMeasure);
 
-// ---------------- Symbolleiste ein/aus (Pin) ----------------
+// ---------------- Toolbar on/off (pin) ----------------
 
 $('toolsClose').addEventListener('click', () => showTools(false));
 $('mkPrefix').value = profile.markerPrefix || '';
@@ -2153,7 +2153,7 @@ $('btnPin').addEventListener('click', () => showTools(!profile.showTools));
 showTools(profile.showTools);
 
 // ======================================================================
-// Eigene Position unten rechts (wie ATAK): Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit
+// own position bottom right (like ATAK): callsign, MGRS, altitude, direction, speed, accuracy
 // ======================================================================
 
 // WGS84 -> MGRS (z. B. "33U VP 49594 44664")
@@ -2206,7 +2206,7 @@ if ('serviceWorker' in navigator) {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
 
-// Alle Streams im Lagebild (Kontakte mit Video-Link)
+// all streams in the situational picture (contacts with a video link)
 function videoItems() {
   return [...items.values()].map(it => ({ name: it.c.callsign || it.uid, url: videoUrl(it.c), stale: Date.now() > it.c.stale, time: it.c.time }))
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
@@ -2219,18 +2219,18 @@ renderChat();
 showMe();
 updateStatus();
 
-// Vorgaben aus dem QR-Code des Admins (…/eud/#host=…) oder vom Server
+// presets from the admin's QR code (…/eud/#host=…) or from the server
 (async () => {
   const hash = location.hash.slice(1);
   let handled = false;
   if (hash && new URLSearchParams(hash).has('host')) {
     history.replaceState(null, '', location.pathname);
     const t = new URLSearchParams(hash).get('t');
-    if (t) try { localStorage.setItem('tak.access', t); } catch (e) { /* privat */ }
+    if (t) try { localStorage.setItem('tak.access', t); } catch (e) { /* private mode */ }
     try {
       const cfg = parseQr(location.origin + location.pathname + '#' + hash);
       if (!servers.some(s => s.host === cfg.host)) { await applyConfig(cfg, true); handled = true; }
-    } catch (e) { /* ungültig */ }
+    } catch (e) { /* invalid */ }
   } else if (!servers.length) {
     try {
       const r = await fetch('/api/eud/config').then(x => x.json());

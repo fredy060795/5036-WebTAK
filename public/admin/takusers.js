@@ -1,11 +1,11 @@
-// Admin: TAK-Zugänge (OpenTAKServer) – Anfragen freigeben, Benutzer verwalten, Rufname/Team/Rolle
-// überschreiben, Teams und Sichtbarkeit, OTS- und Registrierungs-Einstellungen.
+// Admin: TAK access (OpenTAKServer) – approve requests, manage users, override callsign/team/role,
+// teams and visibility, OTS and registration settings.
 'use strict';
 
 (() => {
   const COLORS = { White: '#FFFFFF', Yellow: '#FFFF00', Orange: '#FF7700', Magenta: '#FF00FF', Red: '#FF0000', Maroon: '#7F0000', Purple: '#7F007F',
     'Dark Blue': '#00007F', Blue: '#0000FF', Cyan: '#00FFFF', Teal: '#007F7F', Green: '#00FF00', 'Dark Green': '#007F00', Brown: '#A0714F' };
-  const STATUS = { unconfirmed: 'E-Mail unbestätigt', pending: 'Offen', active: 'Aktiv', blocked: 'Gesperrt', rejected: 'Abgelehnt' };
+  const STATUS = { unconfirmed: 'E-mail unconfirmed', pending: 'Open', active: 'Active', blocked: 'Blocked', rejected: 'Declined' };
   let state = null;
   let teamsDraft = [];
   let blocksDraft = [];
@@ -13,7 +13,7 @@
   const tapi = (path, opts) => api('takusers/' + path, opts);
   const msg = (t, ok) => setMsg($('takMsg'), t, ok);
   const chip = color => el('span', { class: 'chip', style: `display:inline-block;width:12px;height:12px;border-radius:50%;border:1px solid #000;margin-right:6px;vertical-align:-1px;background:${COLORS[color] || '#0ff'}` });
-  const fmt = iso => (iso ? new Date(iso).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : '–');
+  const fmt = iso => (iso ? new Date(iso).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }) : '–');
 
   async function load() {
     try {
@@ -25,15 +25,15 @@
     renderUsers();
     if (!$('takTeams').dataset.dirty) { teamsDraft = state.teams.map(t => ({ ...t })); blocksDraft = state.blocks.map(b => [...b]); renderTeams(); }
     fillSettings();
-    if (!state.otsReady) msg('OpenTAKServer ist noch nicht verbunden – unter „Einstellungen → OpenTAKServer & Registrierung“ eintragen. Ohne OTS können Anfragen nicht freigegeben werden.');
+    if (!state.otsReady) msg('OpenTAKServer is not connected yet – set it up under "Settings → OpenTAKServer & registration". Requests cannot be approved without OTS.');
   }
   window.loadTakUsers = load;
 
-  // Registrierungs-QR für den Alltag direkt bei den Benutzern (Einstellungen dazu unter „Einstellungen“)
+  // registration QR for daily use right next to the users (its settings are under "Settings")
   $('takJoinBtn').addEventListener('click', () => {
     const url = (state && state.joinUrl) || location.origin + '/join/';
-    const img = el('img', { class: 'qr', alt: 'QR-Code zur Registrierung', src: '/api/admin/takusers/join-qr.svg?t=' + Date.now() });
-    const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+    const img = el('img', { class: 'qr', alt: 'Registration QR code', src: '/api/admin/takusers/join-qr.svg?t=' + Date.now() });
+    const print = el('button', { type: 'button', text: 'Print', onclick: () => {
       const w = window.open('', '_blank', 'width=420,height=560');
       if (!w) return;
       const d = w.document;
@@ -46,9 +46,9 @@
       i.onload = () => w.print();
     } });
     const reg = state && state.registration;
-    openModal('Registrierung',
-      el('p', { class: 'mut small', text: reg && !reg.open ? 'Achtung: Die Registrierung ist gerade geschlossen (Einstellungen → OpenTAKServer & Registrierung).'
-        : 'Neue Nutzer scannen diesen Code und stellen eine Anfrage – du gibst sie unter „Benutzer & Anfragen“ frei.' }),
+    openModal('Registration',
+      el('p', { class: 'mut small', text: reg && !reg.open ? 'Note: registration is currently closed (Settings → OpenTAKServer & registration).'
+        : 'New users scan this code and send a request – you approve it under "Users & requests".' }),
       img, el('div', { class: 'link' }, ...Object.values(copyField(url))), el('div', { class: 'row', style: 'margin-top:10px' }, print));
   });
 
@@ -61,46 +61,46 @@
   }
   $('takTabUsers').classList.add('pri');
 
-  // ---------------- Benutzer ----------------
+  // ---------------- Users ----------------
   function renderUsers() {
     const tb = $('takTable').querySelector('tbody');
     const q = $('takFilter').value.trim().toLowerCase();
     const st = $('takStatus').value;
-    // Offene Anfragen zuerst, dann aktive, gesperrte … (freigegebene Nutzer bleiben sichtbar)
+    // open requests first, then active, blocked … (approved users stay visible)
     const ORDER = { pending: 0, unconfirmed: 1, active: 2, blocked: 3, rejected: 4 };
     const list = state.users.filter(u => (!st || u.status === st)
       && (!q || [u.name, u.unit, u.callsign, u.requestedCallsign, u.email, u.username].join(' ').toLowerCase().includes(q)))
       .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || String(a.callsign).localeCompare(String(b.callsign)));
     tb.replaceChildren();
-    if (!list.length) tb.append(el('tr', {}, el('td', { colspan: '8', class: 'mut', text: st === 'pending' ? 'Keine offenen Anfragen.' : 'Keine Einträge.' })));
+    if (!list.length) tb.append(el('tr', {}, el('td', { colspan: '8', class: 'mut', text: st === 'pending' ? 'No open requests.' : 'No entries.' })));
     for (const u of list) {
       const actions = el('div', { class: 'btns' });
-      if (['pending', 'unconfirmed', 'rejected'].includes(u.status)) actions.append(el('button', { class: 'sm pri', text: 'Freigeben …', onclick: () => edit(u, true) }));
-      actions.append(el('button', { class: 'sm', text: 'Bearbeiten', onclick: () => edit(u, false) }));
+      if (['pending', 'unconfirmed', 'rejected'].includes(u.status)) actions.append(el('button', { class: 'sm pri', text: 'Approve …', onclick: () => edit(u, true) }));
+      actions.append(el('button', { class: 'sm', text: 'Edit', onclick: () => edit(u, false) }));
       tb.append(el('tr', {},
         el('td', { 'data-label': 'Status' }, el('span', { class: 'badge ' + (u.status === 'active' ? 'live' : u.status === 'pending' ? 'wait' : 'off'), text: STATUS[u.status] || u.status })),
         el('td', { 'data-label': 'Name', class: 'name' }, el('b', { text: u.name }), el('span', { class: 'mut small', text: [u.unit, u.email].filter(Boolean).join(' · ') })),
-        el('td', { 'data-label': 'Rufname' }, el('b', { text: u.callsign }),
-          u.requestedCallsign && u.requestedCallsign !== u.callsign ? el('div', { class: 'mut small', text: 'Wunsch: ' + u.requestedCallsign }) : null),
+        el('td', { 'data-label': 'Callsign' }, el('b', { text: u.callsign }),
+          u.requestedCallsign && u.requestedCallsign !== u.callsign ? el('div', { class: 'mut small', text: 'Requested: ' + u.requestedCallsign }) : null),
         el('td', { 'data-label': 'Team' }, chip(u.teamColor), document.createTextNode(`${u.teamName} · ${u.role}`)),
         el('td', { 'data-label': 'OTS' }, el('code', { text: u.username || '–' })),
-        el('td', { 'data-label': 'Geräte', class: 'num', text: u.devices ? String(u.devices.length) : '–' }),
-        el('td', { 'data-label': 'Angefragt', text: fmt(u.created) }),
+        el('td', { 'data-label': 'Devices', class: 'num', text: u.devices ? String(u.devices.length) : '–' }),
+        el('td', { 'data-label': 'Requested', text: fmt(u.created) }),
         el('td', {}, actions)));
     }
   }
   $('takFilter').addEventListener('input', () => state && renderUsers());
   $('takStatus').addEventListener('change', () => state && renderUsers());
   $('takSync').addEventListener('click', async () => {
-    msg('Gleiche mit OTS ab …', true);
+    msg('Syncing with OTS …', true);
     try {
       const r = await tapi('sync', { method: 'POST', body: {} });
-      msg(`Abgeglichen: ${r.updated} Gerät(e) mit neuem Rufnamen/Team.` + (r.errors.length ? ' Fehler: ' + r.errors.join('; ') : ''), !r.errors.length);
+      msg(`Synced: ${r.updated} device(s) with a new callsign/team.` + (r.errors.length ? ' Errors: ' + r.errors.join('; ') : ''), !r.errors.length);
       load();
     } catch (e) { msg(e.message); }
   });
 
-  // Bearbeiten / Freigeben in einem Dialog
+  // edit / approve in one dialog
   function edit(u, approve) {
     const f = el('form', {});
     const field = (label, input) => el('div', {}, el('label', { text: label }), input);
@@ -111,21 +111,21 @@
     role.value = u.role;
     const name = el('input', { value: u.name || '', maxlength: '60' });
     const unit = el('input', { value: u.unit || '', maxlength: '60' });
-    const notes = el('input', { value: u.notes || '', maxlength: '500', placeholder: 'nur für Admins sichtbar' });
+    const notes = el('input', { value: u.notes || '', maxlength: '500', placeholder: 'visible to admins only' });
     const out = el('p', { class: 'msg' });
     const info = el('div', { class: 'mut small' },
-      el('div', { text: `E-Mail: ${u.email}${u.phone ? ' · Tel. ' + u.phone : ''}` }),
-      el('div', { text: `Angefragt: ${fmt(u.created)}${u.requestedCallsign ? ' · Wunsch-Rufname: ' + u.requestedCallsign : ''}` }),
-      u.username ? el('div', { text: `OTS-Benutzer: ${u.username} · freigegeben ${fmt(u.approvedAt)}` }) : null,
-      u.devices && u.devices.length ? el('div', { text: 'Geräte: ' + u.devices.map(d => `${d.callsign || d.uid} (${d.platform || d.device || 'TAK'})`).join(', ') }) : null);
+      el('div', { text: `E-mail: ${u.email}${u.phone ? ' · Phone ' + u.phone : ''}` }),
+      el('div', { text: `Requested: ${fmt(u.created)}${u.requestedCallsign ? ' · requested callsign: ' + u.requestedCallsign : ''}` }),
+      u.username ? el('div', { text: `OTS user: ${u.username} · approved ${fmt(u.approvedAt)}` }) : null,
+      u.devices && u.devices.length ? el('div', { text: 'Devices: ' + u.devices.map(d => `${d.callsign || d.uid} (${d.platform || d.device || 'TAK'})`).join(', ') }) : null);
     f.append(info,
-      field('Rufname (überschreibt den Namen des Nutzers in ATAK und für alle anderen)', callsign),
-      el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Team (Farbe)', team)), el('div', { class: 'grow' }, field('Rolle', role))),
-      el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Name', name)), el('div', { class: 'grow' }, field('Einheit', unit))),
-      field('Notiz', notes));
+      field('Callsign (overrides the user\'s name in ATAK and for everyone else)', callsign),
+      el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Team (color)', team)), el('div', { class: 'grow' }, field('Role', role))),
+      el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Name', name)), el('div', { class: 'grow' }, field('Unit', unit))),
+      field('Note', notes));
     const body = () => ({ callsign: callsign.value, team: team.value, role: role.value, name: name.value, unit: unit.value, notes: notes.value });
     const run = async (path, opts, done) => {
-      setMsg(out, 'Bitte warten …', true);
+      setMsg(out, 'Please wait …', true);
       try {
         const r = await tapi(`user/${u.id}` + (path ? '/' + path : ''), opts);
         await load();
@@ -134,40 +134,40 @@
     };
     const btns = el('div', { class: 'row', style: 'margin-top:12px' });
     if (approve) {
-      btns.append(el('button', { class: 'pri', type: 'submit', text: '✓ Freigeben & OTS-Konto anlegen' }));
-      btns.append(el('button', { type: 'button', text: 'Ablehnen', onclick: () => run('reject', { method: 'POST', body: {} }) }));
+      btns.append(el('button', { class: 'pri', type: 'submit', text: '✓ Approve & create OTS account' }));
+      btns.append(el('button', { type: 'button', text: 'Decline', onclick: () => run('reject', { method: 'POST', body: {} }) }));
       f.addEventListener('submit', e => {
         e.preventDefault();
         run('approve', { method: 'POST', body: body() }, r => {
           const link = r.link;
           const { input, btn } = copyField(link);
           $('modalBody').replaceChildren(
-            el('p', { class: 'msg ok', text: `Freigegeben: ${r.user.callsign} (OTS-Benutzer ${r.user.username}).` }),
-            el('p', { class: 'small', text: r.mailed ? 'Der Nutzer hat eine E-Mail mit seinem Zugangslink bekommen.' : 'Keine E-Mail gesendet (SMTP nicht eingerichtet) – bitte diesen Link an den Nutzer geben:' }),
+            el('p', { class: 'msg ok', text: `Approved: ${r.user.callsign} (OTS user ${r.user.username}).` }),
+            el('p', { class: 'small', text: r.mailed ? 'The user received an e-mail with their access link.' : 'No e-mail sent (SMTP not set up) – please give this link to the user:' }),
             el('div', { class: 'link' }, input, btn));
         });
       });
     } else {
-      btns.append(el('button', { class: 'pri', type: 'submit', text: 'Speichern' }));
+      btns.append(el('button', { class: 'pri', type: 'submit', text: 'Save' }));
       f.addEventListener('submit', e => { e.preventDefault(); run('update', { method: 'POST', body: body() }); });
-      if (u.status === 'active') btns.append(el('button', { type: 'button', text: 'Sperren', onclick: () => { if (confirm(`${u.callsign} sperren? Das OTS-Konto wird deaktiviert.`)) run('block', { method: 'POST', body: {} }); } }));
-      if (u.status === 'blocked') btns.append(el('button', { type: 'button', text: 'Entsperren', onclick: () => run('unblock', { method: 'POST', body: {} }) }));
-      if (['pending', 'unconfirmed'].includes(u.status)) btns.append(el('button', { type: 'button', text: 'Ablehnen', onclick: () => run('reject', { method: 'POST', body: {} }) }));
+      if (u.status === 'active') btns.append(el('button', { type: 'button', text: 'Block', onclick: () => { if (confirm(`Block ${u.callsign}? The OTS account will be deactivated.`)) run('block', { method: 'POST', body: {} }); } }));
+      if (u.status === 'blocked') btns.append(el('button', { type: 'button', text: 'Unblock', onclick: () => run('unblock', { method: 'POST', body: {} }) }));
+      if (['pending', 'unconfirmed'].includes(u.status)) btns.append(el('button', { type: 'button', text: 'Decline', onclick: () => run('reject', { method: 'POST', body: {} }) }));
     }
     const more = el('div', { class: 'row', style: 'margin-top:8px' });
     if (u.username) {
-      more.append(el('button', { class: 'sm', type: 'button', text: 'Neues Passwort', onclick: () => { if (confirm('Neues Passwort erzeugen? Das alte gilt dann nicht mehr.')) run('password', { method: 'POST', body: {} }, () => setMsg(out, 'Neues Passwort gesetzt – der Nutzer sieht es auf seiner Zugangsseite.', true)); } }));
-      more.append(el('button', { class: 'sm', type: 'button', text: 'Neuer ATAK-QR', onclick: () => run('qr', { method: 'POST', body: {} }, () => setMsg(out, 'Neuer QR-Code erzeugt.', true)) }));
+      more.append(el('button', { class: 'sm', type: 'button', text: 'New password', onclick: () => { if (confirm('Generate a new password? The old one stops working.')) run('password', { method: 'POST', body: {} }, () => setMsg(out, 'New password set – the user sees it on their access page.', true)); } }));
+      more.append(el('button', { class: 'sm', type: 'button', text: 'New ATAK QR', onclick: () => run('qr', { method: 'POST', body: {} }, () => setMsg(out, 'New QR code generated.', true)) }));
     }
-    more.append(el('button', { class: 'sm', type: 'button', text: 'Zugangslink kopieren', onclick: async ev => { const r = await tapi(`user/${u.id}/link`); copy(r.link, ev.target); } }));
-    more.append(el('button', { class: 'sm admin-only', type: 'button', text: 'Löschen', onclick: () => {
-      if (confirm(`${u.callsign} löschen?${u.username ? ' Das OTS-Konto wird ebenfalls gelöscht.' : ''}`)) run('', { method: 'DELETE' });
+    more.append(el('button', { class: 'sm', type: 'button', text: 'Copy access link', onclick: async ev => { const r = await tapi(`user/${u.id}/link`); copy(r.link, ev.target); } }));
+    more.append(el('button', { class: 'sm admin-only', type: 'button', text: 'Delete', onclick: () => {
+      if (confirm(`Delete ${u.callsign}?${u.username ? ' The OTS account will be deleted as well.' : ''}`)) run('', { method: 'DELETE' });
     } }));
     f.append(btns, more, out);
-    openModal(approve ? `Freigeben: ${u.name}` : `${u.callsign} bearbeiten`, f);
+    openModal(approve ? `Approve: ${u.name}` : `Edit ${u.callsign}`, f);
   }
 
-  // ---------------- Teams und Sichtbarkeit ----------------
+  // ---------------- Teams and visibility ----------------
   const blocked = (a, b) => blocksDraft.some(([x, y]) => x === a && y === b);
   function renderTeams() {
     const box = $('takTeams');
@@ -178,7 +178,7 @@
       const color = el('select', { style: 'width:auto' }, ...state.colors.map(c => el('option', { value: c, text: c })));
       color.value = t.color;
       color.addEventListener('change', () => { t.color = color.value; box.dataset.dirty = '1'; renderTeams(); });
-      const del = el('button', { class: 'sm', type: 'button', text: 'Entfernen', onclick: () => {
+      const del = el('button', { class: 'sm', type: 'button', text: 'Remove', onclick: () => {
         if (teamsDraft.length < 2) return;
         teamsDraft.splice(i, 1);
         blocksDraft = blocksDraft.filter(b => b[0] !== t.id && b[1] !== t.id);
@@ -186,14 +186,14 @@
         renderTeams();
       } });
       const count = state.users.filter(u => u.team === t.id && u.status === 'active').length;
-      box.append(el('div', { class: 'row', style: 'margin-top:6px' }, chip(t.color), name, color, el('span', { class: 'mut small', text: `${count} aktiv` }), del));
+      box.append(el('div', { class: 'row', style: 'margin-top:6px' }, chip(t.color), name, color, el('span', { class: 'mut small', text: `${count} active` }), del));
     });
     renderMatrix();
   }
   function renderMatrix() {
     const tbl = $('takMatrix');
     tbl.replaceChildren();
-    tbl.append(el('thead', {}, el('tr', {}, el('th', { text: 'Team … sieht →' }), ...teamsDraft.map(t => el('th', {}, chip(t.color), document.createTextNode(t.name || '?'))))));
+    tbl.append(el('thead', {}, el('tr', {}, el('th', { text: 'Team … sees →' }), ...teamsDraft.map(t => el('th', {}, chip(t.color), document.createTextNode(t.name || '?'))))));
     const tb = el('tbody');
     for (const a of teamsDraft) {
       const row = el('tr', {}, el('td', {}, chip(a.color), el('b', { text: a.name || '?' })));
@@ -218,17 +218,17 @@
     renderTeams();
   });
   $('takSaveTeams').addEventListener('click', async () => {
-    msg('Speichere Teams und wende sie auf OTS an …', true);
+    msg('Saving teams and applying them to OTS …', true);
     try {
-      // neue Teams bekommen ihre Kennung vom Server; Sperren auf neue Teams über den Namen zuordnen
+      // new teams get their id from the server; blocks on new teams are matched by name
       const r = await tapi('teams', { method: 'POST', body: { teams: teamsDraft, blocks: blocksDraft } });
       delete $('takTeams').dataset.dirty;
-      msg(r.errors.length ? 'Gespeichert, aber OTS meldet: ' + r.errors.join('; ') : 'Teams gespeichert und auf OTS angewendet.', !r.errors.length);
+      msg(r.errors.length ? 'Saved, but OTS reports: ' + r.errors.join('; ') : 'Teams saved and applied to OTS.', !r.errors.length);
       await load();
     } catch (e) { msg(e.message); }
   });
 
-  // ---------------- Einstellungen ----------------
+  // ---------------- Settings ----------------
   function fillSettings() {
     const f = $('otsForm');
     if (document.activeElement && f.contains(document.activeElement)) return;
@@ -242,7 +242,7 @@
     f.userPassword.value = state.ots.userPassword || '';
     f.anon.checked = state.ots.anon !== false;
     f.truststorePassword.value = state.ots.truststorePassword || 'atakatak';
-    $('otsHasPass').textContent = state.ots.hasPassword ? '(gespeichert)' : '';
+    $('otsHasPass').textContent = state.ots.hasPassword ? '(saved)' : '';
     const r = $('regForm2');
     r.open.checked = !!state.registration.open;
     r.emailConfirm.checked = !!state.registration.emailConfirm;
@@ -261,17 +261,17 @@
     try {
       await tapi('ots', { method: 'POST', body: otsBody() });
       $('otsForm').password.value = '';
-      msg('OTS-Einstellungen gespeichert.', true);
+      msg('OTS settings saved.', true);
       load();
     } catch (err) { msg(err.message); }
   });
   $('otsTest').addEventListener('click', async () => {
-    msg('Teste Verbindung …', true);
+    msg('Testing connection …', true);
     try {
       await tapi('ots', { method: 'POST', body: otsBody() });
       $('otsForm').password.value = '';
       const r = await tapi('ots/test', { method: 'POST', body: {} });
-      msg(`Verbunden mit OpenTAKServer. Gruppen: ${r.groups.length ? r.groups.join(', ') : 'keine'}.`, true);
+      msg(`Connected to OpenTAKServer. Groups: ${r.groups.length ? r.groups.join(', ') : 'none'}.`, true);
       load();
     } catch (err) { msg(err.message); }
   });
@@ -280,14 +280,14 @@
     const r = $('regForm2');
     try {
       await tapi('registration', { method: 'POST', body: { open: r.open.checked, emailConfirm: r.emailConfirm.checked, codeword: r.codeword.value } });
-      msg('Registrierung gespeichert.' + (r.emailConfirm.checked && !state.mail ? ' Hinweis: ohne SMTP wird keine Bestätigungs-E-Mail verschickt.' : ''), true);
+      msg('Registration saved.' + (r.emailConfirm.checked && !state.mail ? ' Note: without SMTP no confirmation e-mail is sent.' : ''), true);
       load();
     } catch (err) { msg(err.message); }
   });
   $('joinCopy').addEventListener('click', () => copy($('joinUrl').value, $('joinCopy')));
   $('joinQr').addEventListener('click', () => {
-    const img = el('img', { class: 'qr', alt: 'QR-Code zur Registrierung', src: '/api/admin/takusers/join-qr.svg?t=' + Date.now() });
-    const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+    const img = el('img', { class: 'qr', alt: 'Registration QR code', src: '/api/admin/takusers/join-qr.svg?t=' + Date.now() });
+    const print = el('button', { type: 'button', text: 'Print', onclick: () => {
       const w = window.open('', '_blank', 'width=480,height=640');
       if (!w) return;
       const d = w.document;
@@ -300,9 +300,9 @@
       d.body.append(h, i, t);
       i.onload = () => w.print();
     } });
-    openModal('QR-Code zur Registrierung', img, el('p', { class: 'mut small', text: $('joinUrl').value }), el('div', { class: 'row' }, print));
+    openModal('Registration QR code', img, el('p', { class: 'mut small', text: $('joinUrl').value }), el('div', { class: 'row' }, print));
   });
 
-  // Neue Anfragen: Liste regelmäßig auffrischen (Hinweis kommt über die normalen Admin-Hinweise)
+  // new requests: refresh the list regularly (the notification comes via the normal admin notifications)
   setInterval(() => { if (!document.hidden && $('modal').classList.contains('hidden')) load(); }, 20000);
 })();
