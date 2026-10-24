@@ -220,6 +220,12 @@ function openPopup(sec, title) {
   document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
 }
 function closePopup() {
+  // Server bearbeiten mit ✕ geschlossen: wie ATAK übernehmen statt Zertifikat/Truststore zu verwerfen
+  if (popupSec === 'edit' && draft) {
+    readEdit();
+    if (draft.host && !LOCAL_HOST.test(draft.host)) saveDraft();
+    draft = null;
+  }
   $('popup').classList.add('hidden');
   popupSec = null;
 }
@@ -992,9 +998,11 @@ function openEdit(srv) {
   fillEdit();
   setMsg($('setupMsg'), '');
   $('fPass').value = '';
+  $('p12Box').classList.add('hidden');
+  pendingP12 = null;
 }
 $('addSrvBtn').addEventListener('click', () => openEdit(null));
-$('editCancel').addEventListener('click', () => openPopup('server'));
+$('editCancel').addEventListener('click', () => { draft = null; openPopup('server'); }); // ZURÜCK = verwerfen
 
 function fillEdit() {
   $('fName').value = draft.name || '';
@@ -1048,6 +1056,7 @@ $('editSave').addEventListener('click', () => {
   if (!draft.host) return setMsg(msg, 'Please enter an address.');
   if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
   saveDraft();
+  draft = null;
   if (!profile.callsign) return askCallsign();
   openPopup('server');
 });
@@ -1168,17 +1177,19 @@ async function loadFile(file) {
       if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
       setMsg(msg, 'Data package loaded' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – enter user/password and request a certificate.' : '.'), true);
     } else if (/\.(p12|pfx)$/.test(name)) {
+      // Erst mit dem ATAK-Standardpasswort, sonst Passwortfeld im Formular (prompt() fehlt in iPhone-Web-Apps teils)
       const data = await fileBase64(file);
-      let r = null;
-      for (const pw of ['atakatak', null]) {
-        const password = pw != null ? pw : prompt('Password for ' + file.name + ':');
-        if (password == null) return;
-        try { r = await postJson('/api/eud/p12', { data, password }); break; } catch (e) { if (pw == null) throw e; }
+      try {
+        applyP12(await postJson('/api/eud/p12', { data, password: 'atakatak' }));
+      } catch (e) {
+        if (e.status !== 400) throw e;
+        pendingP12 = { data, name: file.name };
+        $('p12Name').textContent = file.name;
+        $('p12Pass').value = '';
+        $('p12Box').classList.remove('hidden');
+        $('p12Pass').focus();
+        setMsg(msg, 'Enter the password of the file and tap OPEN.');
       }
-      if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
-      addCas(draft, r.caPems);
-      updateCertState();
-      setMsg(msg, r.kind === 'client' ? 'Certificate loaded.' : `Truststore loaded (${r.caPems.length} CA).`, true);
     } else {
       const r = await postJson('/api/eud/pem', { data: await file.text() });
       addCas(draft, r.caPems);
@@ -1189,6 +1200,29 @@ async function loadFile(file) {
     setMsg(msg, e.message);
   }
 }
+let pendingP12 = null;
+function applyP12(r) {
+  if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
+  addCas(draft, r.caPems);
+  updateCertState();
+  $('p12Box').classList.add('hidden');
+  pendingP12 = null;
+  setMsg($('setupMsg'), r.kind === 'client' ? 'Certificate loaded.' : `Truststore loaded (${r.caPems.length} CA).`, true);
+}
+async function openP12() {
+  if (!pendingP12) return;
+  $('p12Ok').disabled = true;
+  try {
+    applyP12(await postJson('/api/eud/p12', { data: pendingP12.data, password: $('p12Pass').value }));
+  } catch (e) {
+    setMsg($('setupMsg'), e.message);
+  } finally {
+    $('p12Ok').disabled = false;
+  }
+}
+$('p12Ok').addEventListener('click', openP12);
+$('p12Pass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); openP12(); } });
+
 $('fileIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); });
 
 // ---------------- QR-Codes ----------------
