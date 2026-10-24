@@ -160,7 +160,7 @@
       more.append(el('button', { class: 'sm', type: 'button', text: 'Neuer ATAK-QR', onclick: () => run('qr', { method: 'POST', body: {} }, () => setMsg(out, 'Neuer QR-Code erzeugt.', true)) }));
     }
     more.append(el('button', { class: 'sm', type: 'button', text: 'Zugangslink kopieren', onclick: async ev => { const r = await tapi(`user/${u.id}/link`); copy(r.link, ev.target); } }));
-    more.append(el('button', { class: 'sm', type: 'button', text: 'Löschen', onclick: () => {
+    more.append(el('button', { class: 'sm admin-only', type: 'button', text: 'Löschen', onclick: () => {
       if (confirm(`${u.callsign} löschen?${u.username ? ' Das OTS-Konto wird ebenfalls gelöscht.' : ''}`)) run('', { method: 'DELETE' });
     } }));
     f.append(btns, more, out);

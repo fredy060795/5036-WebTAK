@@ -210,8 +210,8 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
    Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
-3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, Passwort laut Einstellung –
-   Standard `atakatak`, leer = zufällig je Nutzer; danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
+3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, zufälliges Passwort je Nutzer
+   (optional fest einstellbar); danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
    Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
    bzw. der Admin gibt ihm den angezeigten Link.
 4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
@@ -285,6 +285,13 @@ verschwinden nicht mehr aus der Liste.
 - **Einstellungen:** *OpenTAKServer & Registrierung* (Verbindung, Passwörter, Registrierung – einmal einrichten),
   *WebTAK-App*, *System* (Admin-Zugang, SMTP, Standard für neue Streams)
 
+- **Helfer** (System → Helfer): eigene Admin-Anmeldungen, die nur Anfragen freigeben/ablehnen, Nutzer bearbeiten
+  (Rufname, Team, Rolle, sperren, neues Passwort/QR), neue TAK-Nutzer anlegen und Links/QR-Codes zeigen dürfen –
+  keine Einstellungen, keine Löschungen, keine OTS-Administratoren, keine Stream-Schlüssel. Der Server prüft das
+  bei jeder Anfrage; Helfer ändern unter „Mein Passwort“ nur ihr eigenes Passwort.
+- **🔔 Hinweise** (Kopfzeile): Liste der letzten Ereignisse (neue Registrierungsanfragen, Kameras angemeldet/aktiv,
+  Live gestartet/beendet) mit Zähler für Ungelesenes und direkten Knöpfen („Anfragen öffnen“, „Ansehen“, „▶ Live“);
+  Ton, Popup und Desktop-Benachrichtigung dort einzeln schaltbar.
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
 - **System:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. SSL/TLS wird bei den Ports 465

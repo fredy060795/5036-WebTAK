@@ -436,6 +436,7 @@ async function handleOtsAdmin(req, res, route) {
     });
   }
   if (route === 'users' && method === 'POST') {
+    if (req.webtakHelper) body.admin = false; // Helfer legen nur normale Nutzer an
     const u = await takUsers.createDirect(body);
     log('Admin: TAK-Benutzer angelegt', u.username);
     return json(res, 200, { ok: true, user: takUsers.adminView(u), password: u.password, link: accessLink(req, u) });
@@ -575,7 +576,7 @@ async function handleOtsAdmin(req, res, route) {
 async function handleTakAdmin(req, res, route) {
   const method = req.method;
   if (route === 'state' && method === 'GET') {
-    const { password, ...ots } = takUsers.t.ots;
+    const { password, ...ots } = req.webtakHelper ? { password: '' } : takUsers.t.ots;
     return json(res, 200, {
       ots: { ...ots, hasPassword: !!password }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
       teams: takUsers.t.teams, blocks: takUsers.t.blocks, users: takUsers.list().map(u => takUsers.adminView(u)),
@@ -722,6 +723,14 @@ async function handleEudApi(req, res, route) {
 // Admin-API
 // ======================================================================
 
+// Was Helfer im Admin dürfen (Methode, Route ohne Query)
+const HELPER_ROUTES = [
+  ['GET', /^streams$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
+  ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/link$/],
+  ['POST', /^takusers\/user\/[^/]+\/(approve|reject|update|block|unblock|password|qr)$/],
+  ['GET', /^ots\/users$/], ['POST', /^ots\/users$/],
+];
+
 async function handleAdminApi(req, res, route) {
   const method = req.method;
   const sid = cookies(req).sid;
@@ -737,8 +746,9 @@ async function handleAdminApi(req, res, route) {
   if (route === 'login' && method === 'POST') {
     const body = await readJson(req);
     const newSid = auth.login(clientIp(req), body.username, body.password);
-    log('Admin angemeldet von', clientIp(req));
-    return json(res, 200, { ok: true, mustChange: !!auth.admin.mustChange }, { 'Set-Cookie': `sid=${newSid}; ${cookieAttrs}; Max-Age=43200` });
+    const ses = auth.check(newSid);
+    log(ses.role === 'helper' ? 'Helfer angemeldet' : 'Admin angemeldet', String(body.username || '').slice(0, 64), 'von', clientIp(req));
+    return json(res, 200, { ok: true, role: ses.role, mustChange: ses.role === 'admin' && !!auth.admin.mustChange }, { 'Set-Cookie': `sid=${newSid}; ${cookieAttrs}; Max-Age=43200` });
   }
   if (route === 'forgot' && method === 'POST') {
     const body = await readJson(req);
@@ -770,7 +780,10 @@ async function handleAdminApi(req, res, route) {
   }
 
   // --- ab hier angemeldet ---
-  if (!auth.check(sid)) return json(res, 401, { error: 'Bitte anmelden.' });
+  const session = auth.check(sid);
+  if (!session) return json(res, 401, { error: 'Bitte anmelden.' });
+  const helper = session.role === 'helper';
+  const me = helper ? auth.helpers[session.helperId] : auth.admin;
 
   if (route === 'logout' && method === 'POST') {
     auth.logout(sid);
@@ -778,9 +791,10 @@ async function handleAdminApi(req, res, route) {
   }
   if (route === 'me' && method === 'GET') {
     return json(res, 200, {
-      username: auth.admin.username,
-      email: auth.admin.email,
-      mustChange: !!auth.admin.mustChange,
+      username: me.username,
+      email: me.email || '',
+      role: session.role,
+      mustChange: !helper && !!auth.admin.mustChange,
       ffmpeg: ffmpegOk,
       publicBase: publicBase(req),
       testCa: !!config.testCa,
@@ -797,9 +811,15 @@ async function handleAdminApi(req, res, route) {
     log('Admin-Zugangsdaten geändert');
     return json(res, 200, { ok: true });
   }
+  if (route === 'own-password' && method === 'POST') {
+    const body = await readJson(req);
+    auth.changeHelperPassword(sid, body.current, body.password);
+    log('Helfer hat sein Passwort geändert:', me.username);
+    return json(res, 200, { ok: true });
+  }
 
   // Adresse, unter der der Admin uns erreicht, als Rückfall für den HLS-Link im TAK-Server merken
-  if (!configuredBase()) {
+  if (!configuredBase() && !helper) {
     const b = publicBase(req);
     if (b && !/\/\/(localhost|127\.|\[::1\])/.test(b) && (store.data.takVideo || {}).lastBase !== b) {
       takVideo.s.lastBase = b;
@@ -808,7 +828,34 @@ async function handleAdminApi(req, res, route) {
   }
 
   // Erst nach dem ersten Passwortwechsel ist der Rest erlaubt
-  if (auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
+  if (!helper && auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
+
+  // Helfer: nur Anfragen freigeben/bearbeiten und Nutzer anlegen – keine Einstellungen, keine Löschungen
+  if (helper) {
+    const allowed = HELPER_ROUTES.some(([m, re]) => m === method && re.test(route.split('?')[0]));
+    if (!allowed) return json(res, 403, { error: 'Als Helfer nicht erlaubt – bitte den Admin fragen.' });
+    req.webtakHelper = true;
+    if (route.startsWith('streams') && method === 'GET') {
+      // keine Stream-Schlüssel/Links, nur die Hinweise (neue Anfragen usw.)
+      const q = new URL(req.url, 'http://x').searchParams;
+      const since = Number(q.get('since'));
+      const events = (Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : []).filter(e => e.kind === 'takreg');
+      const history = q.get('history') ? hub.events.filter(e => e.kind === 'takreg').slice(-40) : undefined;
+      return json(res, 200, { streams: [], ffmpeg: ffmpegOk, events, history, eventSeq: hub.eventSeq });
+    }
+  }
+
+  // Helfer verwalten (nur Haupt-Admin)
+  if (route === 'helpers' && method === 'GET') return json(res, 200, { helpers: auth.listHelpers() });
+  if (route === 'helpers' && method === 'POST') {
+    const body = await readJson(req);
+    const h = auth.addHelper(body);
+    log('Helfer angelegt', h.username);
+    return json(res, 200, { ok: true, helper: h });
+  }
+  const hm = route.match(/^helpers\/([A-Za-z0-9_-]+)(?:\/(password))?$/);
+  if (hm && method === 'DELETE' && !hm[2]) { auth.removeHelper(hm[1]); log('Helfer gelöscht', hm[1]); return json(res, 200, { ok: true }); }
+  if (hm && method === 'POST' && hm[2]) { const body = await readJson(req); auth.setHelperPassword(hm[1], String(body.password || '')); return json(res, 200, { ok: true }); }
 
   if (route === 'registration' && method === 'GET') {
     const host = ((config.trustProxy && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
@@ -925,9 +972,12 @@ async function handleAdminApi(req, res, route) {
       return { ...s, links: links(req, store.data.streams[id]), tak: takVideo.view(id) };
     });
     // Hinweise seit der letzten Abfrage; ohne "since" nur die aktuelle Nummer (alte nicht erneut zeigen)
-    const since = Number(new URL(req.url, 'http://x').searchParams.get('since'));
+    const q = new URL(req.url, 'http://x').searchParams;
+    const since = Number(q.get('since'));
     const events = Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : [];
-    return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, eventSeq: hub.eventSeq, takVideo: { ready: takVideo.ready(), auto: takVideo.s.auto, when: takVideo.s.when, prefix: takVideo.s.prefix } });
+    // beim ersten Abruf die letzten Hinweise für die Hinweisliste (ohne Popup)
+    const history = q.get('history') ? hub.events.slice(-40) : undefined;
+    return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, history, eventSeq: hub.eventSeq, takVideo: { ready: takVideo.ready(), auto: takVideo.s.auto, when: takVideo.s.when, prefix: takVideo.s.prefix } });
   }
   if (route === 'streams' && method === 'POST') {
     const body = await readJson(req);

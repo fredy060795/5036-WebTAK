@@ -78,10 +78,10 @@
   <header class="top">
     <button class="navtoggle" id="navToggle" aria-label="Menü">☰</button>
     <img class="logo" src="/assets/brand/webtak-logo-160.png" alt="">
-    <h1>WebTAK <span>Admin</span></h1>
+    <h1>WebTAK <span class="admin-only">Admin</span><span class="helper-only">Helfer</span></h1>
     <div class="row topr">
       <span class="small" id="summary"></span>
-      <button id="notifyBtn" title="Desktop-Benachrichtigungen, wenn jemand die Kamera aktiviert">🔔</button>
+      <button id="notifyBtn" class="bell" type="button" title="Hinweise: neue Anfragen, Kameras, Live">🔔<span class="nbadge hidden" id="notifyCount"></span></button>
       <button id="logoutBtn">Abmelden</button>
     </div>
   </header>
@@ -90,20 +90,20 @@
   <nav class="side" id="side">
     <div class="side-h">TAK</div>
     <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
-    <a href="#teams" data-nav="teams"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
+    <a href="#teams" data-nav="teams" class="admin-only"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
     <a href="#links" data-nav="links"><span class="ic">🔗</span>Links &amp; QR-Codes</a>
     <div class="side-h">TAK-Server</div>
     <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
-    <a href="#otsgroups" data-nav="otsgroups"><span class="ic">◫</span>Gruppen</a>
-    <a href="#missions" data-nav="missions"><span class="ic">⟳</span>Missionen (Data Sync)</a>
-    <a href="#mesh" data-nav="mesh"><span class="ic">⌁</span>Meshtastic</a>
-    <div class="side-h">Video</div>
-    <a href="#video" data-nav="video"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
-    <a href="#create" data-nav="create"><span class="ic">＋</span>Stream anlegen</a>
+    <a href="#otsgroups" data-nav="otsgroups" class="admin-only"><span class="ic">◫</span>Gruppen</a>
+    <a href="#missions" data-nav="missions" class="admin-only"><span class="ic">⟳</span>Missionen (Data Sync)</a>
+    <a href="#mesh" data-nav="mesh" class="admin-only"><span class="ic">⌁</span>Meshtastic</a>
+    <div class="side-h admin-only">Video</div>
+    <a href="#video" data-nav="video" class="admin-only"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
+    <a href="#create" data-nav="create" class="admin-only"><span class="ic">＋</span>Stream anlegen</a>
     <div class="side-h">Einstellungen</div>
-    <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
-    <a href="#webtak" data-nav="webtak"><span class="ic">⌖</span>WebTAK-App</a>
-    <a href="#system" data-nav="system"><span class="ic">⚙</span>System (Admin, E-Mail)</a>
+    <a href="#ots" data-nav="ots" class="admin-only"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
+    <a href="#webtak" data-nav="webtak" class="admin-only"><span class="ic">⌖</span>WebTAK-App</a>
+    <a href="#system" data-nav="system"><span class="ic">⚙</span><span class="admin-only">System (Admin, E-Mail)</span><span class="helper-only">Mein Passwort</span></a>
   </nav>
 
   <main class="wrap">
@@ -126,7 +126,7 @@
             <option value="" selected>Alle</option><option value="pending">Offen</option><option value="active">Aktiv</option>
             <option value="blocked">Gesperrt</option><option value="rejected">Abgelehnt</option><option value="unconfirmed">E-Mail unbestätigt</option>
           </select>
-          <button class="sm" type="button" id="takSync" title="Gruppen und Rufnamen/Teams nach OTS übertragen">⟳ Mit OTS abgleichen</button>
+          <button class="sm admin-only" type="button" id="takSync" title="Gruppen und Rufnamen/Teams nach OTS übertragen">⟳ Mit OTS abgleichen</button>
         </div>
         <div class="table-wrap">
           <table class="streams" id="takTable">
@@ -171,10 +171,10 @@
           </div>
           <h3>Neue TAK-Konten</h3>
           <div class="row">
-            <div class="grow"><label>Passwort für neue Konten (leer = zufällig je Nutzer)</label><input name="userPassword" autocomplete="off" placeholder="zufällig"></div>
+            <div class="grow"><label>Passwort für neue Konten (leer = zufällig je Nutzer)</label><input name="userPassword" autocomplete="off" placeholder="leer lassen = zufällig (empfohlen)"></div>
           </div>
-          <p class="mut small">Ein festes Passwort (z. B. <b>atakatak</b>) ist einfacher einzugeben, aber jeder, der einen Benutzernamen kennt,
-            kann sich damit anmelden. Zufällige Passwörter sind sicherer – sie stehen auf der Zugangsseite des Nutzers.</p>
+          <p class="mut small">Empfohlen: leer lassen – jedes Konto bekommt ein eigenes, zufälliges Passwort. Es steht auf der Zugangsseite und im
+            ATAK-Einrichtungspaket, der Nutzer muss es nicht abtippen. Ein festes Passwort für alle ist unsicher.</p>
           <label class="check"><input type="checkbox" name="anon"> Bei Team-Sperren trotzdem mit Geräten ohne Gruppe (__ANON__) austauschen</label>
           <p class="mut small">Solange keine Team-Sperren gesetzt sind, bekommen freigegebene Nutzer in OTS <b>keine Gruppe</b> – wie von Hand angelegte
             Benutzer. So sehen sich alle gegenseitig (OTS-Standardgruppe __ANON__). Team-Gruppen werden nur für Sperren gebraucht.</p>
@@ -232,7 +232,7 @@
 
     <section class="card" data-view="links">
       <h2>Links &amp; QR-Codes</h2>
-      <form id="baseForm">
+      <form id="baseForm" class="admin-only">
         <label for="baseUrl">Adresse dieses Servers – gilt für <b>alle</b> Links und QR-Codes unten (und für die Video-Feeds, die OTS abholt)</label>
         <div class="link">
           <input id="baseUrl" placeholder="automatisch" autocomplete="off">
@@ -383,6 +383,17 @@
 
 <!-- Fenster zum Ansehen -->
 <div id="windows"></div>
+
+<!-- Hinweisliste (🔔 in der Kopfzeile) -->
+<div id="notePanel" class="hidden" role="dialog" aria-label="Hinweise">
+  <div class="np-head"><b>Hinweise</b><button class="sm" type="button" id="noteRead">Alle gelesen</button><button class="sm" type="button" id="noteClose" aria-label="Schließen">✕</button></div>
+  <div id="noteList"></div>
+  <div class="np-foot">
+    <label class="check"><input type="checkbox" id="noteSound"> Ton bei neuen Hinweisen</label>
+    <label class="check" id="noteDeskWrap"><input type="checkbox" id="noteDesk"> Desktop-Benachrichtigung, wenn dieses Fenster im Hintergrund ist</label>
+    <label class="check"><input type="checkbox" id="notePopup"> Popup rechts oben</label>
+  </div>
+</div>
 
 <!-- Hinweise (Popups), z. B. "Jan hat die Kamera aktiviert" -->
 <div id="toasts" aria-live="polite"></div>
