@@ -91,13 +91,15 @@
     <input id="mkPrefix" class="mk-in" placeholder="Name prefix" maxlength="20" autocomplete="off">
     <input id="mkIndex" class="mk-in" type="number" inputmode="numeric" min="1" placeholder="Index">
   </div>
-  <div class="mk-syms">
-    <button type="button" class="tool" data-tool="a-u-G" title="Unknown" aria-label="Unknown"></button>
-    <button type="button" class="tool" data-tool="a-n-G" title="Neutral" aria-label="Neutral"></button>
-    <button type="button" class="tool" data-tool="a-h-G" title="Hostile" aria-label="Hostile"></button>
-    <button type="button" class="tool" data-tool="a-f-G" title="Friendly" aria-label="Friendly"></button>
+  <div class="mk-syms" id="mkAff"></div>
+  <div class="seg mk-dims" id="mkDims">
+    <button type="button" data-dim="G" class="on">GROUND</button>
+    <button type="button" data-dim="A">AIR</button>
+    <button type="button" data-dim="S">SEA</button>
+    <button type="button" data-dim="U">SUB</button>
+    <button type="button" data-dim="P">SPACE</button>
   </div>
-  <div class="mk-dim">Ground</div>
+  <div class="mk-fns" id="mkFns"></div>
 </section>
 <div id="drawBar" class="hidden">
   <div class="draw-hint" id="drawHint">Tap the points of the route on the map</div>

@@ -114,8 +114,10 @@ Home-Bildschirm“). Aufbau wie ATAK:
 - **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
 - **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
   Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
-- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK, Unbekannt/Neutral/Feind/Freund wählen,
-  dann die Stelle auf der Karte antippen.
+- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK; Zugehörigkeit (Unbekannt/Neutral/Feind/
+  Freund), Dimension (Ground, Air, Sea, Sub, Space) und MIL-STD-2525-Symbol wählen (z. B. Infanterie,
+  Panzer, Artillerie, Hubschrauber, Jäger, Drohne/UAV, Schiff, U-Boot, Satellit), dann die Stelle antippen.
+- **Eigene Position unten rechts antippen** öffnet das Callsign-Menü.
 - Alle Fenster öffnen als Sheet unten (im Querformat rechts), immer nur eines gleichzeitig.
 
 **Kernfunktionen**

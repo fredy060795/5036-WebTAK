@@ -812,13 +812,68 @@ $('btnLocate').classList.add('active');
 // Marker setzen: Symbol wählen -> Fadenkreuz -> PUNKT SETZEN
 // ======================================================================
 
-const TOOL_NAMES = { 'a-h-G': 'Hostile', 'a-f-G': 'Friendly', 'a-n-G': 'Neutral', 'a-u-G': 'Unknown', 'b-m-p-s-p-i': 'Point' };
-let tool = null;
-for (const b of document.querySelectorAll('[data-tool]')) {
-  const sidc = sidcFor(b.dataset.tool);
-  if (sidc) b.innerHTML = symbolSvg(sidc, 30).svg;
-  b.addEventListener('click', () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
+// Marker wie ATAK: Zugehörigkeit + Dimension + MIL-STD-2525-Funktion (CoT-Typ a-<aff>-<dim>-<funktion>)
+const AFF_LABEL = { u: 'Unknown', n: 'Neutral', h: 'Hostile', f: 'Friendly' };
+const DIM_LABEL = { G: 'Ground', A: 'Air', S: 'Sea', U: 'Subsurface', P: 'Space' };
+const FUNCTIONS = {
+  G: [['U-C-I', 'Infantry'], ['U-C-I-Z', 'Mech. Infantry'], ['U-C-A', 'Armor'], ['U-C-R', 'Recon'], ['U-C-F', 'Artillery'], ['U-C-F-M', 'Mortar'],
+    ['U-C-D', 'Air Defense'], ['U-C-E', 'Engineer'], ['U-C-V', 'Aviation'], ['U-U-S', 'Signal'], ['U-S-M', 'Medical'], ['U-S-S', 'Supply'],
+    ['U-U-M', 'Intelligence'], ['E-V-A-T', 'Tank'], ['E-V', 'Vehicle'], ['I', 'Installation']],
+  A: [['M-F', 'Fixed Wing'], ['M-F-F', 'Fighter'], ['M-F-B', 'Bomber'], ['M-F-A', 'Attack'], ['M-F-C', 'Cargo'], ['M-F-R', 'Recon'],
+    ['M-H', 'Helicopter'], ['M-H-A', 'Attack Heli'], ['M-H-U', 'Utility Heli'], ['M-F-Q', 'UAV / Drone'], ['W-M', 'Missile'], ['C-F', 'Civil Aircraft'], ['C-H', 'Civil Heli']],
+  S: [['C', 'Combatant'], ['C-L', 'Line Ship'], ['C-A', 'Amphibious'], ['C-M', 'Mine Warfare'], ['C-P', 'Patrol'], ['N', 'Non-Combatant'],
+    ['X', 'Civilian'], ['X-F', 'Fishing'], ['X-M', 'Merchant'], ['X-R', 'Leisure']],
+  U: [['S', 'Submarine'], ['S-N', 'Nuclear Sub'], ['S-C', 'Conventional Sub'], ['W-T', 'Torpedo'], ['W-M', 'Sea Mine'], ['X', 'Civilian']],
+  P: [['S', 'Satellite'], ['V', 'Crewed Vehicle'], ['T', 'Station']],
+};
+const fnLabel = {};
+for (const [dim, list] of Object.entries(FUNCTIONS)) for (const [fn, label] of list) fnLabel[`${dim}-${fn}`] = label;
+// Nur Funktionen anbieten, die milsymbol als gültiges 2525-Symbol kennt
+const validType = type => { try { return new ms.Symbol(sidcFor(type), { size: 20 }).isValid(); } catch (e) { return false; } };
+for (const dim of Object.keys(FUNCTIONS)) FUNCTIONS[dim] = FUNCTIONS[dim].filter(([fn]) => validType(`a-f-${dim}-${fn}`));
+
+function toolName(type) {
+  if (type.startsWith('b-m-p')) return 'Point';
+  const [, aff, dim, ...rest] = type.split('-');
+  const fn = rest.join('-');
+  const what = fn ? fnLabel[`${dim}-${fn}`] || fn : (dim !== 'G' ? DIM_LABEL[dim] : '');
+  return `${AFF_LABEL[aff] || 'Unknown'}${what ? ' ' + what : ''}`;
 }
+
+let tool = null;
+let mkAff = profile.mkAff || 'h';
+let mkDim = profile.mkDim || 'G';
+
+function toolButton(type, label) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'tool';
+  b.dataset.tool = type;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.innerHTML = symbolSvg(sidcFor(type), 28).svg + (label && type.split('-').length > 3 ? `<span>${esc(label)}</span>` : '');
+  b.addEventListener('click', () => {
+    const aff = type.split('-')[1];
+    if (aff !== mkAff) { mkAff = aff; renderMarkerSheet(); }
+    setTool(tool === type ? null : type);
+  });
+  return b;
+}
+
+function renderMarkerSheet() {
+  profile.mkAff = mkAff;
+  profile.mkDim = mkDim;
+  saveProfile();
+  $('mkAff').replaceChildren(...['u', 'n', 'h', 'f'].map(a => toolButton(`a-${a}-${mkDim}`, AFF_LABEL[a])));
+  for (const b of document.querySelectorAll('#mkDims button')) b.classList.toggle('on', b.dataset.dim === mkDim);
+  $('mkFns').replaceChildren(...FUNCTIONS[mkDim].map(([fn, label]) => toolButton(`a-${mkAff}-${mkDim}-${fn}`, label)));
+  for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === tool);
+}
+for (const b of document.querySelectorAll('#mkDims button')) {
+  b.addEventListener('click', () => { mkDim = b.dataset.dim; setTool(null); renderMarkerSheet(); });
+}
+renderMarkerSheet();
+
 function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
@@ -833,7 +888,7 @@ function placeMarker(latlng) {
   const uid = profile.uid + '-' + rnd(4);
   // Name wie ATAK: Präfix + laufende Nummer (ohne Präfix: Art + Uhrzeit)
   const prefix = ($('mkPrefix').value || '').trim();
-  let name = `${TOOL_NAMES[type]} ${hhmm(now)}`;
+  let name = `${toolName(type)} ${hhmm(now)}`;
   if (prefix) {
     const idx = Math.max(1, Number($('mkIndex').value) || 1);
     name = `${prefix} ${idx}`;
@@ -1881,6 +1936,7 @@ function updateSelfInfo() {
   $('siAcc').textContent = `+/- ${Math.round(me.acc || 0)}m`;
 }
 setInterval(updateSelfInfo, 2000);
+$('selfInfo').addEventListener('click', () => openPopup('me'));
 
 L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 110 }).addTo(map);
 
