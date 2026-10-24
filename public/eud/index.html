@@ -91,13 +91,15 @@
     <input id="mkPrefix" class="mk-in" placeholder="Name prefix" maxlength="20" autocomplete="off">
     <input id="mkIndex" class="mk-in" type="number" inputmode="numeric" min="1" placeholder="Index">
   </div>
-  <div class="mk-syms">
-    <button type="button" class="tool" data-tool="a-u-G" title="Unknown" aria-label="Unknown"></button>
-    <button type="button" class="tool" data-tool="a-n-G" title="Neutral" aria-label="Neutral"></button>
-    <button type="button" class="tool" data-tool="a-h-G" title="Hostile" aria-label="Hostile"></button>
-    <button type="button" class="tool" data-tool="a-f-G" title="Friendly" aria-label="Friendly"></button>
+  <div class="mk-syms" id="mkAff"></div>
+  <div class="seg mk-dims" id="mkDims">
+    <button type="button" data-dim="G" class="on">GROUND</button>
+    <button type="button" data-dim="A">AIR</button>
+    <button type="button" data-dim="S">SEA</button>
+    <button type="button" data-dim="U">SUB</button>
+    <button type="button" data-dim="P">SPACE</button>
   </div>
-  <div class="mk-dim">Ground</div>
+  <div class="mk-fns" id="mkFns"></div>
 </section>
 <div id="drawBar" class="hidden">
   <div class="draw-hint" id="drawHint">Tap the points of the route on the map</div>
@@ -201,6 +203,13 @@
           <label class="mbtn" for="fileIn">IMPORT FILE</label>
           <input type="file" id="fileIn" accept=".zip,.p12,.pfx,.pem,.crt,.cer,application/zip,application/x-pkcs12" hidden>
         </div>
+        <div id="p12Box" class="hidden">
+          <label for="p12Pass">Password for <span id="p12Name"></span></label>
+          <div class="row2">
+            <input id="p12Pass" class="in" type="password" autocomplete="off" autocapitalize="off">
+            <button type="button" class="mbtn blue" id="p12Ok" style="flex:0 0 auto;width:auto">OPEN</button>
+          </div>
+        </div>
         <p class="hint">QR code (ATAK/iTAK), data package (.zip), certificate (.p12) or truststore – or enter manually:</p>
         <label for="fName">Name</label>
         <input id="fName" class="in" placeholder="e.g. TAK Server" autocomplete="off" maxlength="40">
@@ -238,6 +247,7 @@
           <div><label for="fTeam">Team</label><select id="fTeam" class="in"></select></div>
           <div><label for="fRole">Role</label><select id="fRole" class="in"></select></div>
         </div>
+        <p class="hint hidden" id="meLocked">Callsign, team and role are assigned by your administrator.</p>
         <button type="button" class="mbtn pri" id="meSave">APPLY</button>
         <p class="hint">Device UID: <span id="uidText"></span></p>
       </section>

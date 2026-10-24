@@ -76,7 +76,7 @@ svg { display: block; }
 #connBtn.ok, #connBtn.ok .dot { background: var(--green); }
 #connBtn.warn, #connBtn.warn .dot { background: var(--yellow); }
 #selfInfo { position: fixed; z-index: 6004; right: max(4px, var(--right)); bottom: calc(18px + var(--bottom)); min-width: 150px; padding: 3px 6px;
-  background: rgba(0, 0, 0, 0.55); color: var(--cyan); font-size: 12px; line-height: 1.3; pointer-events: none; }
+  background: rgba(0, 0, 0, 0.55); color: var(--cyan); font-size: 12px; line-height: 1.3; cursor: pointer; }
 #selfInfo .row { display: flex; justify-content: space-between; gap: 10px; }
 
 /* ── Hinweise ── */
@@ -107,7 +107,7 @@ svg { display: block; }
 .tile span { font-size: 13px; text-align: center; line-height: 1.15; }
 
 /* Marker-Sheet */
-#toolbar { max-height: none; }
+#toolbar { max-height: 50vh; }
 .mk-row { display: flex; gap: 8px; padding: 8px 12px; }
 .mk-in { flex: 1; min-width: 0; padding: 8px 4px; background: transparent; border: none; border-bottom: 1px solid var(--mut); color: #fff; font: 15px var(--font); }
 .mk-in:focus { outline: none; border-bottom-color: var(--blue); }
@@ -115,7 +115,12 @@ svg { display: block; }
 .tool { height: 54px; background: #2a2f38; border: 1px solid #454c57; border-radius: 3px; display: flex; align-items: center; justify-content: center; padding: 0; }
 .tool svg { max-width: 44px; max-height: 40px; width: auto; height: auto; }
 .tool.active { background: #33475b; border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
-.mk-dim { margin: 4px 8px 10px; padding: 10px; text-align: center; background: #2a2f38; border: 1px solid #454c57; border-radius: 3px; font-weight: 500; }
+.mk-dims { margin: 4px 8px; }
+.mk-dims button { font-size: 12px; padding: 9px 2px; }
+.mk-fns { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; padding: 4px 8px 10px; overflow-y: auto; min-height: 0; flex: 1; }
+.mk-fns .tool { height: 74px; flex-direction: column; gap: 3px; padding: 4px 2px; }
+.mk-fns .tool svg { max-height: 40px; }
+.mk-fns .tool span { font-size: 10px; line-height: 1.1; color: #dfe6ee; text-align: center; }
 
 /* Menüpunkte (gleiches Sheet) */
 .modal { position: fixed; inset: auto 0 0 0; z-index: 7100; }
@@ -278,3 +283,4 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 .measure-label::before { display: none; }
 .drawing .leaflet-marker-pane, .drawing .leaflet-tooltip-pane, .drawing .leaflet-popup-pane, .drawing .leaflet-interactive { pointer-events: none !important; }
 .drawing { cursor: crosshair !important; }
+#toolbar > .sheet-head, #toolbar > .mk-row, #toolbar > .mk-syms, #toolbar > .mk-dims { flex-shrink: 0; }

@@ -220,6 +220,12 @@ function openPopup(sec, title) {
   document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
 }
 function closePopup() {
+  // Server bearbeiten mit ✕ geschlossen: wie ATAK übernehmen statt Zertifikat/Truststore zu verwerfen
+  if (popupSec === 'edit' && draft) {
+    readEdit();
+    if (draft.host && !LOCAL_HOST.test(draft.host)) saveDraft();
+    draft = null;
+  }
   $('popup').classList.add('hidden');
   popupSec = null;
 }
@@ -649,6 +655,7 @@ function openConn(srv) {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'cot') return handleCot(msg.xml, { srv });
+    if (msg.type === 'assign') return applyAssignment(msg);
     if (msg.type !== 'status') return;
     const was = c.state;
     c.state = msg.state;
@@ -806,13 +813,68 @@ $('btnLocate').classList.add('active');
 // Marker setzen: Symbol wählen -> Fadenkreuz -> PUNKT SETZEN
 // ======================================================================
 
-const TOOL_NAMES = { 'a-h-G': 'Hostile', 'a-f-G': 'Friendly', 'a-n-G': 'Neutral', 'a-u-G': 'Unknown', 'b-m-p-s-p-i': 'Point' };
-let tool = null;
-for (const b of document.querySelectorAll('[data-tool]')) {
-  const sidc = sidcFor(b.dataset.tool);
-  if (sidc) b.innerHTML = symbolSvg(sidc, 30).svg;
-  b.addEventListener('click', () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
+// Marker wie ATAK: Zugehörigkeit + Dimension + MIL-STD-2525-Funktion (CoT-Typ a-<aff>-<dim>-<funktion>)
+const AFF_LABEL = { u: 'Unknown', n: 'Neutral', h: 'Hostile', f: 'Friendly' };
+const DIM_LABEL = { G: 'Ground', A: 'Air', S: 'Sea', U: 'Subsurface', P: 'Space' };
+const FUNCTIONS = {
+  G: [['U-C-I', 'Infantry'], ['U-C-I-Z', 'Mech. Infantry'], ['U-C-A', 'Armor'], ['U-C-R', 'Recon'], ['U-C-F', 'Artillery'], ['U-C-F-M', 'Mortar'],
+    ['U-C-D', 'Air Defense'], ['U-C-E', 'Engineer'], ['U-C-V', 'Aviation'], ['U-U-S', 'Signal'], ['U-S-M', 'Medical'], ['U-S-S', 'Supply'],
+    ['U-U-M', 'Intelligence'], ['E-V-A-T', 'Tank'], ['E-V', 'Vehicle'], ['I', 'Installation']],
+  A: [['M-F', 'Fixed Wing'], ['M-F-F', 'Fighter'], ['M-F-B', 'Bomber'], ['M-F-A', 'Attack'], ['M-F-C', 'Cargo'], ['M-F-R', 'Recon'],
+    ['M-H', 'Helicopter'], ['M-H-A', 'Attack Heli'], ['M-H-U', 'Utility Heli'], ['M-F-Q', 'UAV / Drone'], ['W-M', 'Missile'], ['C-F', 'Civil Aircraft'], ['C-H', 'Civil Heli']],
+  S: [['C', 'Combatant'], ['C-L', 'Line Ship'], ['C-A', 'Amphibious'], ['C-M', 'Mine Warfare'], ['C-P', 'Patrol'], ['N', 'Non-Combatant'],
+    ['X', 'Civilian'], ['X-F', 'Fishing'], ['X-M', 'Merchant'], ['X-R', 'Leisure']],
+  U: [['S', 'Submarine'], ['S-N', 'Nuclear Sub'], ['S-C', 'Conventional Sub'], ['W-T', 'Torpedo'], ['W-M', 'Sea Mine'], ['X', 'Civilian']],
+  P: [['S', 'Satellite'], ['V', 'Crewed Vehicle'], ['T', 'Station']],
+};
+const fnLabel = {};
+for (const [dim, list] of Object.entries(FUNCTIONS)) for (const [fn, label] of list) fnLabel[`${dim}-${fn}`] = label;
+// Nur Funktionen anbieten, die milsymbol als gültiges 2525-Symbol kennt
+const validType = type => { try { return new ms.Symbol(sidcFor(type), { size: 20 }).isValid(); } catch (e) { return false; } };
+for (const dim of Object.keys(FUNCTIONS)) FUNCTIONS[dim] = FUNCTIONS[dim].filter(([fn]) => validType(`a-f-${dim}-${fn}`));
+
+function toolName(type) {
+  if (type.startsWith('b-m-p')) return 'Point';
+  const [, aff, dim, ...rest] = type.split('-');
+  const fn = rest.join('-');
+  const what = fn ? fnLabel[`${dim}-${fn}`] || fn : (dim !== 'G' ? DIM_LABEL[dim] : '');
+  return `${AFF_LABEL[aff] || 'Unknown'}${what ? ' ' + what : ''}`;
 }
+
+let tool = null;
+let mkAff = profile.mkAff || 'h';
+let mkDim = profile.mkDim || 'G';
+
+function toolButton(type, label) {
+  const b = document.createElement('button');
+  b.type = 'button';
+  b.className = 'tool';
+  b.dataset.tool = type;
+  b.title = label;
+  b.setAttribute('aria-label', label);
+  b.innerHTML = symbolSvg(sidcFor(type), 28).svg + (label && type.split('-').length > 3 ? `<span>${esc(label)}</span>` : '');
+  b.addEventListener('click', () => {
+    const aff = type.split('-')[1];
+    if (aff !== mkAff) { mkAff = aff; renderMarkerSheet(); }
+    setTool(tool === type ? null : type);
+  });
+  return b;
+}
+
+function renderMarkerSheet() {
+  profile.mkAff = mkAff;
+  profile.mkDim = mkDim;
+  saveProfile();
+  $('mkAff').replaceChildren(...['u', 'n', 'h', 'f'].map(a => toolButton(`a-${a}-${mkDim}`, AFF_LABEL[a])));
+  for (const b of document.querySelectorAll('#mkDims button')) b.classList.toggle('on', b.dataset.dim === mkDim);
+  $('mkFns').replaceChildren(...FUNCTIONS[mkDim].map(([fn, label]) => toolButton(`a-${mkAff}-${mkDim}-${fn}`, label)));
+  for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === tool);
+}
+for (const b of document.querySelectorAll('#mkDims button')) {
+  b.addEventListener('click', () => { mkDim = b.dataset.dim; setTool(null); renderMarkerSheet(); });
+}
+renderMarkerSheet();
+
 function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
@@ -827,7 +889,7 @@ function placeMarker(latlng) {
   const uid = profile.uid + '-' + rnd(4);
   // Name wie ATAK: Präfix + laufende Nummer (ohne Präfix: Art + Uhrzeit)
   const prefix = ($('mkPrefix').value || '').trim();
-  let name = `${TOOL_NAMES[type]} ${hhmm(now)}`;
+  let name = `${toolName(type)} ${hhmm(now)}`;
   if (prefix) {
     const idx = Math.max(1, Number($('mkIndex').value) || 1);
     name = `${prefix} ${idx}`;
@@ -918,10 +980,27 @@ function renderList() {
 
 for (const t of Object.keys(TEAMS)) $('fTeam').append(new Option(t, t));
 for (const r of ROLES) $('fRole').append(new Option(r, r));
+// Vom Admin festgelegt (verwalteter TAK-Zugang): übernehmen und im Menü sperren
+function applyAssignment(a) {
+  const changed = profile.callsign !== a.callsign || profile.team !== a.team || profile.role !== a.role;
+  profile.assigned = { callsign: String(a.callsign || ''), team: TEAMS[a.team] ? a.team : profile.team, role: ROLES.includes(a.role) ? a.role : profile.role };
+  Object.assign(profile, profile.assigned);
+  saveProfile();
+  showMe();
+  if (typeof updateSelfInfo === 'function') updateSelfInfo();
+  if (me) drawMe();
+  if (popupSec === 'me') fillMe();
+  if (changed) { toast(`Assigned by administrator: ${profile.callsign} (${profile.team})`, 5000); sendSelf(); }
+}
+
 function fillMe() {
   $('fCallsign').value = profile.callsign;
   $('fTeam').value = profile.team;
   $('fRole').value = profile.role;
+  const locked = !!profile.assigned;
+  for (const id of ['fCallsign', 'fTeam', 'fRole']) $(id).disabled = locked;
+  $('meLocked').classList.toggle('hidden', !locked);
+  $('meSave').classList.toggle('hidden', locked);
   $('uidText').textContent = profile.uid;
 }
 $('meSave').addEventListener('click', () => {
@@ -992,9 +1071,11 @@ function openEdit(srv) {
   fillEdit();
   setMsg($('setupMsg'), '');
   $('fPass').value = '';
+  $('p12Box').classList.add('hidden');
+  pendingP12 = null;
 }
 $('addSrvBtn').addEventListener('click', () => openEdit(null));
-$('editCancel').addEventListener('click', () => openPopup('server'));
+$('editCancel').addEventListener('click', () => { draft = null; openPopup('server'); }); // ZURÜCK = verwerfen
 
 function fillEdit() {
   $('fName').value = draft.name || '';
@@ -1048,6 +1129,7 @@ $('editSave').addEventListener('click', () => {
   if (!draft.host) return setMsg(msg, 'Please enter an address.');
   if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
   saveDraft();
+  draft = null;
   if (!profile.callsign) return askCallsign();
   openPopup('server');
 });
@@ -1168,17 +1250,19 @@ async function loadFile(file) {
       if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
       setMsg(msg, 'Data package loaded' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – enter user/password and request a certificate.' : '.'), true);
     } else if (/\.(p12|pfx)$/.test(name)) {
+      // Erst mit dem ATAK-Standardpasswort, sonst Passwortfeld im Formular (prompt() fehlt in iPhone-Web-Apps teils)
       const data = await fileBase64(file);
-      let r = null;
-      for (const pw of ['atakatak', null]) {
-        const password = pw != null ? pw : prompt('Password for ' + file.name + ':');
-        if (password == null) return;
-        try { r = await postJson('/api/eud/p12', { data, password }); break; } catch (e) { if (pw == null) throw e; }
+      try {
+        applyP12(await postJson('/api/eud/p12', { data, password: 'atakatak' }));
+      } catch (e) {
+        if (e.status !== 400) throw e;
+        pendingP12 = { data, name: file.name };
+        $('p12Name').textContent = file.name;
+        $('p12Pass').value = '';
+        $('p12Box').classList.remove('hidden');
+        $('p12Pass').focus();
+        setMsg(msg, 'Enter the password of the file and tap OPEN.');
       }
-      if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
-      addCas(draft, r.caPems);
-      updateCertState();
-      setMsg(msg, r.kind === 'client' ? 'Certificate loaded.' : `Truststore loaded (${r.caPems.length} CA).`, true);
     } else {
       const r = await postJson('/api/eud/pem', { data: await file.text() });
       addCas(draft, r.caPems);
@@ -1189,6 +1273,29 @@ async function loadFile(file) {
     setMsg(msg, e.message);
   }
 }
+let pendingP12 = null;
+function applyP12(r) {
+  if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
+  addCas(draft, r.caPems);
+  updateCertState();
+  $('p12Box').classList.add('hidden');
+  pendingP12 = null;
+  setMsg($('setupMsg'), r.kind === 'client' ? 'Certificate loaded.' : `Truststore loaded (${r.caPems.length} CA).`, true);
+}
+async function openP12() {
+  if (!pendingP12) return;
+  $('p12Ok').disabled = true;
+  try {
+    applyP12(await postJson('/api/eud/p12', { data: pendingP12.data, password: $('p12Pass').value }));
+  } catch (e) {
+    setMsg($('setupMsg'), e.message);
+  } finally {
+    $('p12Ok').disabled = false;
+  }
+}
+$('p12Ok').addEventListener('click', openP12);
+$('p12Pass').addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); openP12(); } });
+
 $('fileIn').addEventListener('change', e => { const f = e.target.files[0]; e.target.value = ''; if (f) loadFile(f); });
 
 // ---------------- QR-Codes ----------------
@@ -1847,6 +1954,7 @@ function updateSelfInfo() {
   $('siAcc').textContent = `+/- ${Math.round(me.acc || 0)}m`;
 }
 setInterval(updateSelfInfo, 2000);
+$('selfInfo').addEventListener('click', () => openPopup('me'));
 
 L.control.scale({ metric: true, imperial: false, position: 'bottomleft', maxWidth: 110 }).addTo(map);
 

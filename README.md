@@ -27,16 +27,26 @@ Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HT
 Welches Format dein ATAK/WinTAK am besten abspielt, am besten mit einem laufenden Stream ausprobieren – alle drei
 liefern dasselbe Bild. Die Bildrate kommt von der Kamera über Bluetooth (bei 320x240 etwa 2–5 Bilder/s).
 
-## In OpenTAKServer eintragen
+## Automatisch im TAK-Server (OpenTAKServer)
 
-OpenTAKServer nutzt MediaMTX. MediaMTX kann eine fremde Quelle abholen, aber kein MJPEG – deshalb dort den
-**HLS-Link** verwenden (dafür muss ffmpeg auf dem Streams-Server installiert sein, im Docker-Image ist es dabei):
+Sobald im Admin unter **TAK-Zugänge → Einstellungen** der OpenTAKServer verbunden ist, trägt der Server jeden
+Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts mehr nötig:
 
-1. OpenTAKServer → **Videostreams** → **Add Video**.
-2. Als Pfad einen Namen wählen (z. B. `helm_mueller`), als **Quelle** den Link
-   `https://<domain>/<benutzer>/<streamId>/index.m3u8` eintragen.
-3. Sobald das Handy sendet, steht der Stream bei OpenTAKServer auf „Bereit“ und ist in ATAK/WinTAK über die
-   üblichen OTS-Links (RTSP/WebRTC/HLS) verfügbar.
+- Neue Streams (Selbst-Anmeldung, EUD, manuell angelegt) bekommen einen Pfad aus dem Namen, z. B. `cam/alpha-10`.
+- OTS/MediaMTX holt das Bild bei Bedarf selbst über den **HLS-Link** (`…/index.m3u8`, `sourceOnDemand`) –
+  dafür braucht der Streams-Server ffmpeg (im Docker-Image dabei) und eine öffentliche Adresse
+  (Admin → Kamera-Anmeldung → „Adresse des Servers“ oder `PUBLIC_URL`).
+- In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
+- Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
+
+Im Admin, Bereich **Video-Streams**, wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
+ändern und Enter – der alte Pfad wird in OTS entfernt, der neue angelegt (leer = wieder automatisch). Der Punkt zeigt
+den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim Darüberfahren). Weitere Schalter:
+„Neue Streams automatisch“, „nur solange die Kamera sendet“ (sonst: solange freigegeben), Pfad-Präfix und
+**⟳ Abgleichen** (passiert zusätzlich beim Start und alle 10 Minuten).
+
+Wer OTS nicht verbindet, kann den HLS-Link (Knopf „QR / Links“) weiterhin von Hand in OTS unter
+**Videostreams → Add Video** als Quelle eintragen.
 
 ## Bild ausrichten (jeder Helm ist anders montiert)
 
@@ -62,7 +72,7 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
    **„Bereit“** – es wird noch nichts gesendet.
 4. Du schaltest im Admin mit **▶ Live** ein (Liste oder Ansehen-Fenster); das Handy vibriert kurz und sendet.
    **■ Live aus** bzw. **Alle auf Bereit** schaltet zurück auf „Bereit“.
-5. In der Admin-Liste: ausrichten, Bildgröße, Link für ATAK/OpenTAKServer kopieren, sperren, rauswerfen oder löschen.
+5. In der Admin-Liste: ausrichten, Bildgröße, TAK-Pfad pflegen, sperren, rauswerfen oder löschen.
 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
@@ -114,8 +124,10 @@ Home-Bildschirm“). Aufbau wie ATAK:
 - **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
 - **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
   Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
-- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK, Unbekannt/Neutral/Feind/Freund wählen,
-  dann die Stelle auf der Karte antippen.
+- **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK; Zugehörigkeit (Unbekannt/Neutral/Feind/
+  Freund), Dimension (Ground, Air, Sea, Sub, Space) und MIL-STD-2525-Symbol wählen (z. B. Infanterie,
+  Panzer, Artillerie, Hubschrauber, Jäger, Drohne/UAV, Schiff, U-Boot, Satellit), dann die Stelle antippen.
+- **Eigene Position unten rechts antippen** öffnet das Callsign-Menü.
 - Alle Fenster öffnen als Sheet unten (im Querformat rechts), immer nur eines gleichzeitig.
 
 **Kernfunktionen**
@@ -160,7 +172,56 @@ Schlüssel liegen nur auf dem Handy. Im Admin unter „Erlaubte TAK-Server“ de
 eintragen, damit niemand den Server als offene Durchreiche benutzt. Ohne Eintrag sind alle Server
 erlaubt – außer dem Server-Rechner selbst (`localhost`) und Link-Local-Adressen.
 
+## TAK-Zugänge (OpenTAKServer)
+
+Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Konto auf dem
+**OpenTAKServer (OTS)** an und der Nutzer bekommt Zugangsdaten, QR-Codes und eine bebilderte Anleitung.
+
+**Ablauf**
+
+1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter TAK-Zugänge → Einstellungen), liest
+   kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
+   optional E-Mail-Bestätigung über SMTP). Er bekommt einen persönlichen Statuslink.
+2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
+   Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
+3. Die App legt das OTS-Konto an (Benutzername aus dem Rufnamen, zufälliges Passwort), setzt die
+   Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
+   bzw. der Admin gibt ihm den angezeigten Link.
+4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
+   Benutzer, Passwort, **Truststore-Download**, QR-Codes und Schritt-für-Schritt-Anleitung für
+   **ATAK** (Android), **iTAK** (iPhone) und die **Web-EUD** (QR öffnet die EUD mit allen Daten, das
+   Zertifikat wird automatisch angefordert).
+
+**Verwaltung** (Admin → TAK-Zugänge): suchen/filtern, freigeben, ablehnen, bearbeiten, sperren/entsperren
+(OTS-Konto wird deaktiviert), neues Passwort, neuer ATAK-QR, Zugangslink kopieren, löschen (auch auf OTS).
+
+**Rufname, Team und Rolle überschreiben:** Die App setzt für jedes Gerät des Nutzers OTS-Geräte-Profile
+(`locationCallsign`, `locationTeam`, `atakRoleType`). **ATAK** übernimmt sie beim (nächsten) Verbinden mit
+dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“ erzwingt es sofort). In der
+**Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
+Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
+
+**Teams und Sichtbarkeit:** Jedes Team ist eine OTS-Gruppe (`TEAM_<NAME>`). Standard: alle sehen alle. In der
+Matrix „Wer sieht wen?“ einen Haken entfernen = dieses Team liest die Gruppe des anderen nicht mehr –
+OTS stellt dann dessen Positionen, Marker und Chats nicht zu. So können mehrere Einheiten einen Server
+nutzen, ohne sich zu stören. (Voraussetzung: OTS mit Kanälen/Gruppen, Standard `OTS_ENABLE_CHANNELS=True`,
+kein LDAP.)
+
+**Einrichtung:** Admin → TAK-Zugänge → Einstellungen:
+- Adresse der OTS-Weboberfläche/API (z. B. `https://ots.example.com`, oder intern `http://127.0.0.1:8081`
+  wenn beide auf demselben Rechner laufen), OTS-Admin-Benutzer und Passwort (**ohne Zwei-Faktor**).
+- Öffentliche TAK-Adresse für die Geräte (wird in die QR-Codes eingesetzt) und Ports (8089/8446/8443).
+- „Verbindung testen“, dann Registrierung öffnen und den QR-Code zur Registrierung verteilen.
+
+**Sicherheit:** Die Passwörter der TAK-Konten und das OTS-Admin-Passwort liegen in `DATA_DIR/db.json`
+(Dateirechte 600), damit die Zugangsseite die Daten zeigen kann; der Zugangslink ist geheim (48 Zeichen) und
+nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
+
 ## Admin
+
+Die Admin-Seite ist jetzt die **TAK-Verwaltung**: oben die TAK-Zugänge (Anfragen freigeben, Benutzer, Teams,
+Einstellungen), darunter die Video-Streams mit TAK-Pfad. Kamera-Anmeldung (QR-Code für alle, Live-Modus,
+Server-Adresse), „Stream manuell anlegen“ und TAK-EUD sind eingeklappt.
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
