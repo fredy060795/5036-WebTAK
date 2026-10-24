@@ -21,9 +21,6 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
 .kv dt { color: var(--mut); }
 .kv dd { margin: 0; overflow-wrap: anywhere; }
-.steps { display: flex; gap: 6px; margin: 4px 0 14px; }
-.step { flex: 1; text-align: center; font-size: 12px; padding: 6px 4px; border-radius: 8px; border: 1px solid var(--bd); color: var(--mut); }
-.step.done { border-color: var(--ok); color: var(--ok); }
 </style>
 </head>
 <body>
@@ -75,11 +72,6 @@ header { display: flex; justify-content: space-between; align-items: center; gap
   </section>
 
   <div id="main" class="hidden">
-    <div class="steps">
-      <div class="step" id="stServer">1 Server</div>
-      <div class="step" id="stCam">2 Kamera</div>
-      <div class="step" id="stLive">3 Live</div>
-    </div>
 
     <section class="card">
       <div class="view"><span id="viewText">Noch kein Bild</span><img id="img" class="hidden" alt="Kamerabild"><video id="video" class="hidden tiny" playsinline muted autoplay></video><span id="liveDot" class="live-dot hidden">LIVE</span></div>
@@ -227,9 +219,6 @@ function setAlignment(newRotate, newMirror) {
 function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
 
 function setSteps() {
-  $('stServer').classList.toggle('done', wsOk);
-  $('stCam').classList.toggle('done', camConnected);
-  $('stLive').classList.toggle('done', wantLive && camConnected && wsOk);
   $('srvBadge').textContent = wsOk ? 'Server verbunden' : 'Server getrennt';
   $('srvBadge').className = 'badge ' + (wsOk ? 'live' : 'wait');
   $('srcBtns').classList.toggle('hidden', camConnected);
