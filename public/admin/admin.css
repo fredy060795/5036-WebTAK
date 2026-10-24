@@ -56,4 +56,10 @@ table.streams { width: 100%; border-collapse: collapse; font-size: 14px; }
 .win-body img { width: 100%; height: 100%; object-fit: contain; }
 .win-info { position: absolute; left: 8px; bottom: 6px; color: #fff; font-size: 12px; text-shadow: 0 1px 2px #000; }
 .win-off { position: absolute; color: #bbb; font-size: 14px; }
-select.rot { width: auto; padding: 5px 8px; font-size: 13px; }
+input.rot { width: 76px; padding: 5px 6px; font-size: 13px; text-align: right; }
+.deg { display: inline-flex; align-items: center; gap: 3px; white-space: nowrap; }
+.win-align { padding: 8px; border-bottom: 1px solid var(--bd); display: grid; gap: 6px; font-size: 13px; }
+.win-align .row { gap: 6px; }
+.win-align select { width: auto; padding: 4px 8px; font-size: 13px; }
+.win-align input[type=range] { padding: 0; }
+.win-bar button.pri { color: var(--acc-fg); }

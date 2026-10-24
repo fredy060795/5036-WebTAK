@@ -102,21 +102,35 @@ let device = null, cmdChr = null, camConnected = false;
 let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
 let writeChain = Promise.resolve();
 let lastPreview = 0;
-let rotate = 0, mirror = false;  // vom Admin pro Stream eingestellt
+let rotate = 0, mirror = false, fit = 'fill';  // vom Admin pro Stream eingestellt
 let busy = false;                // gerade wird ein Bild gedreht
 
-// Dreht ein JPEG im Uhrzeigersinn (0/90/180/270), optional gespiegelt, und kodiert es neu.
-async function rotateJpeg(jpeg, deg, flip) {
+// Dreht ein JPEG um einen beliebigen Winkel im Uhrzeigersinn, optional gespiegelt.
+// Das Ausgabeformat (quer/hoch) richtet sich nach dem nächsten 90°-Schritt.
+//   fit = 'fill': so weit vergrößern, dass keine schwarzen Ecken entstehen (Rand wird abgeschnitten)
+//   fit = 'fit':  ganzes Bild sichtbar, Ecken schwarz
+async function rotateJpeg(jpeg, deg, flip, fit = 'fill') {
   const bmp = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' }));
-  const side = deg % 180 !== 0;
+  const w = bmp.width, h = bmp.height;
+  const quarter = Math.round(deg / 90) % 4;
+  const W = quarter % 2 ? h : w;
+  const H = quarter % 2 ? w : h;
+  const rad = deg * Math.PI / 180;
+  const c = Math.abs(Math.cos(rad)), si = Math.abs(Math.sin(rad));
+  const scale = fit === 'fit'
+    ? Math.min(W / (w * c + h * si), H / (w * si + h * c))
+    : Math.max((W * c + H * si) / w, (W * si + H * c) / h);
   const canvas = document.createElement('canvas');
-  canvas.width = side ? bmp.height : bmp.width;
-  canvas.height = side ? bmp.width : bmp.height;
+  canvas.width = W;
+  canvas.height = H;
   const ctx = canvas.getContext('2d');
-  ctx.translate(canvas.width / 2, canvas.height / 2);
-  ctx.rotate(deg * Math.PI / 180);
-  if (flip) ctx.scale(-1, 1);
-  ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, W, H);
+  ctx.imageSmoothingQuality = 'high';
+  ctx.translate(W / 2, H / 2);
+  ctx.rotate(rad);
+  ctx.scale(flip ? -scale : scale, scale);
+  ctx.drawImage(bmp, -w / 2, -h / 2);
   bmp.close();
   const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
   return new Uint8Array(await blob.arrayBuffer());
@@ -124,7 +138,7 @@ async function rotateJpeg(jpeg, deg, flip) {
 window.rotateJpeg = rotateJpeg; // für Tests
 
 function showRotation() {
-  $('rotation').textContent = (rotate ? rotate + '° im Uhrzeigersinn' : 'keine') + (mirror ? ', gespiegelt' : '');
+  $('rotation').textContent = (rotate ? String(rotate).replace('.', ',') + '° (vom Admin eingestellt)' : 'keine') + (mirror ? ', gespiegelt' : '');
 }
 
 function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
@@ -180,6 +194,7 @@ function connectServer() {
     } else if (msg.type === 'config') {
       rotate = msg.rotate || 0;
       mirror = !!msg.mirror;
+      fit = msg.fit === 'fit' ? 'fit' : 'fill';
       if (msg.label !== undefined) $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + link.u + '/' + link.s;
       showRotation();
     } else if (msg.type === 'stats') {
@@ -309,7 +324,7 @@ async function onJpeg(raw) {
   if (rotate || mirror) {
     if (busy) return; // Handy kommt nicht hinterher: Bild auslassen statt Rückstau
     busy = true;
-    try { jpeg = await rotateJpeg(raw, rotate, mirror); } catch (e) { console.warn(e); return; } finally { busy = false; }
+    try { jpeg = await rotateJpeg(raw, rotate, mirror, fit); } catch (e) { console.warn(e); return; } finally { busy = false; }
   }
   const now = performance.now();
   if (ws && ws.readyState === 1 && wantLive && ws.bufferedAmount < 512 * 1024) {

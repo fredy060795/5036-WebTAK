@@ -38,16 +38,20 @@ OpenTAKServer nutzt MediaMTX. MediaMTX kann eine fremde Quelle abholen, aber kei
 3. Sobald das Handy sendet, steht der Stream bei OpenTAKServer auf „Bereit“ und ist in ATAK/WinTAK über die
    üblichen OTS-Links (RTSP/WebRTC/HLS) verfügbar.
 
-## Bild drehen (Kamera liegt quer im Gehäuse)
+## Bild ausrichten (jeder Helm ist anders montiert)
 
-Die Drehung wird pro Stream im Admin-Fenster eingestellt: in der Liste unter **Drehung** oder im Ansehen-Fenster mit
-⟲ / ⟳ (90° links/rechts) und ⇋ (spiegeln). Unter **Einstellungen** gibt es eine Standard-Drehung für neue Streams
-(optional auf alle bestehenden anwenden).
+Das Ausrichten macht nur der Admin – der Benutzer scannt nur den QR-Code und startet den Stream.
+
+- **Ansehen** → **∠ Ausrichten**: Regler für jeden Winkel von 0 bis 359,5° (im Uhrzeigersinn), Feinschritte
+  −90/−5/−1/+1/+5/+90°, 0°, **Spiegeln** und bei schrägen Winkeln **Füllen** (Rand wird abgeschnitten, keine schwarzen
+  Ecken) oder **Ganzes Bild** (schwarze Ecken). Das Ergebnis ist nach etwa einer Sekunde im Live-Bild zu sehen.
+- In der Liste steht der Winkel jedes Streams und kann dort auch direkt eingetippt werden.
+- **Einstellungen → Bild drehen:** Grundwinkel für neue Streams (z. B. 90°, wenn die Kamera quer im Gehäuse liegt),
+  optional auf alle bestehenden Streams anwenden.
 
 Das Handy dreht jedes Bild, bevor es gesendet wird. Dadurch liefern alle Links (MJPEG, HLS, MPEG-TS, Einzelbild)
-und damit auch OpenTAKServer/ATAK schon das richtige Bild – beim Import muss nichts mehr angepasst werden. Eine
-Änderung wirkt sofort, auch während der Stream läuft; HLS/MPEG-TS starten dabei kurz neu, wenn das Bild von quer
-auf hoch wechselt.
+und damit auch OpenTAKServer/ATAK schon das ausgerichtete Bild – beim Import muss nichts mehr angepasst werden.
+Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz neu.
 
 ## Ablauf
 

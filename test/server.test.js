@@ -365,10 +365,25 @@ test('Drehung: Standard für neue Streams, Änderung geht sofort ans Handy', asy
   const cfg2 = await p.waitFor('config');
   assert.equal(cfg2.rotate, 270);
   assert.equal(cfg2.mirror, true);
-  // ungültige Werte werden auf 0 gesetzt
-  await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { rotate: 45 } });
+  // beliebige Winkel, auf 0,5° gerundet und in 0–359,5 gebracht
+  const angle = async (rotate) => {
+    await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { rotate } });
+    return (await api('streams')).data.streams.find(x => x.streamId === s.streamId).rotate;
+  };
+  assert.equal(await angle(45), 45);
+  assert.equal(await angle(7.3), 7.5);
+  assert.equal(await angle(-10), 350);
+  assert.equal(await angle(400), 40);
+  assert.equal(await angle(359.9), 0);
+  assert.equal(await angle('abc'), 0);
+  p.messages.length = 0;
+  await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { rotate: 12.5, fit: 'fit' } });
+  const cfg3 = await p.waitFor('config');
+  assert.equal(cfg3.rotate, 12.5);
+  assert.equal(cfg3.fit, 'fit');
+  await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { fit: 'quatsch' } });
   let st = (await api('streams')).data.streams.find(x => x.streamId === s.streamId);
-  assert.equal(st.rotate, 0);
+  assert.equal(st.fit, 'fill');
 
   // auf alle bestehenden anwenden
   await api('defaults', { method: 'POST', body: { rotate: 180, mirror: false, applyAll: true } });

@@ -19,7 +19,7 @@ const QRCode = require('qrcode');
 
 const { Store } = require('./lib/store');
 const { Auth } = require('./lib/auth');
-const { StreamHub, normRotate } = require('./lib/streams');
+const { StreamHub, normRotate, normFit } = require('./lib/streams');
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 
 const config = {
@@ -262,11 +262,11 @@ async function handleAdminApi(req, res, route) {
 
   if (route === 'defaults' && method === 'GET') {
     const d = store.data.defaults || {};
-    return json(res, 200, { rotate: normRotate(d.rotate), mirror: !!d.mirror });
+    return json(res, 200, { rotate: normRotate(d.rotate), mirror: !!d.mirror, fit: normFit(d.fit) });
   }
   if (route === 'defaults' && method === 'POST') {
     const body = await readJson(req);
-    store.data.defaults = { rotate: normRotate(body.rotate), mirror: !!body.mirror };
+    store.data.defaults = { rotate: normRotate(body.rotate), mirror: !!body.mirror, fit: normFit(body.fit) };
     if (body.applyAll) {
       for (const id of Object.keys(store.data.streams)) hub.setOptions(id, store.data.defaults);
     }
@@ -302,7 +302,7 @@ async function handleAdminApi(req, res, route) {
     }
     if (method === 'POST' && action === 'options') {
       const body = await readJson(req);
-      hub.setOptions(id, { rotate: body.rotate, mirror: body.mirror, label: body.label });
+      hub.setOptions(id, { rotate: body.rotate, mirror: body.mirror, fit: body.fit, label: body.label });
       return json(res, 200, { ok: true });
     }
     if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }

@@ -130,10 +130,13 @@
   </form>
   <form id="defaultsForm">
     <h3>Bild drehen (Standard für neue Streams)</h3>
-    <p class="mut small">Liegt die Kamera quer im Helm-Gehäuse, hier die Drehung einstellen. Das Handy dreht jedes Bild,
-      bevor es gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
-    <label>Drehung</label>
-    <select name="rotate"></select>
+    <p class="mut small">Grundwinkel für neue Streams, z. B. 90°, wenn die Kamera quer im Gehäuse liegt. Den genauen Winkel
+      pro Helm stellst du danach im Ansehen-Fenster unter „∠ Ausrichten“ ein. Das Handy dreht jedes Bild, bevor es
+      gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
+    <label>Drehung in Grad (0–359,5, im Uhrzeigersinn)</label>
+    <input name="rotate" type="number" min="0" max="359.5" step="0.5" value="0">
+    <label>Bei schrägen Winkeln</label>
+    <span data-fit></span>
     <label class="check"><input type="checkbox" name="mirror"> Spiegeln</label>
     <label class="check"><input type="checkbox" name="applyAll"> Auch auf alle bestehenden Streams anwenden</label>
     <button class="pri" type="submit">Speichern</button>

@@ -3,13 +3,38 @@
 
 const $ = id => document.getElementById(id);
 const POLL_MS = 2000;
-const ROTATIONS = [[0, 'keine'], [90, '90° rechts'], [180, '180°'], [270, '90° links']];
+// Drehung: beliebiger Winkel im Uhrzeigersinn, 0 bis 359,5°
+const normDeg = v => {
+  const r = Number(String(v).replace(',', '.'));
+  if (!Number.isFinite(r)) return 0;
+  return (Math.round((((r % 360) + 360) % 360) * 2) / 2) % 360;
+};
+const fmtDeg = v => String(v || 0).replace('.', ',') + '°';
 
-function rotateSelect(value) {
-  const sel = el('select', { class: 'rot', title: 'Bild drehen' });
-  for (const [v, t] of ROTATIONS) sel.append(el('option', { value: String(v), text: t }));
-  sel.value = String(value || 0);
+function angleInput(value, cls = 'rot') {
+  const i = el('input', { class: cls, type: 'number', min: '0', max: '359.5', step: '0.5', title: 'Drehung in Grad (im Uhrzeigersinn)' });
+  i.value = String(value || 0);
+  return i;
+}
+
+function fitSelect(value) {
+  const sel = el('select', { title: 'Bei schrägen Winkeln' });
+  sel.append(el('option', { value: 'fill', text: 'Füllen (Rand abschneiden)' }), el('option', { value: 'fit', text: 'Ganzes Bild (schwarze Ecken)' }));
+  sel.value = value === 'fit' ? 'fit' : 'fill';
   return sel;
+}
+
+// Änderungen beim Schieben gesammelt senden (nicht bei jedem Pixel)
+const pendingOpts = new Map();
+function sendOptionsSoon(id, opts) {
+  const p = pendingOpts.get(id) || { opts: {} };
+  clearTimeout(p.timer);
+  Object.assign(p.opts, opts);
+  p.timer = setTimeout(() => {
+    pendingOpts.delete(id);
+    setOptions(id, p.opts);
+  }, 250);
+  pendingOpts.set(id, p);
 }
 
 let me = null;
@@ -243,9 +268,9 @@ function buildRow(s) {
   c.viewers = td('Zuschauer', 'num');
   c.last = td('Letztes Bild');
   c.rotTd = td('Drehung');
-  c.rot = rotateSelect(s.rotate);
-  c.rot.addEventListener('change', () => setOptions(id, { rotate: +c.rot.value }));
-  c.rotTd.append(c.rot);
+  c.rot = angleInput(s.rotate);
+  c.rot.addEventListener('change', () => setOptions(id, { rotate: normDeg(c.rot.value) }));
+  c.rotTd.append(el('span', { class: 'deg' }, c.rot, '°'));
   c.link = td('Link');
   const f = copyField(s.links.stream);
   c.linkInput = f.input;
@@ -271,8 +296,8 @@ function updateRow(r, s) {
   c.fps.textContent = s.receiving ? s.fps.toFixed(1) : '–';
   c.viewers.textContent = String(s.viewers);
   c.last.textContent = ago(s.lastFrameAt);
-  if (document.activeElement !== c.rot) c.rot.value = String(s.rotate || 0);
-  c.rotTd.title = s.mirror ? 'gespiegelt' : '';
+  if (document.activeElement !== c.rot && !pendingOpts.has(sid(s))) c.rot.value = String(s.rotate || 0);
+  c.rotTd.title = (s.mirror ? 'gespiegelt, ' : '') + (s.fit === 'fit' ? 'ganzes Bild' : 'füllen');
   if (document.activeElement !== c.linkInput) c.linkInput.value = s.links.stream;
   c.toggle.textContent = s.enabled ? 'Stoppen' : 'Freigeben';
 }
@@ -426,19 +451,22 @@ $('settingsBtn').addEventListener('click', async () => {
   const defs = frag.querySelector('#defaultsForm');
   cred.username.value = me.username;
   cred.email.value = me.email || '';
-  for (const [v, t] of ROTATIONS) defs.rotate.append(el('option', { value: String(v), text: t }));
+  const defFit = fitSelect('fill');
+  defFit.name = 'fit';
+  defs.querySelector('[data-fit]').replaceWith(defFit);
   openModal('Einstellungen', defs, cred, smtp);
 
   try {
     const d = await api('defaults');
     defs.rotate.value = String(d.rotate);
     defs.mirror.checked = d.mirror;
+    defFit.value = d.fit;
   } catch (e) { /* angezeigt durch api() */ }
   defs.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = defs.querySelector('[data-msg]');
     try {
-      await api('defaults', { method: 'POST', body: { rotate: +defs.rotate.value, mirror: defs.mirror.checked, applyAll: defs.applyAll.checked } });
+      await api('defaults', { method: 'POST', body: { rotate: normDeg(defs.rotate.value), mirror: defs.mirror.checked, fit: defFit.value, applyAll: defs.applyAll.checked } });
       defs.applyAll.checked = false;
       await refresh();
       setMsg(msg, 'Gespeichert.', true);
@@ -503,18 +531,45 @@ function openWindow(id) {
   if (!s) return;
 
   const title = el('span', { class: 'win-title' });
-  const btnLeft = el('button', { title: 'Bild 90° nach links drehen', text: '⟲' });
-  const btnRight = el('button', { title: 'Bild 90° nach rechts drehen', text: '⟳' });
-  const btnFlip = el('button', { title: 'Bild spiegeln', text: '⇋' });
+  const btnAlign = el('button', { title: 'Bild ausrichten (drehen, spiegeln)', text: '∠ Ausrichten' });
   const btnMin = el('button', { title: 'Minimieren', text: '–' });
   const btnMax = el('button', { title: 'Maximieren', text: '□' });
   const btnClose = el('button', { title: 'Schließen', text: '✕' });
-  const bar = el('div', { class: 'win-bar' }, title, btnLeft, btnRight, btnFlip, btnMin, btnMax, btnClose);
+  const bar = el('div', { class: 'win-bar' }, title, btnAlign, btnMin, btnMax, btnClose);
+
+  // Ausrichten: Regler 0–359,5°, Feinschritte, Spiegeln, Füllen/Ganzes Bild
+  const range = el('input', { type: 'range', min: '0', max: '359.5', step: '0.5', class: 'grow', 'aria-label': 'Drehung' });
+  const num = angleInput(s.rotate, 'rot');
+  const mirrorBox = el('input', { type: 'checkbox' });
+  const fitSel = fitSelect(s.fit);
+  const setAngle = (v, now) => {
+    const a = normDeg(v);
+    range.value = String(a);
+    num.value = String(a);
+    if (now) setOptions(id, { rotate: a }); else sendOptionsSoon(id, { rotate: a });
+  };
+  range.addEventListener('input', () => setAngle(range.value));
+  num.addEventListener('change', () => setAngle(num.value, true));
+  const step = d => el('button', { class: 'sm', type: 'button', text: (d > 0 ? '+' : '−') + Math.abs(d) + '°',
+    onclick: () => setAngle(normDeg(num.value) + d) });
+  const align = el('div', { class: 'win-align hidden' },
+    el('div', { class: 'row' }, range, el('span', { class: 'deg' }, num, '°')),
+    el('div', { class: 'row' }, step(-90), step(-5), step(-1), step(1), step(5), step(90),
+      el('button', { class: 'sm', type: 'button', text: '0°', onclick: () => setAngle(0, true) })),
+    el('div', { class: 'row' },
+      el('label', { class: 'check' }, mirrorBox, 'Spiegeln'), fitSel),
+  );
+  mirrorBox.addEventListener('change', () => setOptions(id, { mirror: mirrorBox.checked }));
+  fitSel.addEventListener('change', () => setOptions(id, { fit: fitSel.value }));
+  btnAlign.addEventListener('click', () => {
+    align.classList.toggle('hidden');
+    btnAlign.classList.toggle('pri', !align.classList.contains('hidden'));
+  });
   const img = el('img', { alt: 'Live-Bild' });
   const off = el('div', { class: 'win-off' });
   const info = el('div', { class: 'win-info' });
   const body = el('div', { class: 'win-body' }, img, off, info);
-  const win = el('div', { class: 'win' }, bar, body);
+  const win = el('div', { class: 'win' }, bar, align, body);
 
   const vw = window.innerWidth, vh = window.innerHeight;
   const w = Math.min(480, vw - 16), h = Math.min(400, vh - 80);
@@ -536,6 +591,15 @@ function openWindow(id) {
       info.textContent = st.receiving ? `${st.fps.toFixed(1)} Bilder/s · ${st.camera || ''}` : text;
       off.textContent = st.receiving ? '' : (st.enabled ? 'Kein Live-Bild (Handy ' + (st.phoneConnected ? 'verbunden, keine Bilder' : 'offline') + ')' : 'Stream gestoppt');
       off.classList.toggle('hidden', st.receiving);
+      // Regler nur nachführen, wenn gerade niemand daran dreht
+      const busy = pendingOpts.has(id) || [range, num, fitSel].includes(document.activeElement);
+      if (!busy) {
+        range.value = String(st.rotate || 0);
+        num.value = String(st.rotate || 0);
+        fitSel.value = st.fit === 'fit' ? 'fit' : 'fill';
+      }
+      mirrorBox.checked = !!st.mirror;
+      btnAlign.textContent = '∠ ' + (st.rotate ? fmtDeg(st.rotate) : 'Ausrichten');
     },
     close() {
       img.src = ''; // Verbindung zum Stream beenden
@@ -549,10 +613,6 @@ function openWindow(id) {
 
   win.addEventListener('pointerdown', () => api_.focus());
   btnClose.addEventListener('click', () => api_.close());
-  const cur = () => streams.find(x => sid(x) === id) || s;
-  btnLeft.addEventListener('click', () => setOptions(id, { rotate: ((cur().rotate || 0) + 270) % 360 }));
-  btnRight.addEventListener('click', () => setOptions(id, { rotate: ((cur().rotate || 0) + 90) % 360 }));
-  btnFlip.addEventListener('click', () => setOptions(id, { mirror: !cur().mirror }));
   btnMin.addEventListener('click', () => {
     win.classList.toggle('min');
     win.classList.remove('max');
