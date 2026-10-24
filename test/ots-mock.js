@@ -10,6 +10,7 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
     euds: [],         // { uid, callsign, username }
     profiles: [],     // { eud_uid, preference_key, preference_value }
     tokens: {},       // username -> Zähler
+    videos: {},       // path -> { source, host }
     calls: [],
   };
   const TOKEN = 'tok-' + Math.random().toString(36).slice(2);
@@ -79,6 +80,24 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
       if (u.pathname === '/api/profiles' && req.method === 'POST') {
         state.profiles = state.profiles.filter(p => !(p.eud_uid === json.eud_uid && p.preference_key === json.preference_key));
         state.profiles.push(json);
+        return send(200, { success: true });
+      }
+      if (u.pathname === '/api/video_streams') {
+        return send(200, { results: Object.entries(state.videos).map(([path, v]) => ({ path, mediamtx_settings: JSON.stringify({ source: v.source }) })) });
+      }
+      if ((u.pathname === '/api/mediamtx/stream/add' && req.method === 'POST') || (u.pathname === '/api/mediamtx/stream/update' && req.method === 'PATCH')) {
+        if (!json.path) return fail(400, 'Please specify a path name');
+        if (json.path.startsWith('/')) return fail(400, 'Path cannot begin with a slash');
+        const add = u.pathname.endsWith('add');
+        if (!add && !state.videos[json.path]) return fail(400, `Path ${json.path} not found`);
+        if (add && state.videos[json.path]) return fail(400, 'path already exists');
+        state.videos[json.path] = { source: json.source, host: req.headers['x-forwarded-host'] || req.headers.host, onDemand: add ? json.sourceOnDemand : (state.videos[json.path] || {}).onDemand };
+        return send(200, { success: true });
+      }
+      if (u.pathname === '/api/mediamtx/stream/delete' && req.method === 'DELETE') {
+        const path = u.searchParams.get('path');
+        if (!state.videos[path]) return fail(404, 'Video stream not found');
+        delete state.videos[path];
         return send(200, { success: true });
       }
       fail(404, 'unknown ' + u.pathname);

@@ -380,6 +380,7 @@ async function refresh() {
   try {
     const data = await api('streams' + (eventSeq >= 0 ? '?since=' + eventSeq : ''));
     streams = data.streams;
+    if (data.takVideo) { takVideo = data.takVideo; renderTakVideo(); }
     render();
     for (const ev of data.events || []) showToast(ev);
     eventSeq = data.eventSeq;
@@ -389,6 +390,47 @@ async function refresh() {
 }
 
 const sid = s => s.user + '/' + s.streamId;
+
+// ---------- Streams automatisch in den TAK-Server (OpenTAKServer/MediaMTX) ----------
+let takVideo = { ready: false, auto: true, when: 'all', prefix: 'cam' };
+
+function renderTakVideo() {
+  $('tvAuto').checked = !!takVideo.auto;
+  if (document.activeElement !== $('tvWhen')) $('tvWhen').value = takVideo.when;
+  if (document.activeElement !== $('tvPrefix')) $('tvPrefix').value = takVideo.prefix || '';
+  const inTak = streams.filter(s => s.tak && s.tak.inTak).length;
+  const errs = streams.filter(s => s.tak && s.tak.error).length;
+  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „TAK-Zugänge → Einstellungen“ eintragen.'
+    : `${inTak} von ${streams.length} Stream${streams.length === 1 ? '' : 's'} im TAK-Server` + (errs ? ` · ${errs} Fehler (Punkt antippen)` : '');
+  $('tvStatus').className = 'small ' + (!takVideo.ready || errs ? 'warn' : 'mut');
+}
+
+async function setTak(id, body) {
+  try {
+    await api(streamPath(id) + '/tak', { method: 'POST', body });
+  } catch (e) { alert(e.message); }
+  await refresh();
+}
+
+async function saveTakVideo(body) {
+  try {
+    takVideo = { ...takVideo, ...await api('takvideo/settings', { method: 'POST', body }) };
+    renderTakVideo();
+  } catch (e) { alert(e.message); }
+}
+$('tvAuto').addEventListener('change', () => saveTakVideo({ auto: $('tvAuto').checked }));
+$('tvWhen').addEventListener('change', () => saveTakVideo({ when: $('tvWhen').value }));
+$('tvPrefix').addEventListener('change', () => saveTakVideo({ prefix: $('tvPrefix').value }));
+$('tvSync').addEventListener('click', async () => {
+  $('tvSync').disabled = true;
+  try {
+    const r = await api('takvideo/sync', { method: 'POST', body: {} });
+    if (r.errors && r.errors.length) alert('Abgleich mit Fehlern:\n\n' + r.errors.join('\n'));
+    else if (r.error) alert(r.error);
+  } catch (e) { alert(e.message); }
+  $('tvSync').disabled = false;
+  await refresh();
+});
 
 let liveMode = 'admin'; // "admin" = Admin schaltet live, "user" = Nutzer startet selbst
 
@@ -439,10 +481,15 @@ function buildRow(s) {
   c.size = sizeSelect(s.framesize, 'rot-size');
   c.size.addEventListener('change', () => setOptions(id, { framesize: +c.size.value }));
   c.sizeTd.append(c.size);
-  c.link = td('Link');
-  const f = copyField(s.links.stream);
-  c.linkInput = f.input;
-  c.link.append(el('div', { class: 'link' }, f.input, f.btn));
+  // TAK-Pfad: Stream steht automatisch als Video-Feed im TAK-Server; hier nur den Pfad pflegen
+  c.link = td('TAK-Pfad');
+  c.takOn = el('input', { type: 'checkbox', title: 'Im TAK-Server als Video-Feed eintragen', onchange: () => setTak(id, { enabled: c.takOn.checked }) });
+  c.takPath = el('input', { class: 'tak-path', placeholder: 'automatisch', autocomplete: 'off', spellcheck: 'false' });
+  const savePath = () => { if (c.takPath.value.trim() !== (c.takPathOld || '')) setTak(id, { path: c.takPath.value }); };
+  c.takPath.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); c.takPath.blur(); } });
+  c.takPath.addEventListener('change', savePath);
+  c.takDot = el('span', { class: 'tak-dot' });
+  c.link.append(el('div', { class: 'link' }, c.takOn, c.takDot, c.takPath));
   c.actions = td('', '');
   c.onair = el('button', { class: 'sm', onclick: () => {
     const cur = streams.find(x => sid(x) === id);
@@ -471,7 +518,18 @@ function updateRow(r, s) {
   if (document.activeElement !== c.rot && !pendingOpts.has(sid(s))) c.rot.value = String(s.rotate || 0);
   c.rotTd.title = (s.mirror ? 'gespiegelt, ' : '') + (s.fit === 'fit' ? 'ganzes Bild' : 'füllen');
   if (document.activeElement !== c.size) c.size.value = String(s.framesize || 1);
-  if (document.activeElement !== c.linkInput) c.linkInput.value = s.links.stream;
+  const t = s.tak || {};
+  c.takOn.checked = !!t.enabled;
+  c.takOn.disabled = !takVideo.ready;
+  if (document.activeElement !== c.takPath) { c.takPath.value = t.path || ''; c.takPathOld = t.path || ''; }
+  c.takPath.disabled = !takVideo.ready;
+  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (TAK-Zugänge → Einstellungen)']
+    : t.error ? ['err', 'Fehler: ' + t.error]
+      : t.inTak ? ['ok', 'Im TAK-Server: ' + (t.rtsp || t.path)]
+        : t.enabled ? ['wait', takVideo.when === 'live' ? 'Wird eingetragen, sobald die Kamera sendet' : 'Wird eingetragen …'] : ['off', 'Nicht im TAK-Server'];
+  c.takDot.className = 'tak-dot ' + takState[0];
+  c.takDot.title = takState[1];
+  c.link.title = takState[1];
   c.toggle.textContent = s.enabled ? 'Sperren' : 'Freigeben';
   c.onair.textContent = s.onAir ? '■ Live aus' : '▶ Live';
   c.onair.className = 'sm ' + (s.onAir ? 'danger' : 'golive');
@@ -603,9 +661,10 @@ function showQr(id) {
   }
   add('Einzelbild', s.links.snapshot);
   add('Handy-App (enthält den Zugangsschlüssel – nur an den Benutzer geben)', s.links.app);
-  const hint = el('p', { class: 'mut small', text: me.ffmpeg
-    ? 'OpenTAKServer (MediaMTX) kann kein MJPEG abholen: Dort unter Videostreams „Add Video“ den HLS-Link als Quelle eintragen.'
-    : 'Für OpenTAKServer (MediaMTX) wird der HLS-Link gebraucht – dafür ffmpeg auf dem Server installieren.' });
+  const hint = el('p', { class: 'mut small', text: !me.ffmpeg
+    ? 'Für OpenTAKServer (MediaMTX) wird der HLS-Link gebraucht – dafür ffmpeg auf dem Server installieren.'
+    : s.tak && s.tak.inTak ? `Im TAK-Server eingetragen als „${s.tak.path}“ – ATAK: ${s.tak.rtsp}`
+      : 'Der Stream wird automatisch im OpenTAKServer eingetragen (Spalte „TAK-Pfad“), sobald der verbunden ist.' });
   const caBox = me.testCa ? el('div', { class: 'card', style: 'margin-top:12px' },
     el('b', { text: 'Testbetrieb: Zertifikat fürs Handy' }),
     el('p', { class: 'mut small', text: 'Einmal pro Handy: QR-Code scannen, Datei laden. Android: Einstellungen → Sicherheit → '

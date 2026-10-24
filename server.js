@@ -24,6 +24,7 @@ const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 const tak = require('./lib/tak');
 const { TileCache } = require('./lib/tiles');
 const { TakUsers, TEAM_COLORS, ROLES } = require('./lib/takusers');
+const { TakVideo } = require('./lib/takvideo');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -207,6 +208,7 @@ async function handleRegister(req, res) {
   registrations.set(ip, list);
   log('Selbst-Anmeldung', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
   hub.event(StreamHub.id(entry.user, entry.streamId), 'register', `${entry.label} hat sich angemeldet`);
+  takVideo.touch(StreamHub.id(entry.user, entry.streamId));
   return json(res, 200, { u: entry.user, s: entry.streamId, k: entry.key, label: entry.label });
 }
 
@@ -260,6 +262,19 @@ const takUsers = new TakUsers(store, { log });
 // Rufname/Team/Rolle für neue Geräte regelmäßig als OTS-Profil setzen
 setInterval(() => takUsers.syncProfiles().then(r => { if (r.updated) log('OTS-Profile aktualisiert:', r.updated); })
   .catch(e => log('OTS-Profile:', e.message)), 2 * 60 * 1000).unref();
+
+// Kamera-Streams automatisch als Video-Feed im TAK-Server eintragen.
+// Adresse für den HLS-Link: eingestellte öffentliche Adresse, sonst die zuletzt im Admin benutzte.
+const takVideo = new TakVideo({
+  store, hub, takUsers, log,
+  base: () => configuredBase() || ((store.data.takVideo || {}).lastBase) || '',
+});
+setTimeout(() => takVideo.syncAll().catch(e => log('TAK-Video:', e.message)), 5000).unref();
+let takVideoTick = 0;
+setInterval(() => {
+  // Modus "nur live": alle 30 s prüfen, sonst alle 10 min zur Sicherheit alles abgleichen
+  if (takVideo.s.when === 'live' || ++takVideoTick % 20 === 0) takVideo.syncAll().catch(e => log('TAK-Video:', e.message));
+}, 30 * 1000).unref();
 
 const accessLimits = new Map(); // ip -> [zeitpunkte] für Registrierungen
 function mailReady() { return smtpConfigured(store.data.smtp); }
@@ -547,6 +562,15 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
+  // Adresse, unter der der Admin uns erreicht, als Rückfall für den HLS-Link im TAK-Server merken
+  if (!configuredBase()) {
+    const b = publicBase(req);
+    if (b && !/\/\/(localhost|127\.|\[::1\])/.test(b) && (store.data.takVideo || {}).lastBase !== b) {
+      takVideo.s.lastBase = b;
+      store.save();
+    }
+  }
+
   // Erst nach dem ersten Passwortwechsel ist der Rest erlaubt
   if (auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
 
@@ -562,6 +586,9 @@ async function handleAdminApi(req, res, route) {
     });
   }
   if (route.startsWith('takusers/')) return await handleTakAdmin(req, res, route.slice(9));
+  if (route === 'takvideo' && method === 'GET') return json(res, 200, takVideo.state());
+  if (route === 'takvideo/settings' && method === 'POST') { takVideo.setSettings(await readJson(req)); return json(res, 200, takVideo.state()); }
+  if (route === 'takvideo/sync' && method === 'POST') { const r = await takVideo.syncAll(); return json(res, 200, { ...r, ...takVideo.state() }); }
   if (route === 'tak' && method === 'GET') {
     return json(res, 200, { allowedHosts: takSettings().allowedHosts, preset: takSettings().preset, eudUrl: publicBase(req) + '/eud/' });
   }
@@ -656,16 +683,20 @@ async function handleAdminApi(req, res, route) {
   }
 
   if (route === 'streams' && method === 'GET') {
-    const list = hub.list().map(s => ({ ...s, links: links(req, store.data.streams[StreamHub.id(s.user, s.streamId)]) }));
+    const list = hub.list().map(s => {
+      const id = StreamHub.id(s.user, s.streamId);
+      return { ...s, links: links(req, store.data.streams[id]), tak: takVideo.view(id) };
+    });
     // Hinweise seit der letzten Abfrage; ohne "since" nur die aktuelle Nummer (alte nicht erneut zeigen)
     const since = Number(new URL(req.url, 'http://x').searchParams.get('since'));
     const events = Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : [];
-    return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, eventSeq: hub.eventSeq });
+    return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, eventSeq: hub.eventSeq, takVideo: { ready: takVideo.ready(), auto: takVideo.s.auto, when: takVideo.s.when, prefix: takVideo.s.prefix } });
   }
   if (route === 'streams' && method === 'POST') {
     const body = await readJson(req);
     const entry = hub.create(body.user, body.label);
     log('Stream angelegt', entry.user + '/' + entry.streamId);
+    takVideo.touch(StreamHub.id(entry.user, entry.streamId));
     return json(res, 200, { ok: true, stream: { ...hub.status(StreamHub.id(entry.user, entry.streamId)), links: links(req, entry) } });
   }
   if (route === 'live-mode' && method === 'POST') {
@@ -708,13 +739,18 @@ async function handleAdminApi(req, res, route) {
     if (method === 'POST' && action === 'live') {
       const body = await readJson(req);
       hub.setOnAir(id, !!body.on);
+      takVideo.touch(id);
       log(body.on ? 'Live geschaltet' : 'Live beendet', id);
       return json(res, 200, { ok: true });
     }
-    if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
-    if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); log('Stream freigegeben', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); takVideo.touch(id); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); takVideo.touch(id); log('Stream freigegeben', id); return json(res, 200, { ok: true }); }
     if (method === 'POST' && action === 'revoke') { hub.revoke(id); log('Zugang entzogen', id); return json(res, 200, { ok: true, links: links(req, entry) }); }
-    if (method === 'DELETE' && action === '') { hub.remove(id); log('Stream gelöscht', id); return json(res, 200, { ok: true }); }
+    if (method === 'DELETE' && action === '') { hub.remove(id); takVideo.removed(id); log('Stream gelöscht', id); return json(res, 200, { ok: true }); }
+    if (method === 'POST' && action === 'tak') {
+      const body = await readJson(req);
+      return json(res, 200, { ok: true, video: await takVideo.set(id, { path: body.path, enabled: body.enabled }) });
+    }
   }
   return json(res, 404, { error: 'Unbekannte Anfrage.' });
 }
@@ -934,6 +970,7 @@ function handleUpgrade(req, socket, head) {
     }
     const { id, entry } = result;
     hub.attachPublisher(id, ws);
+    if (takVideo.s.when === 'live') takVideo.touch(id);
     const live = hub.live(id);
     log('Handy verbunden', id, clientIp(req));
     ws.send(JSON.stringify({

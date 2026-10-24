@@ -27,16 +27,26 @@ Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HT
 Welches Format dein ATAK/WinTAK am besten abspielt, am besten mit einem laufenden Stream ausprobieren – alle drei
 liefern dasselbe Bild. Die Bildrate kommt von der Kamera über Bluetooth (bei 320x240 etwa 2–5 Bilder/s).
 
-## In OpenTAKServer eintragen
+## Automatisch im TAK-Server (OpenTAKServer)
 
-OpenTAKServer nutzt MediaMTX. MediaMTX kann eine fremde Quelle abholen, aber kein MJPEG – deshalb dort den
-**HLS-Link** verwenden (dafür muss ffmpeg auf dem Streams-Server installiert sein, im Docker-Image ist es dabei):
+Sobald im Admin unter **TAK-Zugänge → Einstellungen** der OpenTAKServer verbunden ist, trägt der Server jeden
+Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts mehr nötig:
 
-1. OpenTAKServer → **Videostreams** → **Add Video**.
-2. Als Pfad einen Namen wählen (z. B. `helm_mueller`), als **Quelle** den Link
-   `https://<domain>/<benutzer>/<streamId>/index.m3u8` eintragen.
-3. Sobald das Handy sendet, steht der Stream bei OpenTAKServer auf „Bereit“ und ist in ATAK/WinTAK über die
-   üblichen OTS-Links (RTSP/WebRTC/HLS) verfügbar.
+- Neue Streams (Selbst-Anmeldung, EUD, manuell angelegt) bekommen einen Pfad aus dem Namen, z. B. `cam/alpha-10`.
+- OTS/MediaMTX holt das Bild bei Bedarf selbst über den **HLS-Link** (`…/index.m3u8`, `sourceOnDemand`) –
+  dafür braucht der Streams-Server ffmpeg (im Docker-Image dabei) und eine öffentliche Adresse
+  (Admin → Kamera-Anmeldung → „Adresse des Servers“ oder `PUBLIC_URL`).
+- In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
+- Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
+
+Im Admin, Bereich **Video-Streams**, wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
+ändern und Enter – der alte Pfad wird in OTS entfernt, der neue angelegt (leer = wieder automatisch). Der Punkt zeigt
+den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim Darüberfahren). Weitere Schalter:
+„Neue Streams automatisch“, „nur solange die Kamera sendet“ (sonst: solange freigegeben), Pfad-Präfix und
+**⟳ Abgleichen** (passiert zusätzlich beim Start und alle 10 Minuten).
+
+Wer OTS nicht verbindet, kann den HLS-Link (Knopf „QR / Links“) weiterhin von Hand in OTS unter
+**Videostreams → Add Video** als Quelle eintragen.
 
 ## Bild ausrichten (jeder Helm ist anders montiert)
 
@@ -62,7 +72,7 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
    **„Bereit“** – es wird noch nichts gesendet.
 4. Du schaltest im Admin mit **▶ Live** ein (Liste oder Ansehen-Fenster); das Handy vibriert kurz und sendet.
    **■ Live aus** bzw. **Alle auf Bereit** schaltet zurück auf „Bereit“.
-5. In der Admin-Liste: ausrichten, Bildgröße, Link für ATAK/OpenTAKServer kopieren, sperren, rauswerfen oder löschen.
+5. In der Admin-Liste: ausrichten, Bildgröße, TAK-Pfad pflegen, sperren, rauswerfen oder löschen.
 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
@@ -208,6 +218,10 @@ kein LDAP.)
 nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
 
 ## Admin
+
+Die Admin-Seite ist jetzt die **TAK-Verwaltung**: oben die TAK-Zugänge (Anfragen freigeben, Benutzer, Teams,
+Einstellungen), darunter die Video-Streams mit TAK-Pfad. Kamera-Anmeldung (QR-Code für alle, Live-Modus,
+Server-Adresse), „Stream manuell anlegen“ und TAK-EUD sind eingeklappt.
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
