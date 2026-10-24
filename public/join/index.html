@@ -3,18 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TAK Access – Registration</title>
+<title>WebTAK Access – Registration</title>
 <meta name="theme-color" content="#0b0e12">
-<link rel="icon" href="/eud/icon-192.png">
+<link rel="icon" href="/assets/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/tak.css">
 </head>
 <body>
-<header class="top"><img src="/eud/icon-192.png" alt=""><h1>TAK Access</h1></header>
+<header class="top"><img src="/assets/brand/webtak-logo-160.png" alt=""><h1>WebTAK <span class="mut">Access</span></h1></header>
 <main class="wrap">
+  <section class="card hidden" id="knownCard">
+    <h2>You already sent a request</h2>
+    <p class="mut small">This device remembers your request. Open your status page to see where it stands.</p>
+    <p><a class="btn blue" id="knownLink" href="/access/">Open my status page</a></p>
+  </section>
+
   <section class="card">
     <h2>What is TAK?</h2>
     <p class="mut">The Team Awareness Kit (TAK) shows your team on one shared map – live and on every device: Android (ATAK),
-      iPhone (iTAK), Windows (WinTAK) or simply in the browser (Web EUD).</p>
+      iPhone (iTAK), Windows (WinTAK) or simply in the browser with WebTAK.</p>
     <div class="features">
       <div><b>Live positions</b>Everyone in your team on the map, with callsign and team colour.</div>
       <div><b>Markers &amp; drawings</b>Mark points, hostile/friendly units, routes and areas – instantly shared.</div>
@@ -51,10 +59,25 @@
   </section>
 
   <section class="card hidden" id="doneCard">
-    <h2>Request received</h2>
+    <h2>✔ Request received</h2>
     <p id="doneText"></p>
-    <p class="mut small">Your personal status page (keep it private – it will show your login details once approved):</p>
-    <p><a class="btn blue" id="statusLink" href="#">Open my status page</a></p>
+    <ol class="timeline" id="doneSteps"></ol>
+    <h3>Check your status at any time</h3>
+    <p class="mut small">Your personal status page shows where your request stands and – once approved – your login details,
+      QR codes and a step-by-step guide. Keep the link private. Bookmark it or add it to your home screen.</p>
+    <p class="row"><a class="btn blue" id="statusLink" href="#">Open my status page</a>
+      <button type="button" id="copyStatus">Copy link</button></p>
+    <p class="mut small">Lost the link? Use “Check my status” below with your e-mail address.</p>
+  </section>
+
+  <section class="card" id="lookupCard">
+    <h2>Check my status</h2>
+    <p class="mut small">Already registered? Enter your e-mail address – we send you the link to your status page.</p>
+    <form id="lookupForm" class="row">
+      <div class="grow"><input id="lookupEmail" type="email" required maxlength="120" autocomplete="email" placeholder="your e-mail address"></div>
+      <button type="submit" id="lookupSend">Send status link</button>
+    </form>
+    <p class="msg" id="lookupMsg"></p>
   </section>
 
   <section class="card hidden" id="closedCard">
@@ -73,6 +96,39 @@ const $ = id => document.getElementById(id);
     if (cfg.emailConfirm) $('intro').textContent += ' You will first receive an e-mail to confirm your address.';
   } catch (e) { /* offline */ }
 })();
+try {
+  const known = localStorage.getItem('tak.access');
+  if (known) { $('knownCard').classList.remove('hidden'); $('knownLink').href = '/access/#t=' + known; }
+} catch (e) { /* privat */ }
+
+function steps(list) {
+  $('doneSteps').replaceChildren(...list.map(([text, state]) => {
+    const li = document.createElement('li');
+    li.className = state;
+    li.textContent = text;
+    return li;
+  }));
+}
+
+$('lookupForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('lookupSend').disabled = true;
+  const msg = $('lookupMsg');
+  msg.className = 'msg';
+  try {
+    const res = await fetch('/api/access/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('lookupEmail').value }) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed.');
+    msg.className = 'msg ok';
+    msg.textContent = data.mail
+      ? 'If this address is registered, we have just sent you an e-mail with your status link.'
+      : 'E-mail is not available on this server – please ask your administrator for your status link.';
+  } catch (err) {
+    msg.textContent = err.message;
+  } finally {
+    $('lookupSend').disabled = false;
+  }
+});
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
   $('send').disabled = true;
@@ -85,11 +141,21 @@ $('form').addEventListener('submit', async e => {
     if (!res.ok) throw new Error(data.error || 'Request failed.');
     try { localStorage.setItem('tak.access', data.token); } catch (err) { /* privat */ }
     $('formCard').classList.add('hidden');
+    $('knownCard').classList.add('hidden');
     $('doneCard').classList.remove('hidden');
-    $('doneText').textContent = data.status === 'unconfirmed'
-      ? 'Please check your e-mail and click the confirmation link. After that an administrator will review your request.'
-      : 'An administrator will review your request. You will be notified by e-mail once your access is ready.';
-    $('statusLink').href = '/access/#t=' + data.token;
+    const link = location.origin + '/access/#t=' + data.token;
+    if (data.status === 'unconfirmed') {
+      $('doneText').textContent = `We sent an e-mail to ${data.email}. Please click the confirmation link in it – only then can an administrator review your request.`;
+      steps([['Request sent', 'done'], [`Confirm your e-mail (${data.email})`, 'now'], ['Administrator approves', ''], ['Login details on your status page', '']]);
+    } else {
+      $('doneText').textContent = data.mailed
+        ? `A confirmation was sent to ${data.email}. You will get another e-mail as soon as an administrator has approved your access.`
+        : 'An administrator will review your request. This server does not send e-mails – please check your status page from time to time.';
+      steps([['Request sent', 'done'], ['Administrator approves', 'now'], ['Login details on your status page', '']]);
+    }
+    $('statusLink').href = link;
+    $('copyStatus').onclick = () => navigator.clipboard.writeText(link).then(() => { $('copyStatus').textContent = 'Copied'; }, () => prompt('Status link:', link));
+    $('doneCard').scrollIntoView({ behavior: 'smooth' });
   } catch (err) {
     $('msg').textContent = err.message;
   } finally {

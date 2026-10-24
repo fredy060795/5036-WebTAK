@@ -21,10 +21,11 @@
     } catch (e) { return; }
     const pending = state.users.filter(u => u.status === 'pending').length;
     $('takPending').textContent = pending ? String(pending) : '';
+    $('navPending').textContent = pending ? String(pending) : '';
     renderUsers();
     if (!$('takTeams').dataset.dirty) { teamsDraft = state.teams.map(t => ({ ...t })); blocksDraft = state.blocks.map(b => [...b]); renderTeams(); }
     fillSettings();
-    if (!state.otsReady) msg('OpenTAKServer ist noch nicht verbunden – unter „Einstellungen“ eintragen. Ohne OTS können Anfragen nicht freigegeben werden.');
+    if (!state.otsReady) msg('OpenTAKServer ist noch nicht verbunden – unter „OpenTAKServer & Registrierung“ eintragen. Ohne OTS können Anfragen nicht freigegeben werden.');
   }
   window.loadTakUsers = load;
 
@@ -260,12 +261,12 @@
       const w = window.open('', '_blank', 'width=480,height=640');
       if (!w) return;
       const d = w.document;
-      d.title = 'TAK Access';
+      d.title = 'WebTAK Access';
       d.body.style.fontFamily = 'system-ui, sans-serif';
       d.body.style.textAlign = 'center';
-      const h = d.createElement('h1'); h.textContent = 'TAK Access';
+      const h = d.createElement('h1'); h.textContent = 'WebTAK Access';
       const i = d.createElement('img'); i.src = img.src; i.style.width = '340px';
-      const t = d.createElement('p'); t.textContent = 'Scan to request your TAK access';
+      const t = d.createElement('p'); t.textContent = 'Scan to request your WebTAK access';
       d.body.append(h, i, t);
       i.onload = () => w.print();
     } });

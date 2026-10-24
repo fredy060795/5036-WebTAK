@@ -1,6 +1,7 @@
-# Helm Camera Streams
+# WebTAK
 
-Server und Handy-App für die Bluetooth-Helmkamera (ESP32-CAM, Firmware aus
+**WebTAK** = TAK im Browser (Web-App), TAK-Zugänge mit Registrierung und Freigabe (OpenTAKServer) und
+Kamera-Streams, die automatisch im TAK-Server landen. Dazu Server und Handy-App für die Bluetooth-Helmkamera (ESP32-CAM, Firmware aus
 [ESP32-Flash](https://github.com/fredy060795/ESP32-Flash)).
 
 ```
@@ -111,17 +112,27 @@ Admin-Fenster im Hintergrund ist.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
 sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.
 
-## TAK-EUD (Karte + Lagebild auf dem Handy)
+## WebTAK-App (Karte + Lagebild auf dem Handy)
 
-Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau,
+Unter `https://<server>/eud/` gibt es **WebTAK**, einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau,
 Oberfläche auf **Englisch** (multinational). Läuft auf Android und iPhone (Safari → Teilen → „Zum
 Home-Bildschirm“). Aufbau wie ATAK:
 
 - **Leiste oben:** Karten (Layers), Marker, Chat, Video, Tools (Menü als Kachel-Raster wie ATAK:
-  Servers, Contacts, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
+  Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
+- **Contacts & Markers** wie der ATAK Overlay Manager nach Art getrennt: **Contacts** (Nutzer), Marker
+  **Friendly / Hostile / Neutral / Unknown** (nach 2525-Zugehörigkeit), sonstige Punkte, Zeichnungen & Routen –
+  jede Gruppe auf- und zuklappbar und mit 🗑 einzeln bereinigen. **Clear Content** räumt mehrere Gruppen auf
+  einmal ab, dazu Overlays und Chat; auf Wunsch werden eigene Marker auch beim TAK-Server gelöscht.
 - **Links:** Kompass (antippen = Blickrichtung oben „HDG“, erneut = Nord oben „N“; ohne Sensor nach
   GPS-Kurs), darunter „auf mich zoomen“.
-- **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
+- **Rechts:** Schieberegler zum Kippen (Doppeltippen = flach). Gekippt zeigt WebTAK eine **echte 3D-Karte** wie
+  WinTAK (MapLibre GL): Gelände mit Höhen, Himmel und Horizont, Neigung bis **88°**, Symbole stehen aufrecht mit
+  Namen, Routen/Flächen liegen auf dem Gelände, eigene Marker lassen sich auch in 3D verschieben und antippen.
+  Bei 0° geht es zurück zur flachen Karte (zum Zeichnen, Messen, Korridor) – mit gleichem Ausschnitt und gleicher
+  Drehung. **3D ist Standard** (Karte → 3D MAP: abschaltbar, „Start in 3D view“, Geländehöhe 1–3×). Höhendaten:
+  frei nutzbare *AWS Terrain Tiles* (Terrarium) über den eigenen Kachel-Zwischenspeicher; „Save for offline use“
+  speichert sie mit. Ohne WebGL 2 oder ohne Höhendaten: flach gekippt (bis 60°) bzw. 3D ohne Gelände.
 - **Unten rechts:** Verbindungsanzeige (grün = verbunden, gelb = nur ein Teil, rot = offline; antippen =
   Server) und die eigene Position: Rufname, MGRS, Höhe, Richtung, Tempo, Genauigkeit. Unten links Maßstab.
 - **Marker** (Marker-Knopf oben): Name-Präfix + Index wie ATAK; Zugehörigkeit (Unbekannt/Neutral/Feind/
@@ -143,11 +154,15 @@ Home-Bildschirm“). Aufbau wie ATAK:
    startet sofort (auch wenn im Admin „Admin schaltet live“ eingestellt ist – der Admin bekommt einen
    Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt. Eigene Vorschau
    minimieren oder ausblenden (Stream läuft weiter). **Streams ansehen:** alle Streams im Lagebild und die
-   Feeds des TAK-Servers im Viewer (minimieren, Vollbild, schließen; MJPEG/HLS; RTSP wird kopiert).
+   Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
+   angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
+   Video und Chat stapeln sich, statt sich zu überdecken.
 
 **TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
 Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte
-werden bei Änderungen automatisch aktualisiert), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom
+werden bei Änderungen automatisch aktualisiert, ⟳ lädt sofort neu; bei OpenTAKServer werden auch die in ATAK
+angelegten Missionen mit `tool=public` gefunden, und Punkte, für die der Server nur Metadaten liefert, erscheinen
+trotzdem auf der Karte), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom
 Gerät, auch Rasterkarten mit mehreren Detailstufen; bleiben offline gespeichert).
 **Auto-Push wie bei ATAK:** schickt der TAK-Server ein Datenpaket an das Gerät oder lädt es in eine
 Mission ein, wird beides automatisch geladen bzw. abonniert. Fehler beim Abruf stehen im Server-Log
@@ -179,9 +194,13 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
 
 **Ablauf**
 
-1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter TAK-Zugänge → Einstellungen), liest
+1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter „OpenTAKServer & Registrierung“), liest
    kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
-   optional E-Mail-Bestätigung über SMTP). Er bekommt einen persönlichen Statuslink.
+   optional E-Mail-Bestätigung über SMTP). Er bekommt sofort eine Eingangsbestätigung per E-Mail
+   („WebTAK – registration request received“, mit seinem persönlichen Statuslink) und sieht nach dem Absenden,
+   wie es weitergeht. Die **Statusseite** zeigt eine Zeitleiste (Anfrage → ggf. E-Mail bestätigt → Freigabe →
+   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Link verloren?
+   „Check my status“ auf `/join/` schickt ihn erneut. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
 3. Die App legt das OTS-Konto an (Benutzername aus dem Rufnamen, zufälliges Passwort), setzt die
@@ -189,7 +208,7 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
    bzw. der Admin gibt ihm den angezeigten Link.
 4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
    Benutzer, Passwort, **Truststore-Download**, QR-Codes und Schritt-für-Schritt-Anleitung für
-   **ATAK** (Android), **iTAK** (iPhone) und die **Web-EUD** (QR öffnet die EUD mit allen Daten, das
+   **ATAK** (Android), **iTAK** (iPhone) und **WebTAK** (QR öffnet die EUD mit allen Daten, das
    Zertifikat wird automatisch angefordert).
 
 **Verwaltung** (Admin → TAK-Zugänge): suchen/filtern, freigeben, ablehnen, bearbeiten, sperren/entsperren
@@ -219,13 +238,14 @@ nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP 
 
 ## Admin
 
-Die Admin-Seite ist jetzt die **TAK-Verwaltung**: oben die TAK-Zugänge (Anfragen freigeben, Benutzer, Teams,
-Einstellungen), darunter die Video-Streams mit TAK-Pfad. Kamera-Anmeldung (QR-Code für alle, Live-Modus,
-Server-Adresse), „Stream manuell anlegen“ und TAK-EUD sind eingeklappt.
+**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste: *Benutzer & Anfragen* (Zahl offener Anfragen),
+*Teams & Sichtbarkeit*, *OpenTAKServer & Registrierung*, *Video-Streams* (mit TAK-Pfad), *Kamera-Anmeldung*,
+*Stream anlegen*, *WebTAK-App* und *System* (Admin-Zugang, SMTP, Standard für neue Streams).
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
-- **Einstellungen:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. Danach funktioniert
+- **System:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. SSL/TLS wird bei den Ports 465
+  (SSL/TLS) und 587/25 (STARTTLS) automatisch richtig gewählt – das behebt „wrong version number“. Danach funktioniert
   „Passwort vergessen?“ auf der Login-Seite: Der Link zum Zurücksetzen kommt an die Admin-E-Mail und gilt 1 Stunde.
 - Nach 10 falschen Passwörtern ist der Login für diese IP 15 Minuten gesperrt.
 

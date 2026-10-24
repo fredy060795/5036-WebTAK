@@ -100,6 +100,7 @@ function setTiles(id) {
   baseLayer.addTo(map);
   profile.tiles = id;
   saveProfile();
+  if (window.view3d) view3d.baseChanged();
 }
 setTiles(profile.tiles);
 map.on('moveend', () => { const c = map.getCenter(); store.set('eud.view', [c.lat, c.lng, map.getZoom()]); });
@@ -190,14 +191,14 @@ if (navigator.getBattery) navigator.getBattery().then(b => {
 }).catch(() => {});
 
 function showMe() {
-  document.title = profile.callsign ? `TAK EUD – ${profile.callsign}` : 'TAK EUD';
+  document.title = profile.callsign ? `WebTAK – ${profile.callsign}` : 'WebTAK';
 }
 
 // ======================================================================
 // Menü und Fenster
 // ======================================================================
 
-const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts', map: 'Map', data: 'TAK Data' };
+const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts & Markers', map: 'Map', data: 'TAK Data', clear: 'Clear Content' };
 let popupSec = null;
 // Wie ATAK: immer nur ein Sheet unten offen
 function closeSheets(except) {
@@ -215,6 +216,7 @@ function openPopup(sec, title) {
   $('popup').classList.remove('hidden');
   if (sec === 'server') renderServers();
   if (sec === 'contacts') renderList();
+  if (sec === 'clear') renderClear();
   if (sec === 'me') fillMe();
   if (sec === 'map') fillMap();
   document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
@@ -400,6 +402,7 @@ function removeItem(uid) {
   if (it.layer) it.layer.remove();
   items.delete(uid);
   persistSoon();
+  if (window.view3d) view3d.dirty();
 }
 
 function drawItem(it) {
@@ -425,6 +428,7 @@ function drawItem(it) {
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
+  if (window.view3d) view3d.dirty();
 }
 
 function handleCot(xml, { local = false, own = false, srv = null } = {}) {
@@ -747,7 +751,7 @@ function selfXml() {
   const video = window.eudVideoUrl ? `<__video url="${xmlEsc(window.eudVideoUrl)}"/>` : '';
   return `<event version="2.0" uid="${xmlEsc(profile.uid)}" type="a-f-G-U-C" how="m-g" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 120000))}">`
     + `<point lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}" hae="${Number.isFinite(p.alt) ? p.alt.toFixed(1) : '9999999'}" ce="${Math.round(p.acc || 9999999)}" le="9999999"/>`
-    + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="TAK EUD (Web)"/>`
+    + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="WebTAK"/>`
     + `<contact endpoint="*:-1:stcp" callsign="${xmlEsc(profile.callsign || profile.uid)}"/>`
     + `<uid Droid="${xmlEsc(profile.callsign || profile.uid)}"/>`
     + `<precisionlocation altsrc="GPS" geopointsrc="GPS"/>`
@@ -785,6 +789,7 @@ function drawMe() {
     meCircle.setLatLng(ll).setRadius(me.acc || 0);
     if (follow) map.panTo(ll, { animate: true });
   }
+  if (window.view3d) view3d.dirty();
 }
 
 if ('geolocation' in navigator) {
@@ -910,69 +915,202 @@ function placeMarker(latlng) {
 }
 
 
-map.on('popupopen', e => {
-  const play = e.popup.getElement().querySelector('[data-play]');
-  if (play) play.addEventListener('click', () => { map.closePopup(); window.eudPlay(play.dataset.name, play.dataset.play); });
-  const ren = e.popup.getElement().querySelector('[data-ren]');
+// Knöpfe im Marker-Popup (Video, Umbenennen, Löschen) – für die 2D- und die 3D-Karte
+function wirePopup(root, close) {
+  const play = root.querySelector('[data-play]');
+  if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
+  const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
     if (!it) return;
     const name = prompt('New name:', it.c.callsign || '');
     if (name == null || !name.trim()) return;
-    map.closePopup();
+    close();
     updateOwn(it, { name: name.trim().slice(0, 40) });
   });
-  const btn = e.popup.getElement().querySelector('[data-del]');
-  if (!btn) return;
-  btn.addEventListener('click', () => {
+  const btn = root.querySelector('[data-del]');
+  if (btn) btn.addEventListener('click', () => {
     const uid = btn.getAttribute('data-del');
-    const now = new Date();
-    const xml = `<event version="2.0" uid="${xmlEsc(rnd(8))}" type="t-x-d-d" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 20000))}">`
-      + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
     removeItem(uid);
-    sendCot(xml, true);
-    map.closePopup();
+    sendCot(deleteXml(uid), true);
+    close();
   });
-});
+}
+map.on('popupopen', e => wirePopup(e.popup.getElement(), () => map.closePopup()));
 
 // ======================================================================
 // Kontakte
 // ======================================================================
 
+// Inhalte nach Art getrennt, wie im ATAK Overlay Manager: Kontakte (Nutzer), Marker nach Zugehörigkeit,
+// sonstige Punkte und Zeichnungen. Jede Gruppe lässt sich einzeln bereinigen.
+const CATS = [
+  { id: 'contacts', label: 'Contacts', color: '#2fd8ff' },
+  { id: 'f', label: 'Friendly', color: '#80e0ff' },
+  { id: 'h', label: 'Hostile', color: '#ff8080' },
+  { id: 'n', label: 'Neutral', color: '#aaffaa' },
+  { id: 'u', label: 'Unknown', color: '#ffff80' },
+  { id: 'points', label: 'Other points', color: '#d0d0d0' },
+  { id: 'shapes', label: 'Drawings & routes', color: '#ffd400' },
+];
+// 2525-Zugehörigkeit (3. Zeichen des CoT-Typs) -> eine der vier ATAK-Gruppen
+const AFF_GROUP = { f: 'f', a: 'f', d: 'f', m: 'f', h: 'h', s: 'h', j: 'h', k: 'h', n: 'n', u: 'u', p: 'u', o: 'u', x: 'u', g: 'u' };
+function categoryOf(it) {
+  const c = it.c;
+  if (!isPoint(c)) return 'shapes';
+  if (c.type.startsWith('a-')) return c.team ? 'contacts' : (AFF_GROUP[c.type[2]] || 'u');
+  return 'points';
+}
+function itemsByCat() {
+  const out = Object.fromEntries(CATS.map(c => [c.id, []]));
+  for (const it of items.values()) out[categoryOf(it)].push(it);
+  return out;
+}
+function posOf(c) {
+  if (Number.isFinite(c.lat) && !(c.lat === 0 && c.lon === 0)) return { lat: c.lat, lon: c.lon };
+  return c.linkPoints.length ? { lat: c.linkPoints[0][0], lon: c.linkPoints[0][1] } : null;
+}
+function deleteXml(uid) {
+  const now = new Date();
+  return `<event version="2.0" uid="${xmlEsc(rnd(8))}" type="t-x-d-d" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 20000))}">`
+    + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
+}
+// Gruppen vom Gerät entfernen. Eigene Marker auf Wunsch auch beim TAK-Server löschen (wie "Delete" in ATAK).
+function clearCats(ids, { serverToo = false } = {}) {
+  const groups = itemsByCat();
+  let n = 0;
+  for (const id of ids) {
+    for (const it of groups[id] || []) {
+      if (serverToo && it.own) sendCot(deleteXml(it.uid), true);
+      removeItem(it.uid);
+      n++;
+    }
+  }
+  if (popupSec === 'contacts') renderList();
+  if (popupSec === 'clear') renderClear();
+  return n;
+}
+
+function listRow(it) {
+  const row = document.createElement('div');
+  row.className = 'contact' + (Date.now() > it.c.stale ? ' stale' : '');
+  const icon = document.createElement('span');
+  icon.className = 'sym';
+  const cat = categoryOf(it);
+  if (cat === 'contacts') {
+    icon.innerHTML = `<span class="sw" style="background:${TEAMS[it.c.team] || '#0ff'}"></span>`;
+  } else if (cat === 'shapes') {
+    icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffd400" stroke-width="2"><path d="M3 18 9 6l6 9 6-7"/></svg>';
+  } else {
+    try { icon.innerHTML = symbolSvg(sidcFor(it.c.type), 18).svg; } catch (e) { icon.innerHTML = '<span class="sw"></span>'; }
+  }
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = it.c.callsign || toolName(it.c.type) || it.uid;
+  const pos = posOf(it.c);
+  const dist = document.createElement('span');
+  dist.className = 'dist';
+  dist.textContent = me && pos ? fmtDist(distance(me, pos)) : ago(it.c.time);
+  row.append(icon, name, dist);
+  if (it.own) row.title = 'My marker';
+  row.addEventListener('click', () => {
+    if (!pos) return;
+    closePopup();
+    follow = false;
+    $('btnLocate').classList.remove('active');
+    if (window.view3d && view3d.active) return view3d.focus(it, pos);
+    map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
+    if (it.layer) it.layer.openPopup();
+  });
+  return row;
+}
+
+const listOpen = store.get('eud.listOpen', { contacts: true, f: true, h: true, n: true, u: true, points: false, shapes: false });
 function renderList() {
   const box = $('listBody');
   box.textContent = '';
-  const list = [...items.values()].filter(it => it.c.type.startsWith('a-') && Number.isFinite(it.c.lat));
-  list.sort((a, b) => (b.c.team ? 1 : 0) - (a.c.team ? 1 : 0) || String(a.c.callsign || a.uid).localeCompare(String(b.c.callsign || b.uid)));
-  if (!list.length) {
+  const groups = itemsByCat();
+  let any = false;
+  for (const cat of CATS) {
+    const list = groups[cat.id];
+    if (!list.length) continue;
+    any = true;
+    list.sort((a, b) => String(a.c.callsign || a.uid).localeCompare(String(b.c.callsign || b.uid)));
+    const head = document.createElement('div');
+    head.className = 'grp' + (listOpen[cat.id] ? ' open' : '');
+    head.innerHTML = `<span class="arr">▸</span><span class="sw" style="background:${cat.color}"></span><b>${esc(cat.label)}</b><span class="cnt">${list.length}</span>`;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.title = `Clear ${cat.label}`;
+    del.setAttribute('aria-label', del.title);
+    del.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirm(`Remove all ${list.length} "${cat.label}" from this device?` + (cat.id === 'contacts' ? '\n\nContacts come back with their next position update.' : ''))) return;
+      clearCats([cat.id]);
+      toast(`${cat.label} cleared`);
+    });
+    head.append(del);
+    head.addEventListener('click', () => { listOpen[cat.id] = !listOpen[cat.id]; store.set('eud.listOpen', listOpen); renderList(); });
+    box.append(head);
+    if (listOpen[cat.id]) for (const it of list) box.append(listRow(it));
+  }
+  if (!any) {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'No contacts yet.';
+    e.textContent = 'Nothing on the map yet.';
     box.append(e);
   }
-  for (const it of list) {
-    const row = document.createElement('div');
-    row.className = 'contact' + (Date.now() > it.c.stale ? ' stale' : '');
-    const sw = document.createElement('span');
-    sw.className = 'sw';
-    sw.style.background = it.c.team ? (TEAMS[it.c.team] || '#0ff') : ({ f: '#80e0ff', h: '#ff8080', n: '#aaffaa', u: '#ffff80' })[it.c.type.split('-')[1]] || '#ccc';
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = it.c.callsign || it.uid;
-    const dist = document.createElement('span');
-    dist.className = 'dist';
-    dist.textContent = me ? fmtDist(distance(me, it.c)) : ago(it.c.time);
-    row.append(sw, name, dist);
-    row.addEventListener('click', () => {
-      closePopup();
-      follow = false;
-      $('btnLocate').classList.remove('active');
-      map.setView([it.c.lat, it.c.lon], Math.max(map.getZoom(), 15));
-      if (it.layer) it.layer.openPopup();
-    });
-    box.append(row);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'mbtn red';
+  btn.textContent = 'CLEAR CONTENT …';
+  btn.addEventListener('click', () => openPopup('clear'));
+  box.append(btn);
+}
+
+// Clear Content: mehrere Gruppen auf einmal bereinigen (auch Overlays und Chat)
+function renderClear() {
+  const box = $('clearBody');
+  box.textContent = '';
+  const groups = itemsByCat();
+  const ov = window.eud.overlayApi ? window.eud.overlayApi.list() : [];
+  const rows = [...CATS.map(c => ({ id: c.id, label: c.id === 'contacts' ? 'Contacts (users)' : (c.id.length === 1 ? 'Markers – ' + c.label : c.label), color: c.color, n: groups[c.id].length })),
+    { id: 'overlays', label: 'Overlays (KML/KMZ)', color: '#b388ff', n: ov.length },
+    { id: 'chat', label: 'Chat messages', color: '#888', n: chat.length }];
+  for (const r of rows) {
+    const l = document.createElement('label');
+    l.className = 'clr' + (r.n ? '' : ' none');
+    l.innerHTML = `<input type="checkbox" value="${r.id}"${r.n && r.id !== 'contacts' && r.id !== 'chat' ? ' checked' : ''}${r.n ? '' : ' disabled'}>`
+      + `<span class="sw" style="background:${r.color}"></span><span class="name">${esc(r.label)}</span><span class="cnt">${r.n}</span>`;
+    box.append(l);
   }
 }
+
+$('clearAll').addEventListener('click', () => {
+  const boxes = [...document.querySelectorAll('#clearBody input:not(:disabled)')];
+  const on = boxes.some(b => !b.checked);
+  for (const b of boxes) b.checked = on;
+});
+$('clearGo').addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('#clearBody input:checked')].map(b => b.value);
+  if (!ids.length) return toast('Nothing selected.');
+  const serverToo = $('clearServer').checked;
+  if (!confirm('Remove the selected content from this device?' + (serverToo ? '\n\nYour own markers are also deleted on the TAK server (for everyone).' : ''))) return;
+  let n = clearCats(ids.filter(id => CATS.some(c => c.id === id)), { serverToo });
+  if (ids.includes('overlays') && window.eud.overlayApi) n += await window.eud.overlayApi.clear();
+  if (ids.includes('chat')) {
+    n += chat.length;
+    chat = [];
+    store.set('eud.chat', chat);
+    unread = 0;
+    updateBadge();
+    renderChat();
+  }
+  renderClear();
+  toast(`${n} item(s) removed`);
+});
 
 // ======================================================================
 // Rufname
@@ -1450,6 +1588,14 @@ let wakeSentinel = null;
 async function wakeLock() {
   try { if ('wakeLock' in navigator && !wakeSentinel) { wakeSentinel = await navigator.wakeLock.request('screen'); wakeSentinel.onrelease = () => { wakeSentinel = null; }; } } catch (e) { /* nicht erlaubt */ }
 }
+$('f3d').addEventListener('change', () => {
+  setPitch(0);
+  profile.map3d = $('f3d').checked;
+  saveProfile();
+  pitchUi(0);
+});
+$('fStart3d').addEventListener('change', () => { profile.start3d = $('fStart3d').checked; saveProfile(); });
+$('fExag').addEventListener('change', () => { profile.exag = Number($('fExag').value) || 1; saveProfile(); if (window.view3d) view3d.baseChanged(); });
 $('fWake').addEventListener('change', () => {
   profile.wake = $('fWake').checked;
   saveProfile();
@@ -1480,6 +1626,11 @@ function fillMap() {
   $('fCustom').value = profile.customUrl || '';
   $('customBox').classList.toggle('hidden', profile.tiles !== 'custom');
   $('fWake').checked = !!profile.wake;
+  $('f3d').checked = profile.map3d !== false;
+  $('f3d').disabled = !(window.view3d && view3d.supported);
+  $('fStart3d').checked = profile.start3d !== false;
+  $('fExag').value = String(profile.exag || 1);
+  $('no3d').classList.toggle('hidden', !!(window.view3d && view3d.supported));
   fillZoom();
   renderAreas();
   updateEstimate();
@@ -1591,7 +1742,10 @@ function updateEstimate() {
   if (!area) { $('estimate').textContent = 'Draw a corridor, then choose zoom levels.'; return; }
   const [a, b] = zoomRange();
   const list = areaTiles(area, a, b, 20000);
-  $('estimate').textContent = list ? `≈ ${list.length} tiles, approx. ${Math.max(1, Math.round(list.length * 0.02))} MB` : 'Too many tiles (over 20,000) – lower "zoom to" or use a smaller area.';
+  const dem = list && use3d() ? (areaTiles(area, a, Math.min(b, 15), 20000) || []).length : 0;
+  $('estimate').textContent = list
+    ? `≈ ${list.length} tiles${dem ? ` + ${dem} terrain tiles (3D)` : ''}, approx. ${Math.max(1, Math.round(list.length * 0.02 + dem * 0.04))} MB`
+    : 'Too many tiles (over 20,000) – lower "zoom to" or use a smaller area.';
 }
 map.on('moveend', updateEstimate);
 
@@ -1687,8 +1841,15 @@ $('prefetchBtn').addEventListener('click', async () => {
       renderAreas();
     }
   };
-  setMsg(msg, `Saving … 0 / ${keys.length}`, true);
-  sw.postMessage({ type: 'prefetch', urls: keys.map(k => tileUrl(profile.tiles, k)) }, [ch.port2]);
+  // Mit 3D-Karte auch die Höhendaten (bis Zoom 15) speichern, damit das Gelände offline da ist
+  const urls = keys.map(k => tileUrl(profile.tiles, k));
+  if (use3d()) {
+    const dem = areaTiles(area, zmin, Math.min(zmax, 15), 20000) || [];
+    for (const k of dem) urls.push(tileUrl('dem', k));
+  }
+  rec.count = urls.length;
+  setMsg(msg, `Saving … 0 / ${urls.length}`, true);
+  sw.postMessage({ type: 'prefetch', urls }, [ch.port2]);
 });
 $('prefetchStop').addEventListener('click', async () => {
   const sw = await swReady();
@@ -1740,6 +1901,7 @@ function renderAreas() {
 
 // Winkel (Grad, im Uhrzeigersinn), in dem Norden gerade auf dem Bildschirm liegt (= Drehung der Karte)
 function northAngle() {
+  if (window.view3d && view3d.active) return view3d.northAngle(); // 3D-Karte dreht selbst
   const b = map.getBearing ? map.getBearing() : 0;
   return ((b % 360) + 360) % 360;
 }
@@ -1827,22 +1989,34 @@ updateCompass();
 // ---------------- Kippen (0–60°) ----------------
 
 let pitch = 0;
-const PITCH_MAX = 60;
-function setPitch(p) {
-  p = Math.max(0, Math.min(PITCH_MAX, Math.round(p)));
+// Mit 3D-Karte (WebGL) wie WinTAK bis knapp an den Horizont, sonst flache Karte schräg gestellt (CSS)
+const use3d = () => profile.map3d !== false && window.view3d && view3d.supported;
+const pitchMax = () => (use3d() ? 88 : 60);
+function pitchUi(p) {
+  const max = pitchMax();
+  const box = $('pitchBox').clientHeight || 96;
+  $('pitchThumb').style.top = (4 + (1 - Math.min(p, max) / max) * (box - 14)) + 'px';
+  $('pitchText').textContent = Math.round(p) + '°';
+  $('pitchFill').style.opacity = String(0.3 + 0.7 * Math.min(p, max) / max);
+  $('pitchBox').title = `Tilt map (0°–${max}°)` + (use3d() ? ' – 3D terrain' : '');
+}
+function setPitch(p, fromView) {
+  p = Math.max(0, Math.min(pitchMax(), Math.round(p)));
   const was = pitch;
   pitch = p;
   const el = $('map');
-  if ((was > 0) !== (p > 0)) {
-    el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
-    map.invalidateSize({ pan: true, animate: false });
+  if (use3d()) {
+    if (el.style.transform) { el.style.transform = ''; el.classList.remove('tilted'); map.invalidateSize({ pan: true, animate: false }); }
+    if (!fromView) { if (p > 0) view3d.show(p); else view3d.hide(); }
+  } else {
+    if ((was > 0) !== (p > 0)) {
+      el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
+      map.invalidateSize({ pan: true, animate: false });
+    }
+    el.style.transform = p ? `rotateX(${p}deg)` : '';
   }
-  el.style.transform = p ? `rotateX(${p}deg)` : '';
-  const box = $('pitchBox').clientHeight || 96;
-  $('pitchThumb').style.top = (4 + (1 - p / PITCH_MAX) * (box - 14)) + 'px';
-  $('pitchText').textContent = p + '°';
-  $('pitchFill').setAttribute('points', `12,2 22,2 32,86 2,86`);
-  $('pitchFill').style.opacity = String(0.3 + 0.7 * p / PITCH_MAX);
+  if (p > 0) { profile.pitch = p; saveProfile(); }
+  pitchUi(p);
 }
 (() => {
   const box = $('pitchBox');
@@ -1850,7 +2024,7 @@ function setPitch(p) {
   const fromEvent = e => {
     const r = box.getBoundingClientRect();
     const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
-    setPitch((1 - y / r.height) * PITCH_MAX);
+    setPitch((1 - y / r.height) * pitchMax());
   };
   box.addEventListener('pointerdown', e => { dragging = true; box.setPointerCapture(e.pointerId); fromEvent(e); });
   box.addEventListener('pointermove', e => { if (dragging) fromEvent(e); });
@@ -1859,6 +2033,8 @@ function setPitch(p) {
   box.addEventListener('dblclick', () => setPitch(0));
 })();
 setPitch(0);
+// 3D als Standard: mit der zuletzt benutzten Neigung starten
+if (use3d() && profile.start3d !== false) setTimeout(() => setPitch(Math.max(45, profile.pitch || 60)), 300);
 
 // ---------------- Entfernung messen ----------------
 

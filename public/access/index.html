@@ -3,21 +3,26 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>TAK Access – My access</title>
+<title>WebTAK Access – My access</title>
 <meta name="theme-color" content="#0b0e12">
 <meta name="referrer" content="no-referrer">
-<link rel="icon" href="/eud/icon-192.png">
+<link rel="icon" href="/assets/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="32x32" href="/assets/brand/favicon-32.png">
+<link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
 <link rel="stylesheet" href="/assets/tak.css">
 </head>
 <body>
-<header class="top"><img src="/eud/icon-192.png" alt=""><h1>My TAK access</h1><span class="badge" id="badge"></span></header>
+<header class="top"><img src="/assets/brand/webtak-logo-160.png" alt=""><h1>WebTAK <span class="mut">Access</span></h1><span class="badge" id="badge"></span></header>
 <main class="wrap">
   <p class="msg" id="msg"></p>
 
   <section class="card hidden" id="waitCard">
     <h2 id="waitTitle"></h2>
-    <p class="mut" id="waitText"></p>
-    <p class="mut small">Keep this page – it will show your login details as soon as your access is ready.</p>
+    <p id="waitText"></p>
+    <ol class="timeline" id="waitSteps"></ol>
+    <p class="mut small" id="waitHint">Keep this page – bookmark it or add it to your home screen. It updates by itself and shows
+      your login details as soon as your access is ready.</p>
+    <p class="mut small" id="checked"></p>
   </section>
 
   <div id="activeView" class="hidden">
@@ -45,7 +50,7 @@
       <div class="tabs" id="tabs">
         <button type="button" data-tab="atak" class="on">ATAK (Android)</button>
         <button type="button" data-tab="itak">iTAK (iPhone)</button>
-        <button type="button" data-tab="eud">Web EUD (any phone)</button>
+        <button type="button" data-tab="eud">WebTAK (any phone)</button>
       </div>
 
       <div data-pane="atak">
@@ -85,10 +90,10 @@
 
       <div data-pane="eud" class="hidden">
         <div class="qrbox">
-          <img class="qr" id="qrEud" alt="Web EUD QR code">
+          <img class="qr" id="qrEud" alt="WebTAK QR code">
           <div class="grow">
             <ol class="steps">
-              <li>Scan this code with the phone camera – or on the phone tap <a class="btn blue" id="eudLink" href="#" style="min-height:34px;padding:4px 10px">Open TAK EUD</a></li>
+              <li>Scan this code with the phone camera – or on the phone tap <a class="btn blue" id="eudLink" href="#" style="min-height:34px;padding:4px 10px">Open WebTAK</a></li>
               <li>The app opens with your server already set and requests its certificate automatically.
                 If asked about an unknown server certificate, tap <b>TRUST</b> (or load the truststore first).</li>
               <li>Add it to your home screen: Android Chrome <span class="path">⋮ → Add to Home screen</span>,
@@ -126,22 +131,48 @@ const COLORS = { White: '#FFFFFF', Yellow: '#FFFF00', Orange: '#FF7700', Magenta
   'Dark Blue': '#00007F', Blue: '#0000FF', Cyan: '#00FFFF', Teal: '#007F7F', Green: '#00FF00', 'Dark Green': '#007F00', Brown: '#A0714F' };
 const hash = new URLSearchParams(location.hash.slice(1));
 let token = hash.get('t') || '';
+let confirmed = false;
 try {
   if (token) localStorage.setItem('tak.access', token);
   else token = localStorage.getItem('tak.access') || '';
 } catch (e) { /* privat */ }
 if (location.hash) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
 
+const fmt = iso => iso ? new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }) : '';
 const STATUS = {
-  unconfirmed: ['Please confirm your e-mail', 'We sent you an e-mail with a confirmation link.'],
-  pending: ['Waiting for approval', 'An administrator will review your request. You will be notified by e-mail.'],
-  blocked: ['Access blocked', 'Your access has been blocked. Please contact your administrator.'],
-  rejected: ['Request declined', 'Your request was declined. Please contact your administrator.'],
+  unconfirmed: ['Please confirm your e-mail', me => `We sent an e-mail to ${me.email}. Click the confirmation link in it – only then can an administrator review your request. No e-mail? Check your spam folder.`],
+  pending: ['Waiting for approval', me => me.mail
+    ? `Your request is with an administrator. You will get an e-mail at ${me.email} as soon as it is approved – and this page will then show your login details.`
+    : 'Your request is with an administrator. As soon as it is approved, this page shows your login details – please check back later.'],
+  blocked: ['Access blocked', () => 'Your access has been blocked. Please contact your administrator.'],
+  rejected: ['Request declined', () => 'Your request was declined. Please contact your administrator.'],
 };
+
+function timeline(me) {
+  const st = me.status;
+  const list = [[`Request sent`, fmt(me.created), 'done']];
+  // Bestätigungsschritt nur, wenn wirklich per E-Mail bestätigt wurde (sonst ist confirmedAt = Zeitpunkt der Anfrage)
+  const confirmedLater = me.confirmedAt && new Date(me.confirmedAt) - new Date(me.created) > 2000;
+  if (st === 'unconfirmed' || confirmedLater) list.push(['E-mail confirmed', fmt(me.confirmedAt), st === 'unconfirmed' ? 'now' : 'done']);
+  if (st === 'rejected') list.push(['Request declined', '', 'bad']);
+  else if (st === 'blocked') list.push(['Access blocked', '', 'bad']);
+  else {
+    list.push(['Approval by administrator', st === 'pending' ? 'usually within a few hours' : '', st === 'pending' ? 'now' : '']);
+    list.push(['Login details, QR codes and guide on this page', '', '']);
+  }
+  $('waitSteps').replaceChildren(...list.map(([text, sub, cls]) => {
+    const li = document.createElement('li');
+    li.className = cls;
+    li.textContent = text;
+    if (sub) li.append(Object.assign(document.createElement('small'), { textContent: sub }));
+    return li;
+  }));
+}
 
 async function load() {
   if (!token) { $('msg').textContent = 'No access link. Please use the link from your e-mail or register first.'; return; }
-  if (hash.get('c')) {
+  if (hash.get('c') && !confirmed) {
+    confirmed = true;
     const r = await fetch('/api/access/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: hash.get('c') }) });
     if (!r.ok) $('msg').textContent = (await r.json().catch(() => ({}))).error || 'Confirmation failed.';
   }
@@ -151,12 +182,18 @@ async function load() {
   $('badge').textContent = me.status;
   $('badge').className = 'badge ' + me.status;
   if (me.status !== 'active') {
-    const [title, text] = STATUS[me.status] || ['', ''];
+    const [title, text] = STATUS[me.status] || ['', () => ''];
     $('waitTitle').textContent = title;
-    $('waitText').textContent = text;
+    $('waitText').textContent = text(me);
+    timeline(me);
+    $('waitHint').classList.toggle('hidden', me.status === 'rejected' || me.status === 'blocked');
+    $('checked').textContent = 'Last checked: ' + new Date().toLocaleTimeString([], { timeStyle: 'short' });
     $('waitCard').classList.remove('hidden');
+    // regelmäßig nachsehen: sobald freigegeben, erscheinen die Zugangsdaten ohne Neuladen
+    if (me.status === 'pending' || me.status === 'unconfirmed') setTimeout(() => load().catch(() => {}), 30000);
     return;
   }
+  $('waitCard').classList.add('hidden');
   $('activeView').classList.remove('hidden');
   $('vCallsign').textContent = me.callsign;
   $('vTeam').textContent = `${me.team} (${me.teamColor})`;

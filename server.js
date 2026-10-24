@@ -23,7 +23,7 @@ const { StreamHub, normRotate, normFit, normFramesize } = require('./lib/streams
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 const tak = require('./lib/tak');
 const { TileCache } = require('./lib/tiles');
-const { TakUsers, TEAM_COLORS, ROLES } = require('./lib/takusers');
+const { TakUsers, TEAM_COLORS, ROLES, maskEmail } = require('./lib/takusers');
 const { TakVideo } = require('./lib/takvideo');
 
 const config = {
@@ -58,7 +58,7 @@ const hub = new StreamHub({
 const PUBLIC_DIR = path.join(__dirname, 'public');
 const TYPES = {
   '.html': 'text/html; charset=utf-8', '.css': 'text/css; charset=utf-8', '.js': 'text/javascript; charset=utf-8',
-  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
+  '.json': 'application/json', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
 
@@ -227,6 +227,10 @@ const VENDOR = {
   'leaflet-rotate.js': 'leaflet-rotate/dist/leaflet-rotate.js',
   'milsymbol.js': 'milsymbol/dist/milsymbol.js',
   'jsQR.js': 'jsqr/dist/jsQR.js',
+  // 3D-Karte (ES-Module; der Worker wird relativ zum Modul geladen)
+  'maplibre-gl.mjs': 'maplibre-gl/dist/maplibre-gl.mjs',
+  'maplibre-gl-worker.mjs': 'maplibre-gl/dist/maplibre-gl-worker.mjs',
+  'maplibre-gl.css': 'maplibre-gl/dist/maplibre-gl.css',
 };
 
 function serveVendor(res, name) {
@@ -240,7 +244,7 @@ function serveVendor(res, name) {
   fs.createReadStream(file).pipe(res);
 }
 
-const tiles = new TileCache(path.join(config.dataDir, 'tiles'), 'HelmCamera-EUD/1.0 (TAK-Client; Kachel-Zwischenspeicher)', process.env.TILE_URL_OVERRIDE);
+const tiles = new TileCache(path.join(config.dataDir, 'tiles'), 'WebTAK/1.0 (TAK-Client; Kachel-Zwischenspeicher)', process.env.TILE_URL_OVERRIDE);
 
 async function serveTile(res, rel) {
   const t = TileCache.parse(rel);
@@ -283,6 +287,25 @@ function mailUser(to, subject, text) {
   return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
 }
 const accessLink = (req, u) => `${publicBase(req)}/access/#t=${u.token}`;
+const lookupLimits = new Map(); // ip -> [zeitpunkte] für "Status per E-Mail"
+
+function requestMail(u, link) {
+  return `Hello ${u.name},\n\nthank you – your registration request for WebTAK has been received.\n\n`
+    + `Name: ${u.name}\n${u.unit ? `Unit: ${u.unit}\n` : ''}${u.requestedCallsign ? `Requested callsign: ${u.requestedCallsign}\n` : ''}\n`
+    + 'What happens next:\n1. An administrator reviews your request.\n2. As soon as it is approved you get another e-mail.\n'
+    + '3. Your login details, QR codes and a step-by-step guide are then shown on your personal status page:\n\n'
+    + `${link}\n\nKeep this link private – it is your personal access.\n`;
+}
+
+// Neue Anfrage: Hinweis im Admin-Fenster und Mail an die Admin-Adresse
+function newRequest(req, u, suffix) {
+  const text = `WebTAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}${suffix}`;
+  hub.event('tak', 'takreg', text);
+  if (auth.admin.email) {
+    mailUser(auth.admin.email, 'WebTAK – neue Registrierungsanfrage',
+      `${text}\nE-Mail: ${u.email}\n${u.requestedCallsign ? `Gewünschter Rufname: ${u.requestedCallsign}\n` : ''}\nFreigeben im Admin: ${resetBase() || publicBase(req)}/admin/\n`);
+  }
+}
 
 async function handleAccessApi(req, res, route) {
   const url = new URL(req.url, 'http://x');
@@ -302,26 +325,44 @@ async function handleAccessApi(req, res, route) {
     let u;
     try { u = takUsers.register(body, { smtpReady: mailReady() }); } catch (e) { return json(res, e.status || 400, { error: e.message }); }
     const link = accessLink(req, u);
+    let mailed;
     if (u.status === 'unconfirmed') {
-      await mailUser(u.email, 'TAK access – please confirm your e-mail',
-        `Hello ${u.name},\n\nplease confirm your e-mail address with this link:\n\n${link}&c=${u.emailToken}\n\nAfter that an administrator will review your request. You will get an e-mail when your access is ready.\n`);
+      mailed = await mailUser(u.email, 'WebTAK – please confirm your registration request',
+        `Hello ${u.name},\n\nwe received your registration request for WebTAK.\nPlease confirm your e-mail address with this link:\n\n${link}&c=${u.emailToken}\n\n`
+        + `After that an administrator will review your request. You will get another e-mail as soon as your access is approved.\n\n`
+        + `If you did not request access, simply ignore this e-mail.\n`);
     } else {
-      hub.event('tak', 'takreg', `TAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}`);
-      mailUser(u.email, 'TAK access – request received',
-        `Hello ${u.name},\n\nyour request for TAK access has been received. An administrator will review it.\nStatus and – once approved – your access details:\n\n${link}\n`);
+      newRequest(req, u, '');
+      mailed = await mailUser(u.email, 'WebTAK – registration request received', requestMail(u, link));
     }
-    return json(res, 200, { status: u.status, token: u.token });
+    return json(res, 200, { status: u.status, token: u.token, mailed, email: maskEmail(u.email) });
   }
   if (route === 'confirm' && req.method === 'POST') {
     const body = await readJson(req);
     const u = takUsers.confirmEmail(String(body.code || ''));
     if (!u) return json(res, 400, { error: 'This confirmation link is invalid or was already used.' });
-    hub.event('tak', 'takreg', `TAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''} (E-Mail bestätigt)`);
+    newRequest(req, u, ' (E-Mail bestätigt)');
     return json(res, 200, { status: u.status });
+  }
+  // Status vergessen: Statuslink per E-Mail (immer gleiche Antwort, damit niemand Adressen ausprobieren kann)
+  if (route === 'lookup' && req.method === 'POST') {
+    const ip = clientIp(req);
+    const now = Date.now();
+    const list = (lookupLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
+    if (list.length >= 5) return json(res, 429, { error: 'Too many requests. Please try again later.' });
+    list.push(now);
+    lookupLimits.set(ip, list);
+    const body = await readJson(req);
+    const u = takUsers.byEmail(body.email);
+    if (u && mailReady()) {
+      mailUser(u.email, 'WebTAK – your status link', `Hello ${u.name},\n\nhere is the link to the status of your WebTAK access:\n\n${accessLink(req, u)}\n\n`
+        + 'If you did not ask for this e-mail, you can ignore it.\n');
+    }
+    return json(res, 200, { ok: true, mail: mailReady() });
   }
   const u = takUsers.byToken(String(token));
   if (!u) return json(res, 404, { error: 'Unknown access link.' });
-  if (route === 'me' && req.method === 'GET') return json(res, 200, takUsers.publicView(u));
+  if (route === 'me' && req.method === 'GET') return json(res, 200, { ...takUsers.publicView(u), mail: mailReady() });
   if (u.status !== 'active') return json(res, 403, { error: 'Your access is not approved yet.' });
   const o = takUsers.t.ots;
   const host = takUsers.takHost();
@@ -387,12 +428,16 @@ async function handleTakAdmin(req, res, route) {
   let u;
   if (action === 'approve') {
     u = await takUsers.approve(id, body);
-    const sent = await mailUser(u.email, 'Your TAK access is ready',
-      `Hello ${u.name},\n\nyour TAK access has been approved.\n\nCallsign: ${u.callsign}\n\nOpen this page for your login details, QR codes and the step-by-step guide:\n\n${accessLink(req, u)}\n\nKeep this link private.\n`);
+    const sent = await mailUser(u.email, 'WebTAK – your access is ready',
+      `Hello ${u.name},\n\nyour WebTAK access has been approved.\n\nCallsign: ${u.callsign}\n\nOpen this page for your login details, QR codes and the step-by-step guide:\n\n${accessLink(req, u)}\n\nKeep this link private.\n`);
     return json(res, 200, { ok: true, user: takUsers.adminView(u), mailed: sent, link: accessLink(req, u) });
   }
   if (action === 'update') u = await takUsers.update(id, body);
-  else if (action === 'reject') u = await takUsers.reject(id);
+  else if (action === 'reject') {
+    u = await takUsers.reject(id);
+    mailUser(u.email, 'WebTAK – registration request declined',
+      `Hello ${u.name},\n\nyour registration request for WebTAK was declined by an administrator.\nIf you think this is a mistake, please contact your administrator.\n`);
+  }
   else if (action === 'block') u = await takUsers.block(id);
   else if (action === 'unblock') u = await takUsers.unblock(id);
   else if (action === 'password') u = await takUsers.newPassword(id);
@@ -516,7 +561,7 @@ async function handleAdminApi(req, res, route) {
         const link = `${resetBase()}/admin/#reset=${token}`;
         sendMail(store.data.smtp, {
           to: admin.email,
-          subject: 'Helm Camera Streams – Passwort zurücksetzen',
+          subject: 'WebTAK – Passwort zurücksetzen',
           text: `Hallo,\n\nüber diesen Link kannst du ein neues Admin-Passwort festlegen (1 Stunde gültig):\n\n${link}\n\nWenn du das nicht angefordert hast, ignoriere diese E-Mail.\n`,
         }).then(() => log('Reset-Mail gesendet')).catch(e => log('Reset-Mail fehlgeschlagen:', e.message));
       } else {
@@ -660,7 +705,7 @@ async function handleAdminApi(req, res, route) {
     if (!auth.admin.email) throw new Error('Bitte zuerst eine Admin-E-Mail-Adresse eintragen.');
     await sendMail(store.data.smtp, {
       to: auth.admin.email,
-      subject: 'Helm Camera Streams – Test',
+      subject: 'WebTAK – Test',
       text: 'SMTP funktioniert. Passwort-Reset-Mails kommen an diese Adresse.\n',
     });
     return json(res, 200, { ok: true });
@@ -834,7 +879,7 @@ async function handle(req, res) {
     }
     if (p === '/') {
       if (admin) return send(res, 302, '', 'text/plain', { Location: '/admin/' });
-      return send(res, 200, 'Helm Camera Streams');
+      return send(res, 200, 'WebTAK');
     }
     if (p === '/admin') return send(res, 302, '', 'text/plain', { Location: '/admin/' });
     if (p.startsWith('/admin/')) {
@@ -860,6 +905,7 @@ async function handle(req, res) {
     if (p === '/app') return send(res, 302, '', 'text/plain', { Location: '/app/' });
     if (p.startsWith('/app/')) return serveStatic(res, 'app', decodeURIComponent(p.slice(5)));
     if (p.startsWith('/assets/')) return serveStatic(res, 'assets', decodeURIComponent(p.slice(8)));
+    if (p === '/favicon.ico') return serveStatic(res, 'assets', 'brand/favicon.ico');
 
     const m = p.match(/^\/([a-z0-9][a-z0-9_-]{0,31})\/([a-z0-9]{4,32})(\/.*)?$/);
     if (m && (req.method === 'GET' || req.method === 'HEAD')) return await handleStream(req, res, m[1], m[2], m[3] || '');
@@ -1074,7 +1120,7 @@ server.on('error', e => {
 });
 
 server.listen(config.port, config.bind, () => {
-  log(`Helm Camera Streams läuft auf ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
+  log(`WebTAK läuft auf ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
   log(`Öffentliche Adresse: ${config.publicUrl || '(aus Anfrage)'}${config.adminHost ? ', Admin-Domain: ' + config.adminHost : ''}`);
   log(ffmpegOk ? 'ffmpeg gefunden: HLS und MPEG-TS verfügbar' : 'ffmpeg nicht gefunden: nur MJPEG verfügbar');
   if (store.data.admin.mustChange) log('Erster Start: Admin-Login admin / admin123 – Passwort wird beim ersten Login geändert.');

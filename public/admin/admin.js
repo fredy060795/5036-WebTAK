@@ -215,9 +215,34 @@ $('logoutBtn').addEventListener('click', async () => {
 // Übersicht
 // ======================================================================
 
+// ---- Seitenleiste (wie das ATAK-Menü): immer nur ein Bereich sichtbar ----
+const VIEW_TITLES = { users: 'Benutzer & Anfragen', teams: 'Teams & Sichtbarkeit', ots: 'OpenTAKServer & Registrierung' };
+const TAK_TAB = { users: 'users', teams: 'teams', ots: 'settings' };
+function showView(view) {
+  if (!document.querySelector(`[data-nav="${view}"]`)) view = 'users';
+  for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('on', a.dataset.nav === view);
+  for (const sec of document.querySelectorAll('[data-view]')) sec.classList.toggle('hidden', !sec.dataset.view.split(' ').includes(view));
+  if (TAK_TAB[view]) {
+    const b = document.querySelector(`[data-takt="${TAK_TAB[view]}"]`);
+    if (b) b.click();
+    $('takTitle').textContent = VIEW_TITLES[view];
+  }
+  if (view === 'system') renderSystem();
+  if (location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
+  document.body.classList.remove('navopen');
+  try { localStorage.setItem('webtak.adminView', view); } catch (e) { /* privat */ }
+}
+for (const a of document.querySelectorAll('[data-nav]')) {
+  a.addEventListener('click', e => { e.preventDefault(); showView(a.dataset.nav); });
+}
+$('navToggle').addEventListener('click', () => document.body.classList.toggle('navopen'));
+
 function showApp() {
   $('authView').classList.add('hidden');
   $('appView').classList.remove('hidden');
+  let view = location.hash.slice(1);
+  if (!view || view.startsWith('reset=')) { try { view = localStorage.getItem('webtak.adminView') || 'users'; } catch (e) { view = 'users'; } }
+  showView(view);
   $('noFfmpeg').classList.toggle('hidden', !!me.ffmpeg);
   loadRegistration();
   loadTak();
@@ -278,7 +303,7 @@ function showToast(ev) {
   const close = () => t.remove();
   const btns = el('div', { class: 'row' });
   if (ev.kind === 'takreg') {
-    btns.append(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { $('takCard').scrollIntoView({ behavior: 'smooth' }); if (window.loadTakUsers) window.loadTakUsers(); close(); } }));
+    btns.append(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { showView('users'); if (window.loadTakUsers) window.loadTakUsers(); close(); } }));
     if (window.loadTakUsers) window.loadTakUsers();
   }
   if (s) {
@@ -295,7 +320,7 @@ function showToast(ev) {
   setTimeout(close, 30000);
   if (ev.kind !== 'stop') beep();
   if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    try { new Notification('Helm Camera', { body: ev.text, tag: ev.id }); } catch (e) { /* nicht unterstützt */ }
+    try { new Notification('WebTAK', { body: ev.text, tag: ev.id }); } catch (e) { /* nicht unterstützt */ }
   }
 }
 
@@ -351,7 +376,7 @@ $('appQrBig').addEventListener('click', () => {
     const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) return;
     const d = w.document;
-    d.title = 'Helm Camera';
+    d.title = 'WebTAK Kamera';
     d.body.style.fontFamily = 'system-ui, sans-serif';
     d.body.style.textAlign = 'center';
     const h = d.createElement('h1'); h.textContent = 'Helmkamera';
@@ -400,7 +425,7 @@ function renderTakVideo() {
   if (document.activeElement !== $('tvPrefix')) $('tvPrefix').value = takVideo.prefix || '';
   const inTak = streams.filter(s => s.tak && s.tak.inTak).length;
   const errs = streams.filter(s => s.tak && s.tak.error).length;
-  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „TAK-Zugänge → Einstellungen“ eintragen.'
+  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „OpenTAKServer & Registrierung“ eintragen.'
     : `${inTak} von ${streams.length} Stream${streams.length === 1 ? '' : 's'} im TAK-Server` + (errs ? ` · ${errs} Fehler (Punkt antippen)` : '');
   $('tvStatus').className = 'small ' + (!takVideo.ready || errs ? 'warn' : 'mut');
 }
@@ -523,7 +548,7 @@ function updateRow(r, s) {
   c.takOn.disabled = !takVideo.ready;
   if (document.activeElement !== c.takPath) { c.takPath.value = t.path || ''; c.takPathOld = t.path || ''; }
   c.takPath.disabled = !takVideo.ready;
-  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (TAK-Zugänge → Einstellungen)']
+  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Menü: OpenTAKServer & Registrierung)']
     : t.error ? ['err', 'Fehler: ' + t.error]
       : t.inTak ? ['ok', 'Im TAK-Server: ' + (t.rtsp || t.path)]
         : t.enabled ? ['wait', takVideo.when === 'live' ? 'Wird eingetragen, sobald die Kamera sendet' : 'Wird eingetragen …'] : ['off', 'Nicht im TAK-Server'];
@@ -553,6 +578,7 @@ function render() {
   $('empty').classList.toggle('hidden', streams.length > 0);
   const live = streams.filter(s => s.enabled && s.receiving).length;
   $('summary').textContent = `${live} live · ${streams.length} Stream${streams.length === 1 ? '' : 's'}`;
+  $('navLive').textContent = live ? String(live) : '';
   for (const [id, w] of windows) {
     const s = streams.find(x => sid(x) === id);
     if (!s) w.close(); else w.update(s);
@@ -695,7 +721,8 @@ function printQr(s, src) {
   img.onload = () => w.print();
 }
 
-$('settingsBtn').addEventListener('click', async () => {
+// System: Standard für neue Streams, Admin-Zugang, SMTP
+async function renderSystem() {
   const frag = $('settingsTpl').content.cloneNode(true);
   const cred = frag.querySelector('#credForm');
   const smtp = frag.querySelector('#smtpForm');
@@ -707,7 +734,7 @@ $('settingsBtn').addEventListener('click', async () => {
   defs.querySelector('[data-fit]').replaceWith(defFit);
   const defSize = sizeSelect(1);
   defs.querySelector('[data-size]').replaceWith(defSize);
-  openModal('Einstellungen', defs, cred, smtp);
+  $('systemCard').replaceChildren(el('h2', { text: 'System' }), defs, cred, smtp);
 
   try {
     const d = await api('defaults');
@@ -773,7 +800,7 @@ $('settingsBtn').addEventListener('click', async () => {
       setMsg(msg, 'Test-Mail an ' + me.email + ' gesendet.', true);
     } catch (err) { setMsg(msg, err.message); }
   });
-});
+}
 
 // ======================================================================
 // Video-Fenster: verschieben, Größe ändern, maximieren, minimieren, schließen
@@ -1005,7 +1032,7 @@ async function loadEudLinks() {
   try {
     const { links } = await api('eud-links');
     const box = $('eudLinks');
-    box.textContent = links.length ? 'Verbundene EUDs:' : 'Zurzeit kein EUD verbunden.';
+    box.textContent = links.length ? 'Verbundene WebTAK-Geräte:' : 'Zurzeit kein WebTAK-Gerät verbunden.';
     for (const l of links) {
       box.append(el('div', { text: `${l.callsign || '–'} → ${l.host || '–'} (${l.state})` }));
     }
@@ -1021,27 +1048,27 @@ $('takForm').addEventListener('submit', async e => {
       allowedHosts: f.allowedHosts.value,
       preset: host ? { host, port: Number(f.port.value) || 8089, proto: f.proto.value, enrollPort: Number(f.enrollPort.value) || 8446 } : null,
     } });
-    setMsg($('takMsg'), 'Gespeichert – der QR-Code ist angepasst.', true);
+    setMsg($('eudMsg'), 'Gespeichert – der QR-Code ist angepasst.', true);
     loadTak();
-  } catch (err) { setMsg($('takMsg'), err.message); }
+  } catch (err) { setMsg($('eudMsg'), err.message); }
 });
 function showEudQr() {
-  const img = el('img', { class: 'qr', alt: 'QR-Code zum TAK-EUD', src: '/api/admin/eud-qr.svg?t=' + Date.now() });
+  const img = el('img', { class: 'qr', alt: 'QR-Code zu WebTAK', src: '/api/admin/eud-qr.svg?t=' + Date.now() });
   const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
     const w = window.open('', '_blank', 'width=480,height=640');
     if (!w) return;
     const d = w.document;
-    d.title = 'TAK EUD';
+    d.title = 'WebTAK';
     d.body.style.fontFamily = 'system-ui, sans-serif';
     d.body.style.textAlign = 'center';
-    const h = d.createElement('h1'); h.textContent = 'TAK EUD';
+    const h = d.createElement('h1'); h.textContent = 'WebTAK';
     const i = d.createElement('img'); i.src = img.src; i.style.width = '340px';
     const t = d.createElement('p'); t.textContent = '1. Scan  2. Enter callsign  3. Connect to the TAK server';
     const t2 = d.createElement('p'); t2.textContent = 'iPhone: Safari → Share → Add to Home Screen';
     d.body.append(h, i, t, t2);
     i.onload = () => w.print();
   } });
-  openModal('QR-Code TAK-EUD', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
+  openModal('QR-Code WebTAK', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
 }
 $('eudQrBig').addEventListener('click', showEudQr);
 $('eudQr').addEventListener('click', showEudQr);

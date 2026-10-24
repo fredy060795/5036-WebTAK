@@ -3,20 +3,21 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
-<title>TAK EUD</title>
+<title>WebTAK</title>
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="TAK EUD">
+<meta name="apple-mobile-web-app-title" content="WebTAK">
 <link rel="manifest" href="manifest.webmanifest">
-<link rel="icon" href="icon-192.png">
+<link rel="icon" href="/assets/brand/favicon.ico" sizes="any">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="vendor/leaflet.css">
 <link rel="stylesheet" href="eud.css">
 </head>
 <body>
-<div id="mapWrap"><div id="map"></div></div>
+<div id="mapWrap"><div id="map"></div><div id="map3d" class="hidden"></div></div>
 
 <!-- Top bar (ATAK style) -->
 <header id="tsb">
@@ -56,7 +57,7 @@
 
 <!-- Right: map tilt -->
 <div id="pitchWrap">
-  <div id="pitchBox" title="Tilt map (0°–60°)">
+  <div id="pitchBox" title="Tilt map">
     <svg viewBox="0 0 34 88" preserveAspectRatio="none">
       <polygon points="12,2 22,2 32,86 2,86" fill="rgba(0,0,0,0.35)" stroke="rgba(255,255,255,0.5)" stroke-width="1"/>
       <polygon id="pitchFill" points="12,2 22,2 32,86 2,86" fill="rgba(255,255,255,0.12)" stroke="none"/>
@@ -122,12 +123,16 @@
 </div>
 
 <!-- Watch a stream -->
+<!-- Dock unten (quer: rechts): Video und Chat übereinander, beide wie ein Sheet mit Minimieren -->
+<div id="dock">
 <section id="viewer" class="hidden">
-  <div class="vw-head">
-    <span id="vwTitle"></span>
-    <button type="button" id="vwMin" aria-label="Minimize">–</button>
-    <button type="button" id="vwFull" aria-label="Full screen">⛶</button>
-    <button type="button" id="vwClose" aria-label="Close">✕</button>
+  <div class="chat-head vw-head">
+    <span><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><rect x="2" y="6" width="14" height="12" rx="1"/><path d="M16 10l6-3v10l-6-3" fill="#e53935"/></svg> <b id="vwTitle"></b></span>
+    <span class="chat-ctl">
+      <button type="button" class="chat-x" id="vwMin" aria-label="Minimize">–</button>
+      <button type="button" class="chat-x" id="vwFull" aria-label="Full screen">⛶</button>
+      <button type="button" class="chat-x" id="vwClose" aria-label="Close">✕</button>
+    </span>
   </div>
   <div class="vw-body">
     <img id="vwImg" class="hidden" alt="">
@@ -151,6 +156,7 @@
     <button type="submit" class="chat-send">SEND</button>
   </form>
 </section>
+</div>
 
 <!-- Tools (ATAK style grid) -->
 <div id="sidebar" class="hidden">
@@ -161,7 +167,9 @@
       <button type="button" class="tile" data-open="server">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="3" y="3" width="18" height="7" rx="1"/><rect x="3" y="14" width="18" height="7" rx="1"/><circle cx="7" cy="6.5" r="0.9" fill="#fff"/><circle cx="7" cy="17.5" r="0.9" fill="#fff"/></svg><span>Servers</span></button>
       <button type="button" class="tile" data-open="contacts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20a6 6 0 0 1 12 0M10 20a6 6 0 0 1 12 0"/></svg><span>Contacts</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20a6 6 0 0 1 12 0M10 20a6 6 0 0 1 12 0"/></svg><span>Contacts &amp; Markers</span></button>
+      <button type="button" class="tile" data-open="clear">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span>Clear Content</span></button>
       <button type="button" class="tile" data-open="data">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M4 13h16M9 17h6M9 3v5l3-2 3 2V3"/></svg><span>Data Packages</span></button>
       <button type="button" class="tile" data-open="map">
@@ -304,6 +312,15 @@
       <!-- Contacts -->
       <section data-sec="contacts"><div id="listBody"></div></section>
 
+      <!-- Clear Content (wie ATAK) -->
+      <section data-sec="clear">
+        <p class="hint">Remove content from this device – by kind, like ATAK. Contacts come back with their next position update.</p>
+        <div id="clearBody"></div>
+        <button type="button" class="mbtn" id="clearAll">SELECT ALL / NONE</button>
+        <label class="check"><input type="checkbox" id="clearServer"> Also delete my own markers on the TAK server (for everyone)</label>
+        <button type="button" class="mbtn red big" id="clearGo">CLEAR SELECTED</button>
+      </section>
+
       <!-- Map -->
       <section data-sec="map">
         <label for="fTiles">Map source</label>
@@ -313,6 +330,15 @@
           <input id="fCustom" class="in" placeholder="https://…/{z}/{x}/{y}.png" autocomplete="off" autocapitalize="off" spellcheck="false">
           <button type="button" class="mbtn blue" id="customSave">USE SOURCE</button>
         </div>
+
+        <div class="subhead">3D MAP</div>
+        <label class="check"><input type="checkbox" id="f3d"> 3D map with terrain when tilted (tilt slider on the right, up to 88°)</label>
+        <label class="check"><input type="checkbox" id="fStart3d"> Start in 3D view</label>
+        <div class="row2">
+          <div><label for="fExag">Terrain height</label><select id="fExag" class="in"><option value="1">Real (1×)</option><option value="1.5">1.5×</option><option value="2">2×</option><option value="3">3×</option></select></div>
+          <div></div>
+        </div>
+        <p class="hint hidden" id="no3d">This device/browser has no WebGL 2 – the map is tilted flat instead (up to 60°).</p>
 
         <div class="subhead">SAVE FOR OFFLINE USE</div>
         <div class="seg" id="areaMode">
@@ -386,6 +412,7 @@
 <script src="vendor/milsymbol.js"></script>
 <script src="vendor/jsQR.js"></script>
 <script src="eud.js"></script>
+<script src="view3d.js"></script>
 <script src="video.js"></script>
 <script src="data.js"></script>
 </body>
