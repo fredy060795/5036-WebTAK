@@ -901,6 +901,7 @@ async function handle(req, res) {
     if (p === '/app') return send(res, 302, '', 'text/plain', { Location: '/app/' });
     if (p.startsWith('/app/')) return serveStatic(res, 'app', decodeURIComponent(p.slice(5)));
     if (p.startsWith('/assets/')) return serveStatic(res, 'assets', decodeURIComponent(p.slice(8)));
+    if (p === '/favicon.ico') return serveStatic(res, 'assets', 'brand/favicon.ico');
 
     const m = p.match(/^\/([a-z0-9][a-z0-9_-]{0,31})\/([a-z0-9]{4,32})(\/.*)?$/);
     if (m && (req.method === 'GET' || req.method === 'HEAD')) return await handleStream(req, res, m[1], m[2], m[3] || '');

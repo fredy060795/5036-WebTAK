@@ -24,16 +24,16 @@ h3 { color: var(--acc); font-weight: 500; }
 .auth form { width: 100%; max-width: 380px; padding: 24px; border-top: 3px solid var(--acc); }
 .auth h1 { margin-bottom: 8px; font-size: 18px; font-weight: 500; }
 .brand { text-align: center; margin-bottom: 22px; }
-.brand img { width: 96px; height: 96px; filter: drop-shadow(0 6px 18px rgba(47, 216, 255, .25)); }
+.brand img { width: 240px; max-width: 70vw; height: auto; filter: drop-shadow(0 8px 24px rgba(0, 0, 0, .7)); }
 .brand-name { font-size: 34px; font-weight: 700; letter-spacing: 1px; margin-top: 8px; }
-.brand-sub { color: var(--mut); text-transform: uppercase; letter-spacing: 3px; font-size: 12px; }
+.brand-sub { color: var(--mut); text-transform: uppercase; letter-spacing: 4px; font-size: 12px; margin-top: 6px; }
 .auth-foot { color: var(--mut); font-size: 12px; margin-top: 18px; }
 .wide { width: 100%; margin-top: 16px; padding: 11px; }
 
 /* Kopfzeile und Seitenleiste */
 .top { position: sticky; top: 0; z-index: 20; display: flex; gap: 10px; align-items: center; height: 54px;
   padding: 0 12px; background: var(--bar); border-bottom: 1px solid var(--bd); }
-.top .logo { width: 30px; height: 30px; }
+.top .logo { height: 40px; width: auto; }
 .top h1 { font-size: 19px; font-weight: 600; flex: 1; letter-spacing: .5px; white-space: nowrap; }
 .top h1 span { color: var(--acc); font-weight: 400; }
 .top .topr { flex-wrap: nowrap; }

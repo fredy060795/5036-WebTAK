@@ -4,7 +4,7 @@
 html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; }
 .wrap { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
 header.top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #0b0e12; border-bottom: 1px solid var(--line); }
-header.top img { width: 36px; height: 36px; }
+header.top img { height: 44px; width: auto; }
 header.top h1 { font-size: 20px; margin: 0; font-weight: 500; flex: 1; letter-spacing: .3px; }
 header.top h1 .mut { font-weight: 400; }
 h2 { font-size: 19px; font-weight: 500; margin: 0 0 10px; }
