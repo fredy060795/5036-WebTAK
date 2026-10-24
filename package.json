@@ -5,12 +5,15 @@
   "private": true,
   "main": "server.js",
   "type": "commonjs",
-  "engines": { "node": ">=18" },
+  "engines": {
+    "node": ">=18"
+  },
   "scripts": {
     "start": "node server.js",
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
+    "node-forge": "1.4.0",
     "nodemailer": "10.0.10",
     "qrcode": "1.5.4",
     "ws": "8.21.3"
