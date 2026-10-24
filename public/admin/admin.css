@@ -70,3 +70,10 @@ input.rot { width: 76px; padding: 5px 6px; font-size: 13px; text-align: right; }
 select.rot-size { width: auto; padding: 5px 8px; font-size: 13px; }
 .badge.ready { color: var(--acc); }
 button.golive { color: var(--ok); border-color: var(--ok); font-weight: 600; }
+#toasts { position: fixed; right: 16px; top: 70px; z-index: 2000; display: grid; gap: 8px; width: min(360px, calc(100vw - 32px)); }
+.toast { background: var(--card); border: 1px solid var(--bd); border-left: 5px solid var(--acc); border-radius: 10px;
+  padding: 10px 12px; box-shadow: var(--shadow); display: grid; gap: 8px; animation: toastIn .2s ease-out; }
+.toast.camera, .toast.live { border-left-color: var(--ok); }
+.toast.stop { border-left-color: var(--mut); }
+.toast-head { display: flex; justify-content: space-between; gap: 8px; align-items: baseline; }
+@keyframes toastIn { from { transform: translateX(20px); opacity: 0; } to { transform: none; opacity: 1; } }

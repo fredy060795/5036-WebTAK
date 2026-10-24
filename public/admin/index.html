@@ -70,6 +70,7 @@
     <h1>Helm Camera Streams</h1>
     <div class="row">
       <span class="mut small" id="summary"></span>
+      <button id="notifyBtn" title="Desktop-Benachrichtigungen, wenn jemand die Kamera aktiviert">🔔 Hinweise</button>
       <button id="settingsBtn">Einstellungen</button>
       <button id="logoutBtn">Abmelden</button>
     </div>
@@ -81,6 +82,7 @@
         <h2>QR-Code für alle Nutzer</h2>
         <div class="row">
           <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
+          <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
           <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
         </div>
       </div>
@@ -101,6 +103,33 @@
           </form>
           <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
           <p class="msg" id="regMsg"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>TAK-EUD <span class="mut small">(Karte + Lagebild direkt vom TAK-Server, als App auf dem Handy)</span></h2>
+      <div class="appqr">
+        <img id="eudQr" class="qr-small" alt="QR-Code zum TAK-EUD">
+        <div class="grow">
+          <p class="mut small">Nutzer scannen diesen Code und verbinden sich mit ihren eigenen TAK-Zugangsdaten
+            (Zertifikat anfordern, .p12 / Datenpaket laden oder QR-Code vom TAK-Server). Dieser Server reicht die
+            Daten nur durch – Zertifikate bleiben auf dem Handy und werden hier nicht gespeichert.</p>
+          <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Kopieren</button></div>
+          <form id="takForm">
+            <label>TAK-Server vorgeben (optional – steckt dann im QR-Code)</label>
+            <div class="row">
+              <div class="grow"><input name="host" placeholder="tak.example.com" autocomplete="off"></div>
+              <div style="width:90px"><input name="port" type="number" min="1" max="65535" placeholder="8089"></div>
+              <div style="width:90px"><select name="proto"><option value="ssl">SSL</option><option value="tcp">TCP</option><option value="udp">UDP</option></select></div>
+              <div style="width:110px"><input name="enrollPort" type="number" min="1" max="65535" placeholder="8446" title="Port für Zertifikatsanforderung"></div>
+            </div>
+            <label>Erlaubte TAK-Server (Komma-getrennt, leer = alle) – schützt vor Missbrauch als offene Durchreiche</label>
+            <input name="allowedHosts" placeholder="tak.example.com, 10.0.0.5" autocomplete="off">
+            <div class="row" style="margin-top:8px"><button class="sm pri" type="submit">Speichern</button></div>
+          </form>
+          <p class="msg" id="takMsg"></p>
+          <div id="eudLinks" class="mut small"></div>
         </div>
       </div>
     </section>
@@ -148,6 +177,9 @@
 
 <!-- Fenster zum Ansehen -->
 <div id="windows"></div>
+
+<!-- Hinweise (Popups), z. B. "Jan hat die Kamera aktiviert" -->
+<div id="toasts" aria-live="polite"></div>
 
 <template id="settingsTpl">
   <form id="credForm">

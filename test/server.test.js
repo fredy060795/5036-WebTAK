@@ -644,3 +644,98 @@ test('Admin schaltet live: Bereit, Live, Live aus', async () => {
   assert.equal((await api('registration')).data.liveMode, 'user');
   p.ws.close();
 });
+
+test('Nutzer startet selbst (wenn erlaubt) und Admin bekommt Hinweise', async () => {
+  const seq0 = (await api('streams')).data.eventSeq;
+  await api('live-mode', { method: 'POST', body: { mode: 'admin', userCanStart: true } });
+  const reg = await (await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Selbststarter', unit: 'Zug 3' }) })).json();
+  const id = reg.u + '/' + reg.s;
+  const p = publisher({ user: reg.u, streamId: reg.s }, reg.k);
+  const live0 = await p.waitFor('live');
+  assert.equal(live0.userCanStart, true);
+  p.ws.send(JSON.stringify({ type: 'state', ready: true }));
+  await sleep(100);
+
+  p.messages.length = 0;
+  p.ws.send(JSON.stringify({ type: 'golive', on: true }));
+  assert.equal((await p.waitFor('live')).on, true);
+  const st = (await api('streams')).data.streams.find(x => x.streamId === reg.s);
+  assert.equal(st.onAir, true);
+
+  const ev = (await api('streams?since=' + seq0)).data.events.filter(e => e.id === id);
+  assert.deepEqual(ev.map(e => e.kind), ['register', 'camera', 'live']);
+  assert.match(ev[1].text, /Selbststarter – Zug 3 hat die Kamera aktiviert/);
+
+  // Erlaubnis entzogen: Start vom Handy wird ignoriert
+  await api(`streams/${reg.u}/${reg.s}/live`, { method: 'POST', body: { on: false } });
+  await api('live-mode', { method: 'POST', body: { userCanStart: false } });
+  p.messages.length = 0;
+  p.ws.send(JSON.stringify({ type: 'golive', on: true }));
+  const answer = await p.waitFor('live');
+  assert.equal(answer.on, false);
+  assert.equal(answer.userCanStart, false);
+  assert.equal((await api('streams')).data.streams.find(x => x.streamId === reg.s).onAir, false);
+  p.ws.close();
+  await api('live-mode', { method: 'POST', body: { mode: 'user' } });
+});
+
+test('TAK-EUD: App, Offline-Dateien, Vorgabe, erlaubte Server und Durchreiche (TCP)', async () => {
+  for (const p of ['/eud/', '/eud/sw.js', '/eud/eud.js', '/eud/manifest.webmanifest', '/eud/vendor/leaflet.js', '/eud/vendor/milsymbol.js', '/eud/vendor/jsQR.js', '/eud/vendor/images/layers.png']) {
+    const r = await fetch(base + p);
+    assert.equal(r.status, 200, p);
+    await r.arrayBuffer();
+  }
+  assert.equal((await fetch(base + '/eud/vendor/../../server.js')).status, 404);
+
+  // Nachgebauter TAK-Server (TCP)
+  const net = require('net');
+  const got = [];
+  const tak = net.createServer(sock => {
+    sock.on('data', d => got.push(d.toString()));
+    sock.write('<event version="2.0" uid="X-1" type="a-f-G" time="t" start="t" stale="t"><point lat="1" lon="2"/><detail/></event>');
+  });
+  await new Promise(r => tak.listen(0, '127.0.0.1', r));
+
+  // Nur freigegebene Server; Vorgabe steckt im QR-Code
+  let r = await api('tak', { method: 'POST', body: { allowedHosts: 'tak.example.com', preset: { host: 'tak.example.com', port: 8089, proto: 'ssl' } } });
+  assert.equal(r.status, 200);
+  const cfg = await (await fetch(base + '/api/eud/config')).json();
+  assert.equal(cfg.preset.host, 'tak.example.com');
+  assert.equal(cfg.restricted, true);
+  r = await fetch(base + '/api/eud/enroll', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ host: 'evil.example', username: 'a', password: 'b' }) });
+  assert.equal(r.status, 403);
+
+  const connectTak = () => {
+    const ws = new WebSocket(base.replace('http', 'ws') + '/ws/tak');
+    const msgs = [];
+    ws.on('message', d => msgs.push(JSON.parse(d.toString())));
+    return { ws, msgs, open: new Promise(res => ws.on('open', res)) };
+  };
+  const waitMsg = async (msgs, fn) => {
+    for (let i = 0; i < 100; i++) { const m = msgs.find(fn); if (m) return m; await sleep(30); }
+    throw new Error('fehlt: ' + JSON.stringify(msgs));
+  };
+  let c = connectTak();
+  await c.open;
+  c.ws.send(JSON.stringify({ type: 'connect', host: '127.0.0.1', port: tak.address().port, proto: 'tcp' }));
+  assert.match((await waitMsg(c.msgs, m => m.state === 'error')).message, /nicht freigegeben/);
+  c.ws.close();
+
+  await api('tak', { method: 'POST', body: { allowedHosts: '127.0.0.1', preset: null } });
+  c = connectTak();
+  await c.open;
+  c.ws.send(JSON.stringify({ type: 'connect', host: '127.0.0.1', port: tak.address().port, proto: 'tcp', callsign: 'BRAVO' }));
+  await waitMsg(c.msgs, m => m.state === 'connected');
+  const cot = await waitMsg(c.msgs, m => m.type === 'cot');
+  assert.match(cot.xml, /uid="X-1"/);
+  c.ws.send(JSON.stringify({ type: 'cot', xml: '<event uid="EUD-9" type="a-f-G-U-C"><detail/></event>' }));
+  c.ws.send(JSON.stringify({ type: 'cot', xml: 'kein CoT' }));
+  for (let i = 0; i < 50 && !got.join('').includes('EUD-9'); i++) await sleep(30);
+  assert.match(got.join(''), /uid="EUD-9"/);
+  assert.doesNotMatch(got.join(''), /kein CoT/);
+  const links = await api('eud-links');
+  assert.equal(links.data.links[0].callsign, 'BRAVO');
+  c.ws.close();
+  await api('tak', { method: 'POST', body: { allowedHosts: '', preset: null } });
+  tak.close();
+});

@@ -220,6 +220,8 @@ function showApp() {
   $('appView').classList.remove('hidden');
   $('noFfmpeg').classList.toggle('hidden', !!me.ffmpeg);
   loadRegistration();
+  loadTak();
+  loadEudLinks();
   refresh();
   startPolling();
 }
@@ -231,6 +233,8 @@ async function loadRegistration() {
     $('regToggle').checked = r.enabled;
     liveMode = r.liveMode;
     $('liveToggle').checked = liveMode === 'admin';
+    $('userStartToggle').checked = !!r.userCanStart;
+    $('userStartWrap').classList.toggle('hidden', liveMode !== 'admin');
     $('liveOffAllBtn').classList.toggle('hidden', liveMode !== 'admin');
     $('appUrl').value = r.appUrl;
     if (document.activeElement !== $('baseUrl')) $('baseUrl').value = r.publicUrl;
@@ -239,6 +243,70 @@ async function loadRegistration() {
     $('appQr').closest('.appqr').classList.toggle('off', !r.enabled);
   } catch (e) { /* angezeigt durch api() */ }
 }
+
+$('userStartToggle').addEventListener('change', async () => {
+  const on = $('userStartToggle').checked;
+  try {
+    await api('live-mode', { method: 'POST', body: { userCanStart: on } });
+    setMsg($('regMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
+  } catch (e) { setMsg($('regMsg'), e.message); }
+});
+
+// ======================================================================
+// Hinweise: Popup + Ton + Desktop-Benachrichtigung
+// ======================================================================
+
+function beep() {
+  try {
+    const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    [0, 0.18].forEach(t => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880;
+      g.gain.setValueAtTime(0.15, ctx.currentTime + t);
+      g.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + t + 0.15);
+      o.connect(g).connect(ctx.destination);
+      o.start(ctx.currentTime + t);
+      o.stop(ctx.currentTime + t + 0.16);
+    });
+  } catch (e) { /* kein Ton möglich */ }
+}
+
+function showToast(ev) {
+  const s = streams.find(x => sid(x) === ev.id);
+  const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+  const close = () => t.remove();
+  const btns = el('div', { class: 'row' });
+  if (s) {
+    btns.append(el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => { openWindow(ev.id); close(); } }));
+    if (liveMode === 'admin' && !s.onAir && ev.kind !== 'stop') {
+      btns.append(el('button', { class: 'sm golive', text: '▶ Live', onclick: () => { setLive(ev.id, true); close(); } }));
+    }
+  }
+  btns.append(el('button', { class: 'sm', text: 'OK', onclick: close }));
+  const t = el('div', { class: 'toast ' + ev.kind },
+    el('div', { class: 'toast-head' }, el('b', { text: ev.text }), el('span', { class: 'mut small', text: time })),
+    btns);
+  $('toasts').prepend(t);
+  setTimeout(close, 30000);
+  if (ev.kind !== 'stop') beep();
+  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('Helm Camera', { body: ev.text, tag: ev.id }); } catch (e) { /* nicht unterstützt */ }
+  }
+}
+
+function updateNotifyBtn() {
+  const b = $('notifyBtn');
+  if (!('Notification' in window) || !window.isSecureContext) { b.classList.add('hidden'); return; }
+  b.textContent = Notification.permission === 'granted' ? '🔔 Hinweise an' : '🔔 Hinweise';
+  b.title = Notification.permission === 'granted' ? 'Desktop-Benachrichtigungen sind erlaubt'
+    : 'Desktop-Benachrichtigungen erlauben (auch wenn dieses Fenster im Hintergrund ist)';
+}
+$('notifyBtn').addEventListener('click', async () => {
+  beep(); // Ton einmal freischalten (Browser erlauben Ton erst nach einem Klick)
+  if ('Notification' in window && Notification.permission !== 'granted') await Notification.requestPermission();
+  updateNotifyBtn();
+});
+updateNotifyBtn();
 
 $('liveToggle').addEventListener('change', async () => {
   const admin = $('liveToggle').checked;
@@ -301,11 +369,15 @@ function stopPolling() {
   pollTimer = null;
 }
 
+let eventSeq = -1; // letzte gesehene Hinweis-Nummer (-1 = noch keine Abfrage)
+
 async function refresh() {
   try {
-    const data = await api('streams');
+    const data = await api('streams' + (eventSeq >= 0 ? '?since=' + eventSeq : ''));
     streams = data.streams;
     render();
+    for (const ev of data.events || []) showToast(ev);
+    eventSeq = data.eventSeq;
   } catch (e) {
     if (!(e instanceof ApiError)) console.warn(e);
   }
@@ -846,3 +918,48 @@ function openWindow(id) {
     if (!(e instanceof ApiError)) showAuth('login');
   }
 })();
+
+// ======================================================================
+// TAK-EUD
+// ======================================================================
+
+async function loadTak() {
+  try {
+    const t = await api('tak');
+    $('eudUrl').value = t.eudUrl;
+    $('eudQr').src = '/api/admin/eud-qr.svg?t=' + Date.now();
+    const f = $('takForm');
+    f.allowedHosts.value = t.allowedHosts || '';
+    f.host.value = t.preset ? t.preset.host : '';
+    f.port.value = t.preset ? t.preset.port : '';
+    f.proto.value = t.preset ? t.preset.proto : 'ssl';
+    f.enrollPort.value = t.preset ? t.preset.enrollPort : '';
+  } catch (e) { /* nicht angemeldet */ }
+}
+
+async function loadEudLinks() {
+  try {
+    const { links } = await api('eud-links');
+    const box = $('eudLinks');
+    box.textContent = links.length ? 'Verbundene EUDs:' : 'Zurzeit kein EUD verbunden.';
+    for (const l of links) {
+      box.append(el('div', { text: `${l.callsign || '–'} → ${l.host || '–'} (${l.state})` }));
+    }
+  } catch (e) { /* ignorieren */ }
+}
+
+$('takForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  const host = f.host.value.trim();
+  try {
+    await api('tak', { method: 'POST', body: {
+      allowedHosts: f.allowedHosts.value,
+      preset: host ? { host, port: Number(f.port.value) || 8089, proto: f.proto.value, enrollPort: Number(f.enrollPort.value) || 8446 } : null,
+    } });
+    setMsg($('takMsg'), 'Gespeichert – der QR-Code ist angepasst.', true);
+    loadTak();
+  } catch (err) { setMsg($('takMsg'), err.message); }
+});
+$('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));
+setInterval(() => { if (!document.hidden && $('eudLinks').offsetParent) loadEudLinks(); }, 10000);

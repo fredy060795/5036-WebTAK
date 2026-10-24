@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<title>TAK EUD</title>
+<meta name="theme-color" content="#101820">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="TAK EUD">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="stylesheet" href="vendor/leaflet.css">
+<link rel="stylesheet" href="eud.css">
+</head>
+<body>
+<div id="map"></div>
+
+<!-- Statusleiste oben -->
+<div id="bar">
+  <button id="statusBtn" class="pill" type="button"><span id="dot" class="dot"></span><span id="statusText">Nicht verbunden</span></button>
+  <span id="meName" class="pill hidden"></span>
+</div>
+
+<!-- Knöpfe rechts -->
+<div id="fabs">
+  <button class="fab" id="btnCenter" type="button" title="Auf mich zentrieren" aria-label="Auf mich zentrieren">◎</button>
+  <button class="fab" id="btnMarker" type="button" title="Marker setzen" aria-label="Marker setzen">＋</button>
+  <button class="fab" id="btnList" type="button" title="Kontakte" aria-label="Kontakte">☰</button>
+  <button class="fab" id="btnChat" type="button" title="Chat" aria-label="Chat">✉<span id="chatBadge" class="badge hidden"></span></button>
+  <button class="fab" id="btnSettings" type="button" title="Einstellungen" aria-label="Einstellungen">⚙</button>
+</div>
+<div id="crosshair" class="hidden"></div>
+<div id="placeBar" class="hidden">
+  <button type="button" id="placeCancel">Abbrechen</button>
+  <button type="button" class="pri" id="placeOk">Hier setzen</button>
+</div>
+
+<!-- Einrichtung / Einstellungen -->
+<section class="sheet hidden" id="setup">
+  <div class="sheet-head"><h2>TAK-Server</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
+  <div class="sheet-body">
+    <div class="row">
+      <button type="button" class="pri grow" id="scanBtn">QR-Code scannen</button>
+      <label class="btn grow" for="fileIn">Datei laden</label>
+      <input type="file" id="fileIn" accept=".zip,.p12,.pfx,.pem,.crt,.cer,application/zip,application/x-pkcs12" hidden>
+    </div>
+    <p class="hint">QR-Code vom TAK-Server (ATAK/iTAK), Datenpaket (.zip), Zertifikat (.p12) oder Truststore laden – oder unten von Hand eintragen.</p>
+
+    <h3>Server</h3>
+    <label for="fHost">Adresse</label>
+    <input id="fHost" placeholder="tak.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+    <div class="row">
+      <div class="grow"><label for="fPort">Port</label><input id="fPort" type="number" inputmode="numeric" min="1" max="65535" placeholder="8089"></div>
+      <div class="grow"><label for="fProto">Protokoll</label>
+        <select id="fProto"><option value="ssl">SSL (TLS)</option><option value="tcp">TCP</option><option value="udp">UDP (nur senden)</option></select></div>
+    </div>
+
+    <div id="sslBox">
+      <h3>Zertifikat</h3>
+      <div id="certState" class="state">Kein Zertifikat</div>
+      <label for="fUser">Benutzername</label>
+      <input id="fUser" autocomplete="username" autocapitalize="off" spellcheck="false">
+      <label for="fPass">Passwort</label>
+      <input id="fPass" type="password" autocomplete="current-password">
+      <div class="row">
+        <div class="grow"><label for="fEnroll">Port für Zertifikat</label><input id="fEnroll" type="number" inputmode="numeric" placeholder="8446"></div>
+        <div class="grow end"><button type="button" class="pri" id="enrollBtn">Zertifikat anfordern</button></div>
+      </div>
+    </div>
+
+    <h3>Ich</h3>
+    <label for="fCallsign">Rufname</label>
+    <input id="fCallsign" maxlength="40" autocomplete="off" placeholder="z. B. ALPHA-1">
+    <div class="row">
+      <div class="grow"><label for="fTeam">Team</label><select id="fTeam"></select></div>
+      <div class="grow"><label for="fRole">Rolle</label><select id="fRole"></select></div>
+    </div>
+
+    <p class="msg" id="setupMsg"></p>
+    <div class="row">
+      <button type="button" class="pri grow" id="connectBtn">Verbinden</button>
+      <button type="button" class="grow hidden" id="disconnectBtn">Trennen</button>
+    </div>
+
+    <h3>Karte</h3>
+    <div class="row">
+      <button type="button" class="grow" id="prefetchBtn">Kartenausschnitt offline speichern</button>
+    </div>
+    <p class="hint" id="prefetchMsg">Speichert den sichtbaren Ausschnitt (mehrere Zoomstufen) – die Karte geht dann auch ohne Internet.</p>
+    <label class="check"><input type="checkbox" id="fWake"> Bildschirm anlassen</label>
+
+    <details>
+      <summary>Mehr</summary>
+      <p class="hint">Gerätekennung: <span id="uidText"></span></p>
+      <div class="row">
+        <button type="button" class="grow" id="clearPicBtn">Lagebild leeren</button>
+        <button type="button" class="grow danger" id="resetBtn">Alles löschen</button>
+      </div>
+    </details>
+  </div>
+</section>
+
+<!-- Kontakte -->
+<section class="sheet hidden" id="list">
+  <div class="sheet-head"><h2>Kontakte</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
+  <div class="sheet-body"><div id="listBody"></div></div>
+</section>
+
+<!-- Chat -->
+<section class="sheet hidden" id="chat">
+  <div class="sheet-head"><h2>Chat <span class="hint">(Alle)</span></h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
+  <div class="sheet-body chat-body"><div id="chatLog"></div></div>
+  <form id="chatForm" class="chat-form"><input id="chatIn" autocomplete="off" placeholder="Nachricht an alle" maxlength="500"><button class="pri" type="submit">Senden</button></form>
+</section>
+
+<!-- Marker -->
+<section class="sheet hidden" id="markerSheet">
+  <div class="sheet-head"><h2>Marker</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
+  <div class="sheet-body">
+    <label for="mName">Name</label>
+    <input id="mName" maxlength="40" autocomplete="off">
+    <label for="mType">Art</label>
+    <select id="mType">
+      <option value="b-m-p-s-p-i">Punkt (Spot)</option>
+      <option value="a-f-G">Freund</option>
+      <option value="a-h-G">Feind</option>
+      <option value="a-n-G">Neutral</option>
+      <option value="a-u-G">Unbekannt</option>
+    </select>
+    <label for="mRemarks">Bemerkung</label>
+    <input id="mRemarks" maxlength="200" autocomplete="off">
+    <div class="row"><button type="button" class="pri grow" id="mSave">Senden</button></div>
+  </div>
+</section>
+
+<!-- Server-Zertifikat bestätigen -->
+<section class="sheet hidden" id="trust">
+  <div class="sheet-head"><h2>Unbekanntes Server-Zertifikat</h2></div>
+  <div class="sheet-body">
+    <p>Der Server <b id="trustHost"></b> nutzt ein Zertifikat, das (noch) nicht geprüft werden kann. Vergleiche den Fingerabdruck mit dem, den dir der TAK-Admin gegeben hat:</p>
+    <p class="hint" id="trustSubject"></p>
+    <code id="trustFp"></code>
+    <p class="hint">Mit einem Truststore (CA) vom TAK-Server entfällt diese Frage.</p>
+    <div class="row">
+      <button type="button" class="grow" id="trustNo">Abbrechen</button>
+      <button type="button" class="pri grow" id="trustYes">Vertrauen</button>
+    </div>
+  </div>
+</section>
+
+<!-- QR-Scanner -->
+<div id="scanner" class="hidden">
+  <video id="scanVideo" playsinline muted></video>
+  <div class="scan-frame"></div>
+  <div class="scan-bar">
+    <label class="btn" for="scanFile">Foto wählen</label>
+    <input type="file" id="scanFile" accept="image/*" hidden>
+    <button type="button" id="scanClose">Abbrechen</button>
+  </div>
+  <p id="scanMsg">QR-Code in den Rahmen halten</p>
+</div>
+
+<div id="toast" class="hidden" role="status"></div>
+
+<script src="vendor/leaflet.js"></script>
+<script src="vendor/milsymbol.js"></script>
+<script src="vendor/jsQR.js"></script>
+<script src="eud.js"></script>
+</body>
+</html>
