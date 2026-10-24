@@ -1,5 +1,5 @@
-// TAK-EUD im Browser: Karte + Lagebild vom TAK-Server (CoT), eigene Position, Marker, Chat.
-// Der eigene Server reicht nur durch (WebSocket /ws/tak); Zertifikate bleiben auf diesem Gerät.
+// TAK-EUD im Browser: Karte + Lagebild von einem oder mehreren TAK-Servern (CoT), eigene Position,
+// Marker, Chat. Der eigene Server reicht nur durch (WebSocket /ws/tak); Zertifikate bleiben auf diesem Gerät.
 'use strict';
 
 const $ = id => document.getElementById(id);
@@ -19,38 +19,90 @@ const TEAMS = {
   'Dark Green': '#007F00', Brown: '#A0714F',
 };
 const ROLES = ['Team Member', 'Team Lead', 'HQ', 'Sniper', 'Medic', 'Forward Observer', 'RTO', 'K9'];
+const DEFAULT_PORT = { ssl: 8089, tcp: 8087, udp: 8087 };
 
 // ======================================================================
-// Profil (nur auf diesem Gerät)
+// Profil und Serverliste (nur auf diesem Gerät)
 // ======================================================================
 
 const profile = Object.assign({
-  host: '', port: 8089, proto: 'ssl', enrollPort: 8446, username: '',
-  certPem: '', keyPem: '', caPems: [], fingerprint: '', certInfo: null,
-  callsign: '', team: 'Cyan', role: 'Team Member', uid: '', auto: false, tiles: 'OSM', wake: false,
+  callsign: '', team: 'Cyan', role: 'Team Member', uid: '', tiles: 'OSM', wake: false,
 }, store.get('eud.profile', {}));
 if (!profile.uid) profile.uid = 'EUD-' + rnd(6).toUpperCase();
+
+let servers = store.get('eud.servers', null);
+if (!servers) {
+  // Ältere Version: ein Server im Profil
+  servers = [];
+  if (profile.host) {
+    servers.push({
+      id: rnd(4), name: profile.host, host: profile.host, port: profile.port, proto: profile.proto, enrollPort: profile.enrollPort,
+      username: profile.username, certPem: profile.certPem, keyPem: profile.keyPem, caPems: profile.caPems || [],
+      fingerprint: profile.fingerprint, certInfo: profile.certInfo, auto: !!profile.auto,
+    });
+  }
+  for (const k of ['host', 'port', 'proto', 'enrollPort', 'username', 'certPem', 'keyPem', 'caPems', 'fingerprint', 'certInfo', 'auto']) delete profile[k];
+}
 const saveProfile = () => store.set('eud.profile', profile);
+const saveServers = () => store.set('eud.servers', servers);
 saveProfile();
+saveServers();
+
+function newServer(fields) {
+  return Object.assign({
+    id: rnd(4), name: '', host: '', port: 8089, proto: 'ssl', enrollPort: 8446, apiPort: 8443, username: '',
+    certPem: '', keyPem: '', caPems: [], fingerprint: '', certInfo: null, auto: false,
+  }, fields || {});
+}
 
 // ======================================================================
 // Karte
 // ======================================================================
 
-const map = L.map('map', { zoomControl: false, attributionControl: true, worldCopyJump: true })
-  .setView(store.get('eud.view', [51.1, 10.4, 6]).slice(0, 2), store.get('eud.view', [0, 0, 6])[2]);
-L.control.zoom({ position: 'bottomleft' }).addTo(map);
-const LAYERS = {
-  OSM: L.tileLayer('https://tile.openstreetmap.org/{z}/{x}/{y}.png', { maxZoom: 19, attribution: '© OpenStreetMap' }),
-  Topo: L.tileLayer('https://tile.opentopomap.org/{z}/{x}/{y}.png', { maxZoom: 17, attribution: '© OpenTopoMap, © OpenStreetMap' }),
-  Satellit: L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', { maxZoom: 19, attribution: '© Esri' }),
+const view = store.get('eud.view', [51.1, 10.4, 6]);
+const map = L.map('map', { zoomControl: false, attributionControl: true, worldCopyJump: true }).setView([view[0], view[1]], view[2]);
+map.attributionControl.setPosition('topright');
+// Kartenquellen: über den eigenen Server (gleiche Herkunft, dort zwischengespeichert) oder eigene URL
+const SOURCES = {
+  osm: { name: 'OpenStreetMap', maxZoom: 19, attribution: '© OpenStreetMap' },
+  topo: { name: 'OpenTopoMap', maxZoom: 17, attribution: '© OpenTopoMap, © OpenStreetMap' },
+  sat: { name: 'Esri Satellit', maxZoom: 19, attribution: '© Esri' },
+  esritopo: { name: 'Esri Topo', maxZoom: 19, attribution: '© Esri' },
 };
-(LAYERS[profile.tiles] || LAYERS.OSM).addTo(map);
-L.control.layers(LAYERS, null, { position: 'bottomleft' }).addTo(map);
-map.on('baselayerchange', e => { profile.tiles = e.name; saveProfile(); });
+const TILE_BASE = new URL('tiles/', location.href).pathname; // /eud/tiles/
+if (!SOURCES[profile.tiles] && profile.tiles !== 'custom') profile.tiles = 'osm';
+
+function sourceTemplate(id) {
+  if (id === 'custom') return profile.customUrl || '';
+  return TILE_BASE + id + '/{z}/{x}/{y}.png';
+}
+function sourceMaxZoom(id) { return id === 'custom' ? 20 : SOURCES[id].maxZoom; }
+
+let baseLayer = null;
+function setTiles(id) {
+  if (id === 'custom' && !profile.customUrl) return;
+  if (baseLayer) baseLayer.remove();
+  baseLayer = L.tileLayer(sourceTemplate(id), {
+    maxZoom: sourceMaxZoom(id), maxNativeZoom: sourceMaxZoom(id),
+    attribution: id === 'custom' ? '' : SOURCES[id].attribution, keepBuffer: 4,
+  });
+  // Kachel nicht geladen (z. B. kurz kein Netz): einmal nachladen statt halb leerer Karte
+  baseLayer.on('tileerror', e => {
+    const img = e.tile;
+    if (img.dataset.retry) return;
+    img.dataset.retry = '1';
+    setTimeout(() => { img.src = img.src.replace(/([?&])r=\d+|$/, m => (m ? m[0] : (img.src.includes('?') ? '&' : '?')) + 'r=' + Date.now()); }, 1500);
+  });
+  baseLayer.addTo(map);
+  profile.tiles = id;
+  saveProfile();
+}
+setTiles(profile.tiles);
 map.on('moveend', () => { const c = map.getCenter(); store.set('eud.view', [c.lat, c.lng, map.getZoom()]); });
 const shapesLayer = L.layerGroup().addTo(map);
 const pointsLayer = L.layerGroup().addTo(map);
+$('zoomIn').addEventListener('click', () => map.zoomIn());
+$('zoomOut').addEventListener('click', () => map.zoomOut());
 
 // ======================================================================
 // Hilfen
@@ -69,13 +121,6 @@ function setMsg(el, text, ok) {
   el.textContent = text || '';
   el.classList.toggle('ok', !!ok);
 }
-
-function openSheet(id) {
-  for (const s of document.querySelectorAll('.sheet')) if (s.id !== 'trust') s.classList.add('hidden');
-  $(id).classList.remove('hidden');
-}
-function closeSheet(id) { $(id).classList.add('hidden'); }
-for (const b of document.querySelectorAll('[data-close]')) b.addEventListener('click', () => b.closest('.sheet').classList.add('hidden'));
 
 function distance(a, b) {
   const R = 6371000, r = Math.PI / 180;
@@ -97,6 +142,7 @@ function ago(ts) {
   if (s < 86400) return 'vor ' + Math.round(s / 3600) + ' h';
   return new Date(ts).toLocaleString();
 }
+const hhmm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
 // ARGB-Zahl aus ATAK (-1 = weiß) -> CSS-Farbe
 function argb(v, fallback) {
@@ -104,10 +150,6 @@ function argb(v, fallback) {
   const n = Number(v) >>> 0;
   const a = ((n >>> 24) & 255) / 255;
   return `rgba(${(n >>> 16) & 255},${(n >>> 8) & 255},${n & 255},${a.toFixed(2)})`;
-}
-function argbInt(hex) {
-  const n = parseInt(hex.slice(1), 16);
-  return ((0xff000000 | n) >> 0).toString();
 }
 
 // CoT-Typ -> Symbolcode (MIL-STD-2525C) für milsymbol
@@ -122,27 +164,81 @@ function sidcFor(type) {
 const AFF_NAMES = { f: 'Freund', h: 'Feind', n: 'Neutral', u: 'Unbekannt', a: 'Vermutl. Freund', s: 'Verdächtig', p: 'Ausstehend' };
 
 const symCache = new Map();
-function symbolSvg(sidc) {
-  if (!symCache.has(sidc)) {
-    let out = null;
-    try {
-      const s = new ms.Symbol(sidc, { size: 26 });
-      if (s.isValid()) out = { svg: s.asSVG(), w: s.getSize().width, h: s.getSize().height, a: s.getAnchor() };
-    } catch (e) { /* unbekannter Code */ }
-    if (!out) {
-      const s = new ms.Symbol(sidc.slice(0, 4) + '------' + '-----', { size: 26 });
-      out = { svg: s.asSVG(), w: s.getSize().width, h: s.getSize().height, a: s.getAnchor() };
-    }
-    symCache.set(sidc, out);
+function symbolSvg(sidc, size = 26) {
+  const key = sidc + size;
+  if (!symCache.has(key)) {
+    let s = null;
+    try { s = new ms.Symbol(sidc, { size }); if (!s.isValid()) s = null; } catch (e) { s = null; }
+    if (!s) s = new ms.Symbol(sidc.slice(0, 4) + '-----------', { size });
+    symCache.set(key, { svg: s.asSVG(), w: s.getSize().width, h: s.getSize().height, a: s.getAnchor() });
   }
-  return symCache.get(sidc);
+  return symCache.get(key);
 }
+
+// ======================================================================
+// Statusleiste: Uhr, Akku, Rufname
+// ======================================================================
+
+let battery = null;
+function tick() { $('clock').textContent = hhmm(new Date()); }
+tick();
+setInterval(tick, 10000);
+if (navigator.getBattery) navigator.getBattery().then(b => {
+  const upd = () => {
+    battery = Math.round(b.level * 100);
+    $('battText').textContent = battery + '%';
+    $('battFill').setAttribute('width', String(Math.max(1, 13 * b.level)));
+    $('battFill').setAttribute('fill', b.level < 0.2 ? '#e74c3c' : b.level < 0.5 ? '#f39c12' : '#2ecc71');
+  };
+  upd();
+  b.addEventListener('levelchange', upd);
+}).catch(() => {});
+else $('batt').classList.add('hidden');
+
+function showMe() {
+  $('meName').textContent = profile.callsign || '---';
+  $('meTeam').textContent = profile.callsign ? `${profile.team} · ${profile.role}` : '';
+  $('meTeam').style.color = TEAMS[profile.team] || '';
+}
+
+// ======================================================================
+// Menü und Fenster
+// ======================================================================
+
+const TITLES = { server: 'Server', edit: 'Server', me: 'Rufname', video: 'Videostream', contacts: 'Kontakte', map: 'Karte', data: 'TAK-Daten' };
+let popupSec = null;
+function openPopup(sec, title) {
+  closeSidebar();
+  popupSec = sec;
+  for (const s of document.querySelectorAll('.mbody section')) s.classList.toggle('on', s.dataset.sec === sec);
+  $('popupTitle').textContent = title || TITLES[sec] || '';
+  $('popup').classList.remove('hidden');
+  if (sec === 'server') renderServers();
+  if (sec === 'contacts') renderList();
+  if (sec === 'me') fillMe();
+  if (sec === 'map') fillMap();
+  document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
+}
+function closePopup() {
+  $('popup').classList.add('hidden');
+  popupSec = null;
+}
+for (const b of document.querySelectorAll('[data-pclose]')) b.addEventListener('click', closePopup);
+
+function openSidebar() { $('sidebar').classList.remove('hidden'); }
+function closeSidebar() { $('sidebar').classList.add('hidden'); }
+for (const b of document.querySelectorAll('[data-sbclose]')) b.addEventListener('click', closeSidebar);
+$('btnMenu').addEventListener('click', openSidebar);
+for (const t of document.querySelectorAll('[data-open]')) {
+  t.addEventListener('click', () => (t.dataset.open === 'chat' ? openChat() : openPopup(t.dataset.open)));
+}
+$('connBtn').addEventListener('click', () => openPopup('server'));
 
 // ======================================================================
 // Lagebild: CoT empfangen und zeichnen
 // ======================================================================
 
-const items = new Map(); // uid -> { uid, type, xml, lat, lon, callsign, team, stale, time, layer, own }
+const items = new Map(); // uid -> { uid, c, xml, layer, own, stale }
 let chat = store.get('eud.chat', []);
 let unread = 0;
 let me = null; // eigene Position
@@ -159,7 +255,6 @@ function parseCot(xml) {
   return {
     uid: ev.getAttribute('uid') || '',
     type: ev.getAttribute('type') || '',
-    how: ev.getAttribute('how') || '',
     time: Date.parse(ev.getAttribute('time')) || Date.now(),
     stale: Date.parse(ev.getAttribute('stale')) || Date.now() + 120000,
     lat: pt ? Number(pt.getAttribute('lat')) : NaN,
@@ -177,7 +272,7 @@ function parseCot(xml) {
     fill: attr('fillColor', 'value'),
     weight: Number(attr('strokeWeight', 'value')) || 3,
     ellipse: q('shape > ellipse'),
-    video: attr('__video', 'url') || attr('__video ConnectionEntry', 'address'),
+    video: attr('__video', 'url'),
     videoEntry: q('__video ConnectionEntry'),
     linkPoints: links.map(l => l.getAttribute('point')).filter(Boolean).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])),
     links: links.map(l => ({ uid: l.getAttribute('uid'), relation: l.getAttribute('relation'), type: l.getAttribute('type') })),
@@ -199,16 +294,28 @@ function videoUrl(c) {
   return c.video || '';
 }
 
+// Video-Link für den Browser: eigene Streams (…/stream.ts) als Vollbild-Seite öffnen
+function browserVideoUrl(u) {
+  try {
+    const url = new URL(u);
+    if (url.origin === location.origin) url.pathname = url.pathname.replace(/\/(stream\.ts|index\.m3u8|snapshot\.jpg)$/, '');
+    return url.href;
+  } catch (e) { return u; }
+}
+
 function iconFor(c, stale) {
   const label = `<span class="lbl" style="top:{T}px">${esc(c.callsign || '')}</span>`;
   const cls = 'cot-icon' + (stale ? ' stale' : '');
   if (c.type.startsWith('a-') && c.team) {
-    // ATAK-Nutzer: farbiger Punkt in Teamfarbe mit Richtungspfeil
+    // ATAK-Nutzer: Kreis in Teamfarbe mit Kurz-Rufname, Pfeil für die Richtung
     const col = TEAMS[c.team] || '#00FFFF';
+    const light = ['White', 'Yellow', 'Cyan', 'Green', 'Orange', 'Magenta'].includes(c.team);
+    const short = esc((c.callsign || '?').slice(0, 4));
     const arrow = Number.isFinite(c.course) && c.speed > 0.5
-      ? `<path d="M14 1 L19 9 L14 7 L9 9 Z" fill="${col}" stroke="#000" stroke-width="1" transform="rotate(${c.course} 14 14)"/>` : '';
-    const html = `<svg width="28" height="28" viewBox="0 0 28 28">${arrow}<circle cx="14" cy="14" r="8" fill="${col}" stroke="#000" stroke-width="2"/></svg>${label.replace('{T}', 28)}`;
-    return L.divIcon({ className: cls, html, iconSize: [28, 28], iconAnchor: [14, 14], popupAnchor: [0, -12] });
+      ? `<path d="M16 0 L21 7 L11 7 Z" fill="${col}" stroke="#000" stroke-width="1" transform="rotate(${c.course} 16 16)"/>` : '';
+    const html = `<svg width="32" height="32" viewBox="0 0 32 32">${arrow}<circle cx="16" cy="16" r="11" fill="${col}" stroke="#333" stroke-width="1.5"/>`
+      + `<text x="16" y="16" font-size="8" font-family="Courier New, monospace" font-weight="bold" fill="${light ? '#1a1a1a' : '#fff'}" text-anchor="middle" dominant-baseline="central">${short}</text></svg>${label.replace('{T}', 32)}`;
+    return L.divIcon({ className: cls, html, iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -14] });
   }
   const sidc = sidcFor(c.type);
   if (sidc) {
@@ -234,9 +341,8 @@ function popupHtml(it) {
   rows.push(`<div class="k">${ago(c.time)}${Date.now() > c.stale ? ' · veraltet' : ''}</div>`);
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
-  if (v && /^https?:\/\//i.test(v)) rows.push(`<a href="${esc(v)}" target="_blank" rel="noopener noreferrer">▶ Video öffnen</a>`);
-  else if (v) rows.push(`<div class="k">Video: ${esc(v)}</div>`);
-  if (it.own) rows.push(`<button type="button" data-del="${esc(c.uid)}">Löschen</button>`);
+  if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
+  if (it.own) rows.push(`<button type="button" data-del="${esc(c.uid)}">LÖSCHEN</button>`);
   return rows.join('');
 }
 
@@ -261,7 +367,7 @@ function drawItem(it) {
     it.layer = L.circle([c.lat, c.lon], { radius: r, ...style }).addTo(shapesLayer);
   } else if (c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) {
     const pts = c.linkPoints.map(p => [p[0], p[1]]);
-    const closed = c.type === 'u-d-r' || c.type === 'u-d-f-c' || c.detail && c.detail.querySelector('closed[value="true"]')
+    const closed = c.type === 'u-d-r' || c.type === 'u-d-f-c' || (c.detail && c.detail.querySelector('closed[value="true"]'))
       || (pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]);
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
@@ -279,10 +385,11 @@ function handleCot(xml, { local = false, own = false } = {}) {
     for (const l of c.links) if (l.uid) removeItem(l.uid);
     return;
   }
-  if (c.type === 'b-t-f') return receiveChat(c, xml, local);
+  if (c.type === 'b-t-f') return receiveChat(c, local);
+  if (c.type.startsWith('t-x-m-')) { document.dispatchEvent(new CustomEvent('eud-mission-change')); return; }
   if (c.uid === profile.uid) return; // eigenes Echo
   const prev = items.get(c.uid);
-  if (prev && prev.c.time > c.time && !local) return; // älter als bekannt
+  if (prev && prev.c.time > c.time && !local) return; // älter als bekannt (z. B. über zweiten Server)
   const it = prev || { uid: c.uid };
   it.c = c;
   it.xml = xml;
@@ -290,7 +397,7 @@ function handleCot(xml, { local = false, own = false } = {}) {
   items.set(c.uid, it);
   drawItem(it);
   if (!local) persistSoon();
-  if (!$('list').classList.contains('hidden')) renderList();
+  if (popupSec === 'contacts') renderList();
 }
 
 // Lagebild auf dem Gerät halten (für Start ohne Netz)
@@ -322,19 +429,20 @@ setInterval(() => {
 // Chat (GeoChat, „All Chat Rooms“)
 // ======================================================================
 
-function receiveChat(c, xml, local) {
+function receiveChat(c, local) {
   const ch = c.chat;
   const room = ch ? ch.getAttribute('chatroom') || ch.getAttribute('id') || '' : '';
   const sender = ch ? ch.getAttribute('senderCallsign') || '' : c.callsign || '';
-  const msgId = c.uid;
-  if (chat.some(m => m.id === msgId)) return;
+  if (chat.some(m => m.id === c.uid)) return;
   const toMe = ch && (ch.getAttribute('id') === profile.uid || room === profile.callsign);
   const fromMe = c.uid.startsWith('GeoChat.' + profile.uid + '.');
-  chat.push({ id: msgId, from: sender, room: toMe ? 'Direkt' : room, text: c.remarks, time: c.time, me: fromMe });
+  chat.push({ id: c.uid, from: sender, room: toMe ? 'Direkt' : room, text: c.remarks, time: c.time, me: fromMe });
   chat = chat.slice(-200);
   store.set('eud.chat', chat);
-  if (!local && !fromMe) {
-    if ($('chat').classList.contains('hidden')) { unread++; updateBadge(); toast(`${sender}: ${c.remarks}`); }
+  if (!local && !fromMe && $('chatWin').classList.contains('hidden')) {
+    unread++;
+    updateBadge();
+    toast(`${sender}: ${c.remarks}`);
   }
   renderChat();
 }
@@ -347,19 +455,29 @@ function updateBadge() {
 function renderChat() {
   const log = $('chatLog');
   log.textContent = '';
+  if (!chat.length) {
+    const e = document.createElement('div');
+    e.className = 'chat-empty';
+    e.textContent = 'Keine Nachrichten';
+    log.append(e);
+  }
   for (const m of chat) {
     const d = document.createElement('div');
-    d.className = 'm' + (m.me ? ' me' : '');
-    const who = document.createElement('div');
-    who.className = 'who';
-    who.textContent = `${m.from}${m.room && m.room !== 'All Chat Rooms' ? ' → ' + m.room : ''} · ${new Date(m.time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}`;
+    d.className = 'cm ' + (m.me ? 'out' : 'in');
+    const h = document.createElement('div');
+    h.className = 'cm-h';
+    const who = document.createElement('b');
+    who.textContent = m.from + (m.room && m.room !== 'All Chat Rooms' ? ' → ' + m.room : '');
+    const time = document.createElement('span');
+    time.textContent = hhmm(new Date(m.time));
+    h.append(who, time);
     const txt = document.createElement('div');
-    txt.className = 'txt';
+    txt.className = 'cm-t';
     txt.textContent = m.text;
-    d.append(who, txt);
+    d.append(h, txt);
     log.append(d);
   }
-  log.parentElement.scrollTop = log.parentElement.scrollHeight;
+  log.scrollTop = log.scrollHeight;
 }
 
 function chatXml(text) {
@@ -377,6 +495,21 @@ function chatXml(text) {
     + `<__serverdestination destinations="0.0.0.0:4242:tcp:${xmlEsc(profile.uid)}"/></detail></event>`;
 }
 
+function openChat() {
+  closeSidebar();
+  closePopup();
+  unread = 0;
+  updateBadge();
+  renderChat();
+  $('chatWin').classList.remove('hidden');
+  $('btnChat').classList.add('active');
+}
+function closeChat() {
+  $('chatWin').classList.add('hidden');
+  $('btnChat').classList.remove('active');
+}
+$('btnChat').addEventListener('click', () => ($('chatWin').classList.contains('hidden') ? openChat() : closeChat()));
+$('chatClose').addEventListener('click', closeChat);
 $('chatForm').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('chatIn').value.trim();
@@ -388,117 +521,158 @@ $('chatForm').addEventListener('submit', e => {
 });
 
 // ======================================================================
-// Verbindung zum TAK-Server über die Durchreiche
+// Verbindungen zu den TAK-Servern (je Server ein WebSocket zur Durchreiche)
 // ======================================================================
 
-let ws = null;
-let wsRetry = 0;
-let wsTimer = null;
-let takState = 'idle';
-let outbox = store.get('eud.outbox', []);
+const conns = new Map(); // server.id -> { ws, retry, timer, state, message }
+let outbox = store.get('eud.outbox2', {}); // server.id -> [xml]
 
-function setStatus(kind, text) {
-  $('dot').className = 'dot ' + kind;
-  $('statusText').textContent = text;
+function connOf(srv) {
+  if (!conns.has(srv.id)) conns.set(srv.id, { ws: null, retry: 0, timer: null, state: 'idle', message: '' });
+  return conns.get(srv.id);
 }
+const isOpen = c => c && c.ws && c.ws.readyState === 1;
 
 function updateStatus() {
-  if (!profile.auto) return setStatus('', profile.host ? 'Nicht verbunden' : 'Einrichten');
-  if (!ws || ws.readyState !== 1) return setStatus('warn', navigator.onLine ? 'Server nicht erreichbar – neuer Versuch …' : 'Offline – Karte und Lagebild aus dem Speicher');
-  if (takState === 'connected') return setStatus('ok', profile.host);
-  if (takState === 'error') return setStatus('err', lastError || 'Fehler');
-  setStatus('warn', 'Verbinde mit ' + profile.host + ' …');
+  const active = servers.filter(s => s.auto);
+  const ok = active.filter(s => connOf(s).state === 'connected').length;
+  const anyErr = active.some(s => ['error', 'untrusted'].includes(connOf(s).state));
+  let kind = '', text = 'OFFLINE';
+  if (!servers.length) text = 'EINRICHTEN';
+  else if (!active.length) text = 'GETRENNT';
+  else if (!navigator.onLine) { kind = 'warn'; text = 'OFFLINE'; }
+  else if (ok === active.length) { kind = 'ok'; text = active.length > 1 ? `ONLINE ${ok}/${active.length}` : 'ONLINE'; }
+  else if (ok) { kind = 'warn'; text = `ONLINE ${ok}/${active.length}`; }
+  else if (anyErr) { kind = 'err'; text = 'FEHLER'; }
+  else { kind = 'warn'; text = 'VERBINDE'; }
+  $('dot').className = 'dot ' + kind;
+  $('statusText').textContent = text;
+  if (popupSec === 'server') renderServers();
 }
-let lastError = '';
 
+// An alle verbundenen Server senden; wer gerade nicht verbunden ist, bekommt es später (queue)
 function sendCot(xml, queue) {
-  if (ws && ws.readyState === 1) {
-    ws.send(JSON.stringify({ type: 'cot', xml }));
-    return true;
+  let sent = false;
+  for (const srv of servers.filter(s => s.auto)) {
+    const c = connOf(srv);
+    if (isOpen(c)) {
+      c.ws.send(JSON.stringify({ type: 'cot', xml }));
+      sent = true;
+    } else if (queue) {
+      outbox[srv.id] = (outbox[srv.id] || []).concat(xml).slice(-100);
+    }
   }
-  if (queue) {
-    outbox.push(xml);
-    outbox = outbox.slice(-100);
-    store.set('eud.outbox', outbox);
-  }
-  return false;
+  if (queue) store.set('eud.outbox2', outbox);
+  return sent;
 }
 
-function flushOutbox() {
-  while (outbox.length && ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'cot', xml: outbox.shift() }));
-  store.set('eud.outbox', outbox);
+function flushOutbox(srv) {
+  const c = connOf(srv);
+  const list = outbox[srv.id] || [];
+  while (list.length && isOpen(c)) c.ws.send(JSON.stringify({ type: 'cot', xml: list.shift() }));
+  outbox[srv.id] = list;
+  store.set('eud.outbox2', outbox);
 }
 
-function openWs() {
-  clearTimeout(wsTimer);
-  if (!profile.auto || !profile.host) return updateStatus();
-  if (ws && (ws.readyState === 0 || ws.readyState === 1)) return;
+function openConn(srv) {
+  const c = connOf(srv);
+  clearTimeout(c.timer);
+  if (!srv.auto || !srv.host) return updateStatus();
+  if (c.ws && (c.ws.readyState === 0 || c.ws.readyState === 1)) return;
   const sock = new WebSocket((location.protocol === 'https:' ? 'wss://' : 'ws://') + location.host + '/ws/tak');
-  ws = sock;
-  takState = 'connecting';
+  c.ws = sock;
+  c.state = 'connecting';
+  c.message = '';
   updateStatus();
   sock.onopen = () => {
-    wsRetry = 0;
+    c.retry = 0;
     sock.send(JSON.stringify({
-      type: 'connect', host: profile.host, port: profile.port, proto: profile.proto, uid: profile.uid, callsign: profile.callsign,
-      certPem: profile.proto === 'ssl' ? profile.certPem : '', keyPem: profile.proto === 'ssl' ? profile.keyPem : '',
-      caPems: profile.caPems, fingerprint: profile.fingerprint,
+      type: 'connect', host: srv.host, port: srv.port, proto: srv.proto, uid: profile.uid, callsign: profile.callsign,
+      certPem: srv.proto === 'ssl' ? srv.certPem : '', keyPem: srv.proto === 'ssl' ? srv.keyPem : '',
+      caPems: srv.caPems, fingerprint: srv.fingerprint,
     }));
-    flushOutbox(); // die Durchreiche puffert, bis der TAK-Server verbunden ist
-    sendSelf();
+    flushOutbox(srv); // die Durchreiche puffert, bis der TAK-Server verbunden ist
+    sendSelfTo(srv);
   };
   sock.onmessage = ev => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'cot') return handleCot(msg.xml);
     if (msg.type !== 'status') return;
-    const was = takState;
-    takState = msg.state;
-    if (msg.state === 'error') lastError = msg.message;
-    if (msg.state === 'connected' && was !== 'connected') { toast('Verbunden mit ' + profile.host); sendSelf(); }
+    const was = c.state;
+    c.state = msg.state;
+    c.message = msg.message || '';
+    if (msg.state === 'connected' && was !== 'connected') { toast('Verbunden: ' + (srv.name || srv.host)); sendSelfTo(srv); }
     if (msg.state === 'untrusted') {
-      askTrust(profile.host + ':' + profile.port, msg.fingerprint, msg.subject).then(ok => {
-        if (!ok) { disconnect(); return; }
-        profile.fingerprint = msg.fingerprint;
-        saveProfile();
-        reconnect();
+      askTrust(`${srv.host}:${srv.port}`, msg.fingerprint, msg.subject).then(ok => {
+        if (!ok) return disconnectServer(srv);
+        srv.fingerprint = msg.fingerprint;
+        saveServers();
+        reconnect(srv);
       });
     }
     updateStatus();
-    updateSetup();
   };
   sock.onclose = () => {
-    if (ws !== sock) return;
-    ws = null;
-    takState = 'idle';
+    if (c.ws !== sock) return;
+    c.ws = null;
+    if (c.state !== 'error' && c.state !== 'untrusted') c.state = 'offline';
     updateStatus();
-    if (profile.auto) wsTimer = setTimeout(openWs, Math.min(30000, 1000 * 2 ** wsRetry++));
+    if (srv.auto) c.timer = setTimeout(() => openConn(srv), Math.min(30000, 1000 * 2 ** c.retry++));
   };
   sock.onerror = () => {};
 }
 
-function reconnect() {
-  if (ws) { const s = ws; ws = null; s.onclose = null; s.close(); }
-  wsRetry = 0;
-  openWs();
-}
-
-function disconnect() {
-  profile.auto = false;
-  saveProfile();
-  if (ws) {
-    try { ws.send(JSON.stringify({ type: 'disconnect' })); } catch (e) { /* egal */ }
-    const s = ws; ws = null; s.onclose = null; s.close();
+function closeSock(srv) {
+  const c = connOf(srv);
+  clearTimeout(c.timer);
+  if (c.ws) {
+    try { c.ws.send(JSON.stringify({ type: 'disconnect' })); } catch (e) { /* egal */ }
+    const s = c.ws;
+    c.ws = null;
+    s.onclose = null;
+    s.close();
   }
-  takState = 'idle';
-  updateStatus();
-  updateSetup();
+  c.state = 'idle';
+  c.message = '';
 }
 
-window.addEventListener('online', () => { wsRetry = 0; openWs(); });
+function reconnect(srv) {
+  closeSock(srv);
+  connOf(srv).retry = 0;
+  openConn(srv);
+}
+
+function connectServer(srv) {
+  srv.auto = true;
+  saveServers();
+  reconnect(srv);
+}
+
+function disconnectServer(srv) {
+  srv.auto = false;
+  saveServers();
+  closeSock(srv);
+  updateStatus();
+}
+
+function removeServer(srv) {
+  closeSock(srv);
+  conns.delete(srv.id);
+  delete outbox[srv.id];
+  store.set('eud.outbox2', outbox);
+  servers = servers.filter(s => s !== srv);
+  saveServers();
+  updateStatus();
+}
+
+function reconnectAll() {
+  for (const srv of servers) { connOf(srv).retry = 0; openConn(srv); }
+}
+window.addEventListener('online', reconnectAll);
 window.addEventListener('offline', updateStatus);
 document.addEventListener('visibilitychange', () => {
-  if (document.visibilityState === 'visible') { wsRetry = 0; openWs(); sendSelf(); if (profile.wake) wakeLock(); }
+  if (document.visibilityState === 'visible') { reconnectAll(); sendSelf(); if (profile.wake) wakeLock(); }
 });
 
 // ======================================================================
@@ -512,6 +686,7 @@ function selfXml() {
   const p = me;
   const course = Number.isFinite(p.course) ? p.course : 0;
   const speed = Number.isFinite(p.speed) ? p.speed : 0;
+  const video = window.eudVideoUrl ? `<__video url="${xmlEsc(window.eudVideoUrl)}"/>` : '';
   return `<event version="2.0" uid="${xmlEsc(profile.uid)}" type="a-f-G-U-C" how="m-g" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 120000))}">`
     + `<point lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}" hae="${Number.isFinite(p.alt) ? p.alt.toFixed(1) : '9999999'}" ce="${Math.round(p.acc || 9999999)}" le="9999999"/>`
     + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="TAK EUD (Web)"/>`
@@ -520,30 +695,29 @@ function selfXml() {
     + `<precisionlocation altsrc="GPS" geopointsrc="GPS"/>`
     + `<__group role="${xmlEsc(profile.role)}" name="${xmlEsc(profile.team)}"/>`
     + (battery != null ? `<status battery="${battery}"/>` : '')
+    + video
     + `<track course="${course.toFixed(1)}" speed="${speed.toFixed(1)}"/></detail></event>`;
 }
 
 function sendSelf() {
-  if (!me || !profile.auto) return;
+  if (!me) return;
   if (sendCot(selfXml(), false)) { lastSent = Date.now(); sentAt = { lat: me.lat, lon: me.lon }; }
 }
-
-let battery = null;
-if (navigator.getBattery) navigator.getBattery().then(b => {
-  const upd = () => { battery = Math.round(b.level * 100); };
-  upd();
-  b.addEventListener('levelchange', upd);
-}).catch(() => {});
+function sendSelfTo(srv) {
+  const c = connOf(srv);
+  if (me && isOpen(c)) c.ws.send(JSON.stringify({ type: 'cot', xml: selfXml() }));
+}
+window.eudSendSelf = sendSelf;
 
 function drawMe() {
   const ll = [me.lat, me.lon];
   const col = TEAMS[profile.team] || '#00FFFF';
-  const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : null;
-  const html = `<svg width="30" height="30" viewBox="0 0 30 30">${rot != null ? `<path d="M15 0 L21 10 L15 8 L9 10 Z" fill="#fff" stroke="#000" transform="rotate(${rot} 15 15)"/>` : ''}`
-    + `<circle cx="15" cy="15" r="9" fill="${col}" stroke="#fff" stroke-width="3"/></svg>`;
-  const icon = L.divIcon({ className: 'cot-icon', html, iconSize: [30, 30], iconAnchor: [15, 15] });
+  const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : 0;
+  const html = `<svg width="32" height="32" viewBox="0 0 32 32"><g transform="rotate(${rot} 16 16)">`
+    + `<path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></g></svg>`;
+  const icon = L.divIcon({ className: 'cot-icon', html, iconSize: [32, 32], iconAnchor: [16, 16] });
   if (!meMarker) {
-    meCircle = L.circle(ll, { radius: me.acc || 0, color: '#00c8ff', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
+    meCircle = L.circle(ll, { radius: me.acc || 0, color: '#007bff', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
     meMarker = L.marker(ll, { icon, zIndexOffset: 1000 }).addTo(map).bindPopup(() =>
       `<div class="t">${esc(profile.callsign || 'Ich')}</div><div>${me.lat.toFixed(5)}, ${me.lon.toFixed(5)}</div><div class="k">± ${Math.round(me.acc)} m</div>`);
     map.setView(ll, Math.max(map.getZoom(), 15));
@@ -567,61 +741,55 @@ if ('geolocation' in navigator) {
 }
 setInterval(() => { if (Date.now() - lastSent > 30000) sendSelf(); }, 10000);
 
-map.on('dragstart', () => { follow = false; $('btnCenter').classList.remove('on'); });
+map.on('dragstart', () => { follow = false; $('btnCenter').classList.remove('active'); });
 $('btnCenter').addEventListener('click', () => {
   follow = true;
-  $('btnCenter').classList.add('on');
+  $('btnCenter').classList.add('active');
   if (me) map.setView([me.lat, me.lon], Math.max(map.getZoom(), 16));
   else toast('Noch keine Position.');
 });
-$('btnCenter').classList.add('on');
+$('btnCenter').classList.add('active');
 
 // ======================================================================
-// Marker setzen
+// Marker setzen: Symbol wählen -> Fadenkreuz -> PUNKT SETZEN
 // ======================================================================
 
-let placeAt = null;
-function startPlace() {
-  $('crosshair').classList.remove('hidden');
-  $('placeBar').classList.remove('hidden');
-  for (const s of document.querySelectorAll('.sheet')) s.classList.add('hidden');
+const TOOL_NAMES = { 'a-h-G': 'Feind', 'a-f-G': 'Freund', 'a-n-G': 'Neutral', 'a-u-G': 'Unbekannt', 'b-m-p-s-p-i': 'Punkt' };
+let tool = null;
+for (const b of document.querySelectorAll('[data-tool]')) {
+  const sidc = sidcFor(b.dataset.tool + '-U');
+  if (sidc) b.innerHTML = symbolSvg(sidc, 22).svg;
+  b.addEventListener('click', () => setTool(tool === b.dataset.tool ? null : b.dataset.tool));
 }
-function endPlace() {
-  $('crosshair').classList.add('hidden');
-  $('placeBar').classList.add('hidden');
+function setTool(t) {
+  tool = t;
+  for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
+  $('crosshair').classList.toggle('hidden', !t);
+  $('setBtn').classList.toggle('hidden', !t);
+  if (t) { follow = false; $('btnCenter').classList.remove('active'); }
 }
-function markerDialog(latlng) {
-  endPlace();
-  placeAt = latlng;
-  $('mName').value = '';
-  $('mRemarks').value = '';
-  openSheet('markerSheet');
-}
-$('btnMarker').addEventListener('click', startPlace);
-$('placeCancel').addEventListener('click', endPlace);
-$('placeOk').addEventListener('click', () => markerDialog(map.getCenter()));
-map.on('contextmenu', e => markerDialog(e.latlng)); // langes Drücken / Rechtsklick
 
-$('mSave').addEventListener('click', () => {
-  if (!placeAt) return;
+function placeMarker(latlng) {
   const now = new Date();
-  const type = $('mType').value;
+  const type = tool;
   const uid = profile.uid + '-' + rnd(4);
-  const name = $('mName').value.trim() || ($('mType').selectedOptions[0].text + ' ' + now.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }));
-  const remarks = $('mRemarks').value.trim();
+  const name = `${TOOL_NAMES[type]} ${hhmm(now)}`;
   const xml = `<event version="2.0" uid="${uid}" type="${type}" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 30 * 86400000))}">`
-    + `<point lat="${placeAt.lat.toFixed(7)}" lon="${placeAt.lng.toFixed(7)}" hae="9999999" ce="9999999" le="9999999"/>`
+    + `<point lat="${latlng.lat.toFixed(7)}" lon="${latlng.lng.toFixed(7)}" hae="9999999" ce="9999999" le="9999999"/>`
     + `<detail><contact callsign="${xmlEsc(name)}"/>`
     + `<link uid="${xmlEsc(profile.uid)}" production_time="${cotTime(now)}" type="a-f-G-U-C" parent_callsign="${xmlEsc(profile.callsign || profile.uid)}" relation="p-p"/>`
-    + `<archive/>${type.startsWith('b-m-p') ? '<color argb="-65536"/>' : ''}`
-    + `<remarks>${xmlEsc(remarks)}</remarks></detail></event>`;
+    + `<archive/>${type.startsWith('b-m-p') ? '<color argb="-65536"/>' : ''}<remarks/></detail></event>`;
   handleCot(xml, { own: true });
-  sendCot(xml, true);
-  closeSheet('markerSheet');
-  toast(ws && ws.readyState === 1 ? 'Marker gesendet.' : 'Marker gespeichert – wird gesendet, sobald die Verbindung steht.');
-});
+  const sent = sendCot(xml, true);
+  setTool(null);
+  toast(sent ? `${name} gesendet.` : `${name} gespeichert – wird gesendet, sobald eine Verbindung steht.`);
+}
+$('setBtn').addEventListener('click', () => placeMarker(map.getCenter()));
+map.on('contextmenu', e => { if (tool) placeMarker(e.latlng); }); // langes Drücken setzt direkt dort
 
 map.on('popupopen', e => {
+  const play = e.popup.getElement().querySelector('[data-play]');
+  if (play) play.addEventListener('click', () => { map.closePopup(); window.eudPlay(play.dataset.name, play.dataset.play); });
   const btn = e.popup.getElement().querySelector('[data-del]');
   if (!btn) return;
   btn.addEventListener('click', () => {
@@ -644,7 +812,12 @@ function renderList() {
   box.textContent = '';
   const list = [...items.values()].filter(it => it.c.type.startsWith('a-') && Number.isFinite(it.c.lat));
   list.sort((a, b) => (b.c.team ? 1 : 0) - (a.c.team ? 1 : 0) || String(a.c.callsign || a.uid).localeCompare(String(b.c.callsign || b.uid)));
-  if (!list.length) box.textContent = 'Noch keine Kontakte.';
+  if (!list.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'Noch keine Kontakte.';
+    box.append(e);
+  }
   for (const it of list) {
     const row = document.createElement('div');
     row.className = 'contact' + (Date.now() > it.c.stale ? ' stale' : '');
@@ -659,78 +832,170 @@ function renderList() {
     dist.textContent = me ? fmtDist(distance(me, it.c)) : ago(it.c.time);
     row.append(sw, name, dist);
     row.addEventListener('click', () => {
-      closeSheet('list');
+      closePopup();
       follow = false;
-      $('btnCenter').classList.remove('on');
+      $('btnCenter').classList.remove('active');
       map.setView([it.c.lat, it.c.lon], Math.max(map.getZoom(), 15));
       if (it.layer) it.layer.openPopup();
     });
     box.append(row);
   }
 }
-$('btnList').addEventListener('click', () => { renderList(); openSheet('list'); });
-$('btnChat').addEventListener('click', () => { unread = 0; updateBadge(); renderChat(); openSheet('chat'); });
 
 // ======================================================================
-// Einrichtung
+// Rufname
 // ======================================================================
 
 for (const t of Object.keys(TEAMS)) $('fTeam').append(new Option(t, t));
 for (const r of ROLES) $('fRole').append(new Option(r, r));
-
-function fillForm() {
-  $('fHost').value = profile.host;
-  $('fPort').value = profile.port || '';
-  $('fProto').value = profile.proto;
-  $('fEnroll').value = profile.enrollPort || '';
-  $('fUser').value = profile.username || '';
+function fillMe() {
   $('fCallsign').value = profile.callsign;
   $('fTeam').value = profile.team;
   $('fRole').value = profile.role;
-  $('fWake').checked = !!profile.wake;
   $('uidText').textContent = profile.uid;
-  updateSetup();
 }
-
-function readForm() {
-  const host = $('fHost').value.trim().replace(/^[a-z]+:\/\//i, '').replace(/[/:].*$/, '');
-  if (host !== profile.host) profile.fingerprint = '';
-  profile.host = host;
-  profile.port = Number($('fPort').value) || 8089;
-  profile.proto = $('fProto').value;
-  profile.enrollPort = Number($('fEnroll').value) || 8446;
-  profile.username = $('fUser').value.trim();
-  profile.callsign = $('fCallsign').value.trim();
+$('meSave').addEventListener('click', () => {
+  const call = $('fCallsign').value.trim();
+  if (!call) { $('fCallsign').focus(); return; }
+  profile.callsign = call;
   profile.team = $('fTeam').value;
   profile.role = $('fRole').value;
   saveProfile();
+  showMe();
+  sendSelf();
+  closePopup();
+  if (!servers.length) openEdit(null);
+});
+
+// ======================================================================
+// Server: Liste, Bearbeiten, Zertifikat, Dateien, QR
+// ======================================================================
+
+const STATE_TEXT = { connected: 'verbunden', connecting: 'verbinde …', offline: 'Durchreiche nicht erreichbar', idle: 'getrennt' };
+
+function renderServers() {
+  const box = $('srvList');
+  box.textContent = '';
+  if (!servers.length) {
+    const e = document.createElement('div');
+    e.className = 'empty';
+    e.textContent = 'Noch kein Server eingerichtet.';
+    box.append(e);
+  }
+  for (const srv of servers) {
+    const c = connOf(srv);
+    const el = document.createElement('div');
+    el.className = 'srv';
+    const dotKind = !srv.auto ? '' : c.state === 'connected' ? 'ok' : ['error', 'untrusted'].includes(c.state) ? 'err' : 'warn';
+    el.innerHTML = `<div class="srv-h"><span class="dot ${dotKind}"></span><span class="srv-name"></span><span class="srv-proto"></span><button type="button" class="srv-del" aria-label="Entfernen">×</button></div>`
+      + `<div class="srv-url"></div><div class="srv-info"></div><div class="srv-acts"><button type="button" class="act"></button><button type="button" class="edit">BEARBEITEN</button></div>`;
+    el.querySelector('.srv-name').textContent = srv.name || srv.host;
+    el.querySelector('.srv-proto').textContent = srv.proto.toUpperCase();
+    el.querySelector('.srv-url').textContent = `${srv.host}:${srv.port}` + (srv.proto === 'ssl' ? (srv.certPem ? ' · Zertifikat ✓' : ' · kein Zertifikat') : '');
+    const info = el.querySelector('.srv-info');
+    info.textContent = !srv.auto ? 'getrennt' : (c.state === 'error' || c.state === 'untrusted' ? c.message : STATE_TEXT[c.state] || c.state);
+    info.classList.toggle('err', srv.auto && ['error', 'untrusted'].includes(c.state));
+    const act = el.querySelector('.act');
+    act.textContent = srv.auto ? 'TRENNEN' : 'VERBINDEN';
+    act.className = srv.auto ? 'dis' : 'con';
+    act.onclick = () => (srv.auto ? disconnectServer(srv) : (profile.callsign ? connectServer(srv) : askCallsign()));
+    el.querySelector('.edit').onclick = () => openEdit(srv);
+    el.querySelector('.srv-del').onclick = () => { if (confirm(`Server „${srv.name || srv.host}“ entfernen?`)) removeServer(srv); };
+    box.append(el);
+  }
 }
 
-function updateSetup() {
+function askCallsign() {
+  openPopup('me');
+  toast('Bitte zuerst einen Rufnamen eintragen.');
+  $('fCallsign').focus();
+}
+
+// Bearbeiten arbeitet auf einer Kopie; „Speichern & Verbinden“ übernimmt sie
+let draft = null;
+let draftOrig = null;
+
+function openEdit(srv) {
+  draftOrig = srv;
+  draft = srv ? JSON.parse(JSON.stringify(srv)) : newServer();
+  openPopup('edit', srv ? 'Server bearbeiten' : 'Server hinzufügen');
+  fillEdit();
+  setMsg($('setupMsg'), '');
+  $('fPass').value = '';
+}
+$('addSrvBtn').addEventListener('click', () => openEdit(null));
+$('editCancel').addEventListener('click', () => openPopup('server'));
+
+function fillEdit() {
+  $('fName').value = draft.name || '';
+  $('fHost').value = draft.host;
+  $('fPort').value = draft.port || '';
+  $('fProto').value = draft.proto;
+  $('fEnroll').value = draft.enrollPort || '';
+  $('fApi').value = draft.apiPort || '';
+  $('fUser').value = draft.username || '';
+  updateCertState();
+}
+
+function readEdit() {
+  const host = $('fHost').value.trim().replace(/^[a-z]+:\/\//i, '').replace(/[/:].*$/, '');
+  if (host !== draft.host) draft.fingerprint = '';
+  draft.host = host;
+  draft.name = $('fName').value.trim();
+  draft.port = Number($('fPort').value) || DEFAULT_PORT[$('fProto').value];
+  draft.proto = $('fProto').value;
+  draft.enrollPort = Number($('fEnroll').value) || 8446;
+  draft.apiPort = Number($('fApi').value) || 8443;
+  draft.username = $('fUser').value.trim();
+}
+
+function updateCertState() {
   $('sslBox').classList.toggle('hidden', $('fProto').value !== 'ssl');
   const st = $('certState');
-  const i = profile.certInfo;
-  if (profile.certPem && i) {
-    st.textContent = `✓ Zertifikat: ${i.subject}${i.validTo ? ' · gültig bis ' + new Date(i.validTo).toLocaleDateString() : ''}`
-      + (profile.caPems.length ? ` · ${profile.caPems.length} CA` : ' · ohne CA');
-    st.className = 'state ok';
-  } else if (profile.certPem) {
-    st.textContent = '✓ Zertifikat vorhanden';
+  const i = draft.certInfo;
+  if (draft.certPem) {
+    st.textContent = '✓ ' + (i ? `${i.subject}${i.validTo ? ' · bis ' + new Date(i.validTo).toLocaleDateString() : ''}` : 'Zertifikat vorhanden')
+      + (draft.caPems.length ? ` · ${draft.caPems.length} CA` : '');
     st.className = 'state ok';
   } else {
-    st.textContent = profile.caPems.length ? `Truststore geladen (${profile.caPems.length} CA) – noch kein eigenes Zertifikat` : 'Noch kein Zertifikat – anfordern oder .p12 / Datenpaket laden';
+    st.textContent = draft.caPems.length ? `Truststore geladen (${draft.caPems.length} CA) – noch kein eigenes Zertifikat` : 'Kein Zertifikat – anfordern oder .p12 / Datenpaket laden';
     st.className = 'state';
   }
-  $('connectBtn').classList.toggle('hidden', !!profile.auto);
-  $('disconnectBtn').classList.toggle('hidden', !profile.auto);
-  $('meName').textContent = profile.callsign;
-  $('meName').classList.toggle('hidden', !profile.callsign);
 }
 $('fProto').addEventListener('change', () => {
-  const ports = { ssl: 8089, tcp: 8087, udp: 8087 };
-  if (!$('fPort').value || Object.values(ports).includes(Number($('fPort').value))) $('fPort').value = ports[$('fProto').value];
-  updateSetup();
+  if (!$('fPort').value || Object.values(DEFAULT_PORT).includes(Number($('fPort').value))) $('fPort').value = DEFAULT_PORT[$('fProto').value];
+  updateCertState();
 });
+
+// 127.0.0.1 / localhost = dieses Handy (z. B. TAK-Server in der Meshtastic-App). Eine Web-App kann
+// keine TCP/TLS-Verbindungen öffnen, und die Durchreiche erreicht das Handy nicht.
+const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)$/i;
+const LOCAL_MSG = 'Adresse auf dem Handy selbst (z. B. Meshtastic-App): Das kann die Web-App nicht erreichen – dafür braucht es die EUD als installierte App.';
+
+$('editSave').addEventListener('click', () => {
+  readEdit();
+  const msg = $('setupMsg');
+  if (!draft.host) return setMsg(msg, 'Bitte Adresse eintragen.');
+  if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
+  saveDraft();
+  if (!profile.callsign) return askCallsign();
+  openPopup('server');
+});
+
+function saveDraft() {
+  if (!draft.name) draft.name = draft.host;
+  if (draftOrig) {
+    const keepAuto = draftOrig.auto;
+    Object.assign(draftOrig, draft, { auto: keepAuto });
+    draft = draftOrig;
+  } else {
+    servers.push(draft);
+    draftOrig = draft;
+  }
+  saveServers();
+  if (profile.callsign) connectServer(draftOrig);
+  else updateStatus();
+}
 
 async function postJson(path, body) {
   let res;
@@ -745,39 +1010,37 @@ async function postJson(path, body) {
   return data;
 }
 
-function addCas(pems) {
-  for (const p of pems || []) if (!profile.caPems.includes(p)) profile.caPems.push(p);
+function addCas(srv, pems) {
+  for (const p of pems || []) if (!srv.caPems.includes(p)) srv.caPems.push(p);
 }
 
 async function requestCert(password) {
-  readForm();
+  readEdit();
   const msg = $('setupMsg');
-  if (!profile.host) return setMsg(msg, 'Bitte Server-Adresse eintragen.');
-  if (!profile.username || !password) return setMsg(msg, 'Bitte Benutzername und Passwort eintragen.');
+  if (!draft.host) return setMsg(msg, 'Bitte Adresse eintragen.');
+  if (!draft.username || !password) return setMsg(msg, 'Bitte Benutzer und Passwort eintragen.');
   setMsg(msg, 'Fordere Zertifikat an …', true);
   $('enrollBtn').disabled = true;
   try {
     for (let i = 0; i < 2; i++) {
       try {
         const r = await postJson('/api/eud/enroll', {
-          host: profile.host, port: profile.enrollPort, username: profile.username, password,
-          uid: profile.uid, caPems: profile.caPems, fingerprint: profile.fingerprint,
+          host: draft.host, port: draft.enrollPort, username: draft.username, password,
+          uid: profile.uid, caPems: draft.caPems, fingerprint: draft.fingerprint,
         });
-        profile.certPem = r.certPem;
-        profile.keyPem = r.keyPem;
-        profile.certInfo = r.info;
-        addCas(r.caPems);
-        saveProfile();
+        draft.certPem = r.certPem;
+        draft.keyPem = r.keyPem;
+        draft.certInfo = r.info;
+        addCas(draft, r.caPems);
         $('fPass').value = '';
-        setMsg(msg, 'Zertifikat erhalten. Jetzt „Verbinden“.', true);
-        updateSetup();
+        setMsg(msg, 'Zertifikat erhalten.', true);
+        updateCertState();
         return true;
       } catch (e) {
         if (e.code !== 'UNTRUSTED' || i) throw e;
-        const ok = await askTrust(profile.host + ':' + profile.enrollPort, e.fingerprint, e.subject);
+        const ok = await askTrust(`${draft.host}:${draft.enrollPort}`, e.fingerprint, e.subject);
         if (!ok) { setMsg(msg, 'Abgebrochen.'); return false; }
-        profile.fingerprint = e.fingerprint;
-        saveProfile();
+        draft.fingerprint = e.fingerprint;
       }
     }
   } catch (e) {
@@ -788,25 +1051,6 @@ async function requestCert(password) {
   return false;
 }
 $('enrollBtn').addEventListener('click', () => requestCert($('fPass').value));
-
-function connect() {
-  readForm();
-  const msg = $('setupMsg');
-  if (!profile.host) return setMsg(msg, 'Bitte Server-Adresse eintragen.');
-  if (!profile.callsign) return setMsg(msg, 'Bitte einen Rufnamen eintragen.');
-  if (profile.proto === 'ssl' && !profile.certPem) setMsg(msg, 'Hinweis: ohne Zertifikat lehnen die meisten TAK-Server SSL ab.');
-  else setMsg(msg, '');
-  profile.auto = true;
-  saveProfile();
-  updateSetup();
-  reconnect();
-  closeSheet('setup');
-}
-$('connectBtn').addEventListener('click', connect);
-$('disconnectBtn').addEventListener('click', disconnect);
-for (const id of ['fCallsign', 'fTeam', 'fRole']) $(id).addEventListener('change', () => { readForm(); updateSetup(); sendSelf(); });
-$('btnSettings').addEventListener('click', () => { fillForm(); openSheet('setup'); });
-$('statusBtn').addEventListener('click', () => { fillForm(); openSheet('setup'); });
 
 // Vertrauensfrage für ein unbekanntes Server-Zertifikat
 function askTrust(host, fingerprint, subject) {
@@ -838,20 +1082,21 @@ function fileBase64(file) {
 
 async function loadFile(file) {
   const msg = $('setupMsg');
-  readForm();
+  readEdit();
   const name = file.name.toLowerCase();
   try {
     if (name.endsWith('.zip')) {
       const r = await postJson('/api/eud/package', { data: await fileBase64(file) });
       if (r.server) {
-        if (r.server.host !== profile.host) profile.fingerprint = '';
-        Object.assign(profile, { host: r.server.host, port: r.server.port, proto: r.server.proto });
+        if (r.server.host !== draft.host) draft.fingerprint = '';
+        Object.assign(draft, { host: r.server.host, port: r.server.port, proto: r.server.proto });
+        if (!draft.name && r.server.description) draft.name = r.server.description;
       }
-      if (r.certPem) Object.assign(profile, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
-      addCas(r.caPems);
-      saveProfile();
-      fillForm();
-      setMsg(msg, 'Datenpaket geladen' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – jetzt Benutzer/Passwort eintragen und Zertifikat anfordern.' : '.'), true);
+      if (r.certPem) Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
+      addCas(draft, r.caPems);
+      fillEdit();
+      if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
+      setMsg(msg, 'Datenpaket geladen' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – Benutzer/Passwort eintragen und Zertifikat anfordern.' : '.'), true);
     } else if (/\.(p12|pfx)$/.test(name)) {
       const data = await fileBase64(file);
       let r = null;
@@ -860,17 +1105,14 @@ async function loadFile(file) {
         if (password == null) return;
         try { r = await postJson('/api/eud/p12', { data, password }); break; } catch (e) { if (pw == null) throw e; }
       }
-      if (r.kind === 'client') Object.assign(profile, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
-      addCas(r.caPems);
-      saveProfile();
-      updateSetup();
+      if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
+      addCas(draft, r.caPems);
+      updateCertState();
       setMsg(msg, r.kind === 'client' ? 'Zertifikat geladen.' : `Truststore geladen (${r.caPems.length} CA).`, true);
     } else {
-      const text = await file.text();
-      const r = await postJson('/api/eud/pem', { data: text });
-      addCas(r.caPems);
-      saveProfile();
-      updateSetup();
+      const r = await postJson('/api/eud/pem', { data: await file.text() });
+      addCas(draft, r.caPems);
+      updateCertState();
       setMsg(msg, `Truststore geladen (${r.caPems.length} CA).`, true);
     }
   } catch (e) {
@@ -896,6 +1138,7 @@ function parseQr(text) {
       else if (key === 'username' || key === 'user') out.username = v;
       else if (key === 'token' || key === 'password') out.password = v;
       else if (key === 'callsign') out.callsign = v;
+      else if (key === 'name') out.name = v;
     }
   };
   if (/^tak:\/\//i.test(text)) {
@@ -912,8 +1155,8 @@ function parseQr(text) {
   } else if (text.startsWith('{')) {
     fromParams(Object.entries(JSON.parse(text)).map(([k, v]) => [k, String(v)]));
   } else if (text.split(',').length === 4) {
-    const [, host, port, proto] = text.split(',').map(s => s.trim());
-    Object.assign(out, { host, port: Number(port), proto: proto.toLowerCase() === 'quic' ? 'ssl' : proto.toLowerCase() });
+    const [name, host, port, proto] = text.split(',').map(s => s.trim());
+    Object.assign(out, { name, host, port: Number(port), proto: proto.toLowerCase() === 'quic' ? 'ssl' : proto.toLowerCase() });
   } else if (/^[\w.-]+:\d+(:\w+)?$/.test(text)) {
     const [host, port, proto] = text.split(':');
     Object.assign(out, { host, port: Number(port), proto: (proto || 'ssl').toLowerCase() });
@@ -925,27 +1168,34 @@ function parseQr(text) {
   return out;
 }
 
+// Serverdaten übernehmen: in den offenen Entwurf, sonst in den passenden oder einen neuen Server
 async function applyConfig(cfg, auto) {
-  if (cfg.host !== profile.host) {
-    profile.fingerprint = '';
-    // Anderer Server: altes Zertifikat passt nicht mehr
-    if (profile.host) Object.assign(profile, { certPem: '', keyPem: '', certInfo: null, caPems: [] });
+  if (!draft || popupSec !== 'edit') {
+    const existing = servers.find(s => s.host === cfg.host && (!cfg.port || s.port === cfg.port));
+    openEdit(existing || null);
   }
-  profile.host = cfg.host;
-  if (cfg.port) profile.port = cfg.port;
-  if (cfg.proto) profile.proto = cfg.proto;
-  if (cfg.enrollPort) profile.enrollPort = cfg.enrollPort;
-  if (cfg.username) profile.username = cfg.username;
-  if (cfg.callsign && !profile.callsign) profile.callsign = cfg.callsign;
-  saveProfile();
-  fillForm();
-  openSheet('setup');
+  if (cfg.host !== draft.host) {
+    draft.fingerprint = '';
+    if (draft.host) Object.assign(draft, { certPem: '', keyPem: '', certInfo: null, caPems: [] }); // anderer Server: altes Zertifikat passt nicht
+  }
+  draft.host = cfg.host;
+  if (cfg.name && !draft.name) draft.name = cfg.name;
+  if (cfg.port) draft.port = cfg.port;
+  if (cfg.proto) draft.proto = cfg.proto;
+  if (cfg.enrollPort) draft.enrollPort = cfg.enrollPort;
+  if (cfg.username) draft.username = cfg.username;
+  if (cfg.callsign && !profile.callsign) { profile.callsign = cfg.callsign; saveProfile(); showMe(); }
+  fillEdit();
   if (cfg.password) $('fPass').value = cfg.password;
+  if (LOCAL_HOST.test(cfg.host)) return setMsg($('setupMsg'), LOCAL_MSG);
   setMsg($('setupMsg'), 'Serverdaten übernommen.', true);
-  if (auto && cfg.username && cfg.password && profile.proto === 'ssl') {
+  if (auto && cfg.username && cfg.password && draft.proto === 'ssl') {
     const ok = await requestCert(cfg.password);
-    if (ok && profile.callsign) connect();
-    else if (ok) { setMsg($('setupMsg'), 'Zertifikat erhalten. Rufnamen eintragen und „Verbinden“.', true); $('fCallsign').focus(); }
+    if (ok) {
+      saveDraft();
+      if (!profile.callsign) askCallsign();
+      else openPopup('server');
+    }
   }
 }
 
@@ -966,7 +1216,6 @@ function onQr(text) {
   try {
     applyConfig(parseQr(text), true);
   } catch (e) {
-    openSheet('setup');
     setMsg($('setupMsg'), e.message);
   }
 }
@@ -978,15 +1227,15 @@ async function startScan() {
     scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
     video.srcObject = scanStream;
     await video.play();
-    const tick = () => {
+    const step = () => {
       if (!scanStream) return;
       if (video.readyState >= 2) {
         const text = decodeImage(video, video.videoWidth, video.videoHeight);
         if (text) return onQr(text);
       }
-      scanRaf = requestAnimationFrame(tick);
+      scanRaf = requestAnimationFrame(step);
     };
-    tick();
+    step();
   } catch (e) {
     $('scanMsg').textContent = 'Kamera nicht verfügbar – „Foto wählen“ nutzen.';
   }
@@ -1014,7 +1263,11 @@ $('scanFile').addEventListener('change', e => {
   img.src = URL.createObjectURL(f);
 });
 
-// ---------------- Sonstiges ----------------
+// ======================================================================
+// Karte: Kartenart, offline speichern, Bildschirm, Löschen
+// ======================================================================
+
+$('fTiles').addEventListener('change', () => setTiles($('fTiles').value));
 
 let wakeSentinel = null;
 async function wakeLock() {
@@ -1035,46 +1288,270 @@ $('clearPicBtn').addEventListener('click', () => {
   toast('Lagebild geleert.');
 });
 $('resetBtn').addEventListener('click', () => {
-  if (!confirm('Alle Daten auf diesem Gerät löschen (Zertifikate, Server, Lagebild)?')) return;
-  disconnect();
-  for (const k of ['eud.profile', 'eud.picture', 'eud.chat', 'eud.outbox', 'eud.view']) store.del(k);
+  if (!confirm('Alle Daten auf diesem Gerät löschen (Server, Zertifikate, Lagebild)?')) return;
+  for (const srv of servers) closeSock(srv);
+  for (const k of ['eud.profile', 'eud.servers', 'eud.picture', 'eud.chat', 'eud.outbox', 'eud.outbox2', 'eud.view', 'eud.video', 'eud.areas']) store.del(k);
   location.reload();
 });
 
-// Sichtbaren Kartenausschnitt für offline speichern
-function tileUrls() {
-  const layer = LAYERS[profile.tiles] || LAYERS.OSM;
-  const b = map.getBounds();
-  const z0 = map.getZoom();
-  const zMax = Math.min(layer.options.maxZoom, z0 + 3);
-  const urls = [];
-  for (let z = Math.max(1, z0 - 2); z <= zMax; z++) {
-    const n = 2 ** z;
-    const x = lon => Math.floor((lon + 180) / 360 * n);
-    const y = lat => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
-    for (let tx = Math.max(0, x(b.getWest())); tx <= Math.min(n - 1, x(b.getEast())); tx++) {
-      for (let ty = Math.max(0, y(b.getNorth())); ty <= Math.min(n - 1, y(b.getSouth())); ty++) {
-        urls.push(layer.getTileUrl({ x: tx, y: ty, z }));
-        if (urls.length > 3000) return null;
+// ---------------- Kartenquelle ----------------
+
+for (const [id, src] of Object.entries(SOURCES)) $('fTiles').append(new Option(src.name, id));
+$('fTiles').append(new Option('Eigene Quelle (URL) …', 'custom'));
+function fillMap() {
+  $('fTiles').value = profile.tiles;
+  $('fCustom').value = profile.customUrl || '';
+  $('customBox').classList.toggle('hidden', profile.tiles !== 'custom');
+  $('fWake').checked = !!profile.wake;
+  fillZoom();
+  renderAreas();
+  updateEstimate();
+}
+$('fTiles').addEventListener('change', () => {
+  const id = $('fTiles').value;
+  $('customBox').classList.toggle('hidden', id !== 'custom');
+  if (id !== 'custom') setTiles(id);
+  else if (profile.customUrl) setTiles('custom');
+  fillZoom();
+  updateEstimate();
+});
+$('customSave').addEventListener('click', () => {
+  const u = $('fCustom').value.trim();
+  if (!/^https?:\/\/.+\{z\}.+\{x\}.+\{y\}|^https?:\/\/.+\{z\}.+\{y\}.+\{x\}/i.test(u)) return toast('URL braucht {z}, {x} und {y}.');
+  profile.customUrl = u;
+  saveProfile();
+  setTiles('custom');
+  toast('Kartenquelle übernommen.');
+});
+
+// ---------------- Offline speichern: Ausschnitt oder Korridor ----------------
+
+let areaMode = 'view';
+let corridor = []; // [[lat, lon], …]
+let corridorLine = null;
+let drawing = false;
+let areas = store.get('eud.areas', []);
+
+function fillZoom() {
+  const max = sourceMaxZoom(profile.tiles);
+  const z = map.getZoom();
+  for (const [id, def] of [['fZmin', Math.max(1, z - 2)], ['fZmax', Math.min(max, z + 3)]]) {
+    const sel = $(id);
+    const keep = sel.value;
+    sel.replaceChildren(...Array.from({ length: max }, (_, i) => new Option(String(i + 1), String(i + 1))));
+    sel.value = keep && Number(keep) <= max ? keep : String(def);
+  }
+}
+
+for (const b of document.querySelectorAll('#areaMode button')) {
+  b.addEventListener('click', () => {
+    areaMode = b.dataset.mode;
+    for (const x of document.querySelectorAll('#areaMode button')) x.classList.toggle('on', x === b);
+    $('corridorBox').classList.toggle('hidden', areaMode !== 'corridor');
+    updateEstimate();
+  });
+}
+for (const id of ['fZmin', 'fZmax', 'fWidth']) $(id).addEventListener('change', updateEstimate);
+$('fWidth').addEventListener('input', updateEstimate);
+
+const tileX = (lon, n) => Math.floor((lon + 180) / 360 * n);
+const tileY = (lat, n) => { const r = lat * Math.PI / 180; return Math.floor((1 - Math.log(Math.tan(r) + 1 / Math.cos(r)) / Math.PI) / 2 * n); };
+
+// Kacheln eines Bereichs: { kind: 'rect', s, w, n, e } oder { kind: 'corridor', points, width }
+function areaTiles(area, zmin, zmax, limit = 50000) {
+  const out = new Set();
+  const addBox = (s, w, n, e, z) => {
+    const N = 2 ** z;
+    for (let x = Math.max(0, tileX(w, N)); x <= Math.min(N - 1, tileX(e, N)); x++) {
+      for (let y = Math.max(0, tileY(n, N)); y <= Math.min(N - 1, tileY(s, N)); y++) {
+        out.add(z + '/' + x + '/' + y);
+        if (out.size > limit) return false;
+      }
+    }
+    return true;
+  };
+  for (let z = zmin; z <= zmax; z++) {
+    if (area.kind === 'rect') {
+      if (!addBox(area.s, area.w, area.n, area.e, z)) return null;
+    } else {
+      const pts = area.points;
+      const dLat = area.width / 111320;
+      // Schrittweite kleiner als eine Kachel dieser Zoomstufe
+      const step = Math.min(area.width, 40075016 / 2 ** z / 2);
+      for (let i = 0; i < pts.length; i++) {
+        const a = pts[i], b = pts[i + 1] || pts[i];
+        const len = distance({ lat: a[0], lon: a[1] }, { lat: b[0], lon: b[1] });
+        const n = Math.max(1, Math.ceil(len / step));
+        for (let k = 0; k <= n; k++) {
+          const lat = a[0] + (b[0] - a[0]) * k / n, lon = a[1] + (b[1] - a[1]) * k / n;
+          const dLon = area.width / (111320 * Math.max(0.05, Math.cos(lat * Math.PI / 180)));
+          if (!addBox(lat - dLat, lon - dLon, lat + dLat, lon + dLon, z)) return null;
+        }
       }
     }
   }
-  return urls;
+  return [...out];
+}
+
+function currentArea() {
+  if (areaMode === 'corridor') {
+    if (corridor.length < 2) return null;
+    return { kind: 'corridor', points: corridor.slice(), width: Math.max(50, Math.min(20000, Number($('fWidth').value) || 1000)) };
+  }
+  const b = map.getBounds();
+  return { kind: 'rect', s: b.getSouth(), w: b.getWest(), n: b.getNorth(), e: b.getEast() };
+}
+
+function zoomRange() {
+  let a = Number($('fZmin').value), b = Number($('fZmax').value);
+  if (a > b) [a, b] = [b, a];
+  return [a, b];
+}
+
+function updateEstimate() {
+  if (popupSec !== 'map') return;
+  const area = currentArea();
+  if (!area) { $('estimate').textContent = 'Korridor zeichnen, dann Zoomstufen wählen.'; return; }
+  const [a, b] = zoomRange();
+  const list = areaTiles(area, a, b, 20000);
+  $('estimate').textContent = list ? `≈ ${list.length} Kacheln, ca. ${Math.max(1, Math.round(list.length * 0.02))} MB` : 'Zu viele Kacheln (über 20 000) – Zoom bis kleiner wählen oder Bereich verkleinern.';
+}
+map.on('moveend', updateEstimate);
+
+function tileUrl(src, key) {
+  const [z, x, y] = key.split('/');
+  return new URL(sourceTemplate(src).replace('{z}', z).replace('{x}', x).replace('{y}', y), location.href).href;
+}
+
+// Korridor zeichnen: Punkte antippen
+function startDraw() {
+  drawing = true;
+  map.getContainer().classList.add('drawing'); // Antippen trifft die Karte, nicht Marker/Overlays
+  corridor = [];
+  drawCorridor();
+  closePopup();
+  setTool(null);
+  $('drawBar').classList.remove('hidden');
+  $('drawHint').textContent = 'Punkte der Strecke auf der Karte antippen';
+}
+function drawCorridor() {
+  if (corridorLine) corridorLine.remove();
+  corridorLine = null;
+  if (!corridor.length) return;
+  const width = Math.max(50, Number($('fWidth').value) || 1000);
+  // Breite grob in Pixel der aktuellen Zoomstufe umrechnen (nur zur Anzeige)
+  const mpp = 40075016 * Math.cos(corridor[0][0] * Math.PI / 180) / (256 * 2 ** map.getZoom());
+  corridorLine = L.layerGroup([
+    L.polyline(corridor, { color: '#007bff', weight: Math.max(4, Math.min(200, 2 * width / mpp)), opacity: 0.2, interactive: false }),
+    L.polyline(corridor, { color: '#007bff', weight: 3, dashArray: '6 6', interactive: false }),
+    ...corridor.map(p => L.circleMarker(p, { radius: 5, color: '#fff', weight: 2, fillColor: '#007bff', fillOpacity: 1, interactive: false })),
+  ]).addTo(map);
+}
+map.on('click', e => {
+  if (!drawing) return;
+  corridor.push([e.latlng.lat, e.latlng.lng]);
+  drawCorridor();
+  $('drawHint').textContent = `${corridor.length} Punkt(e) – weiter antippen oder FERTIG`;
+});
+map.on('zoomend', () => { if (corridor.length) drawCorridor(); });
+$('drawUndo').addEventListener('click', () => { corridor.pop(); drawCorridor(); });
+$('drawCancel').addEventListener('click', () => { drawing = false; map.getContainer().classList.remove('drawing'); corridor = []; drawCorridor(); $('drawBar').classList.add('hidden'); openPopup('map'); });
+$('drawDone').addEventListener('click', () => {
+  if (corridor.length < 2) return toast('Mindestens zwei Punkte antippen.');
+  drawing = false;
+  map.getContainer().classList.remove('drawing');
+  $('drawBar').classList.add('hidden');
+  let len = 0;
+  for (let i = 1; i < corridor.length; i++) len += distance({ lat: corridor[i - 1][0], lon: corridor[i - 1][1] }, { lat: corridor[i][0], lon: corridor[i][1] });
+  openPopup('map');
+  $('corridorInfo').textContent = `Korridor: ${corridor.length} Punkte, ${fmtDist(len)} lang.`;
+  updateEstimate();
+});
+$('drawBtn').addEventListener('click', startDraw);
+
+// Speichern über den Service Worker (läuft weiter, auch wenn das Fenster zu ist)
+let prefetchPort = null;
+async function swReady() {
+  const reg = navigator.serviceWorker && await navigator.serviceWorker.ready.catch(() => null);
+  return reg && reg.active ? reg.active : null;
 }
 $('prefetchBtn').addEventListener('click', async () => {
   const msg = $('prefetchMsg');
-  const urls = tileUrls();
-  if (!urls) return setMsg(msg, 'Ausschnitt zu groß – bitte näher heranzoomen.');
-  const reg = navigator.serviceWorker && await navigator.serviceWorker.ready.catch(() => null);
-  if (!reg || !reg.active) return setMsg(msg, 'Offline-Speicher nicht verfügbar (nur über HTTPS).');
+  const area = currentArea();
+  if (!area) return setMsg(msg, 'Bitte zuerst einen Korridor zeichnen.');
+  if (profile.tiles === 'custom' && !profile.customUrl) return setMsg(msg, 'Bitte zuerst eine eigene Quelle eintragen.');
+  const [zmin, zmax] = zoomRange();
+  const keys = areaTiles(area, zmin, zmax, 20000);
+  if (!keys) return setMsg(msg, 'Zu viele Kacheln – Zoom bis kleiner wählen oder Bereich verkleinern.');
+  const sw = await swReady();
+  if (!sw) return setMsg(msg, 'Offline-Speicher nicht verfügbar (nur über HTTPS).');
+  const rec = { id: rnd(4), kind: area.kind, src: profile.tiles, srcName: profile.tiles === 'custom' ? 'Eigene Quelle' : SOURCES[profile.tiles].name,
+    zmin, zmax, count: keys.length, date: Date.now(), area, template: sourceTemplate(profile.tiles) };
   const ch = new MessageChannel();
+  prefetchPort = ch.port1;
+  $('prefetchBtn').disabled = true;
+  $('prefetchStop').classList.remove('hidden');
   ch.port1.onmessage = e => {
     const d = e.data;
-    setMsg(msg, d.finished ? `Fertig: ${d.done - d.failed} Kacheln gespeichert${d.failed ? `, ${d.failed} fehlgeschlagen` : ''}.` : `Speichere … ${d.done} / ${d.total}`, !d.failed || !d.finished);
+    if (!d.finished) return setMsg(msg, `Speichere … ${d.done} / ${d.total}`, true);
+    $('prefetchBtn').disabled = false;
+    $('prefetchStop').classList.add('hidden');
+    prefetchPort = null;
+    setMsg(msg, `${d.stopped ? 'Gestoppt' : 'Fertig'}: ${d.done - d.failed} Kacheln gespeichert${d.failed ? `, ${d.failed} fehlgeschlagen` : ''}.`, !d.failed);
+    if (d.done - d.failed > 0) {
+      rec.count = d.done - d.failed;
+      areas.unshift(rec);
+      areas = areas.slice(0, 30);
+      store.set('eud.areas', areas);
+      renderAreas();
+    }
   };
-  setMsg(msg, `Speichere … 0 / ${urls.length}`, true);
-  reg.active.postMessage({ type: 'prefetch', urls }, [ch.port2]);
+  setMsg(msg, `Speichere … 0 / ${keys.length}`, true);
+  sw.postMessage({ type: 'prefetch', urls: keys.map(k => tileUrl(profile.tiles, k)) }, [ch.port2]);
 });
+$('prefetchStop').addEventListener('click', async () => {
+  const sw = await swReady();
+  if (sw) sw.postMessage({ type: 'prefetch-stop' });
+});
+
+function renderAreas() {
+  const box = $('areaList');
+  box.textContent = '';
+  for (const a of areas) {
+    const row = document.createElement('div');
+    row.className = 'area';
+    const t = document.createElement('span');
+    t.textContent = `${a.kind === 'corridor' ? 'Korridor' : 'Ausschnitt'} · ${a.srcName}`;
+    const s = document.createElement('small');
+    s.textContent = `Zoom ${a.zmin}–${a.zmax} · ${a.count} Kacheln · ${new Date(a.date).toLocaleDateString()}`;
+    t.append(s);
+    t.style.cursor = 'pointer';
+    t.onclick = () => {
+      closePopup();
+      const pts = a.kind === 'rect' ? [[a.area.s, a.area.w], [a.area.n, a.area.e]] : a.area.points;
+      follow = false;
+      $('btnCenter').classList.remove('active');
+      map.fitBounds(pts);
+    };
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.textContent = '×';
+    del.setAttribute('aria-label', 'Löschen');
+    del.onclick = async () => {
+      if (!confirm('Gespeicherten Bereich löschen?')) return;
+      const keys = areaTiles(a.area, a.zmin, a.zmax, 50000) || [];
+      const tpl = a.template;
+      const urls = keys.map(k => { const [z, x, y] = k.split('/'); return new URL(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), location.href).href; });
+      const sw = await swReady();
+      if (sw) sw.postMessage({ type: 'delete', urls });
+      areas = areas.filter(x => x !== a);
+      store.set('eud.areas', areas);
+      renderAreas();
+    };
+    row.append(t, del);
+    box.append(row);
+  }
+}
 
 // ======================================================================
 // Start
@@ -1085,33 +1562,43 @@ if ('serviceWorker' in navigator) {
   if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
 }
 
+// Alle Streams im Lagebild (Kontakte mit Video-Link)
+function videoItems() {
+  return [...items.values()].map(it => ({ name: it.c.callsign || it.uid, url: videoUrl(it.c), stale: Date.now() > it.c.stale, time: it.c.time }))
+    .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
+}
+
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, askTrust, postJson, getServers: () => servers, saveServers, fmtDist, distance };
+
 loadPicture();
 renderChat();
-fillForm();
+showMe();
 updateStatus();
 
 // Vorgaben aus dem QR-Code des Admins (…/eud/#host=…) oder vom Server
 (async () => {
   const hash = location.hash.slice(1);
-  if (hash) {
+  let handled = false;
+  if (hash && new URLSearchParams(hash).has('host')) {
     history.replaceState(null, '', location.pathname);
     try {
       const cfg = parseQr(location.origin + location.pathname + '#' + hash);
-      if (cfg.host !== location.hostname || new URLSearchParams(hash).has('host')) {
-        if (!profile.host || cfg.host === profile.host || confirm(`Server auf ${cfg.host} umstellen?`)) await applyConfig(cfg, true);
-      }
+      if (!servers.some(s => s.host === cfg.host)) { await applyConfig(cfg, true); handled = true; }
     } catch (e) { /* ungültig */ }
-  } else if (!profile.host) {
+  } else if (!servers.length) {
     try {
       const r = await fetch('/api/eud/config').then(x => x.json());
       if (r.preset && r.preset.host) {
-        Object.assign(profile, { host: r.preset.host, port: r.preset.port, proto: r.preset.proto, enrollPort: r.preset.enrollPort });
-        saveProfile();
+        openEdit(null);
+        await applyConfig({ host: r.preset.host, port: r.preset.port, proto: r.preset.proto, enrollPort: r.preset.enrollPort }, false);
+        handled = true;
       }
     } catch (e) { /* offline */ }
   }
-  fillForm();
-  if (!profile.host || !profile.callsign || (profile.proto === 'ssl' && !profile.certPem && !profile.auto)) openSheet('setup');
-  if (profile.auto) openWs();
+  if (!handled) {
+    if (!profile.callsign) openPopup('me');
+    else if (!servers.length) openEdit(null);
+  }
+  for (const srv of servers) if (srv.auto) openConn(srv);
   if (profile.wake) wakeLock();
 })();

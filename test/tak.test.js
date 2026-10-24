@@ -208,6 +208,57 @@ test('ATAK-Datenpaket (.zip) mit .pref, Client- und CA-.p12', () => {
   assert.equal(r.caPems.length, 1);
 });
 
+test('TAK-Server-API: Datenpakete, Missionen (Data Sync), Video-Feeds mit Client-Zertifikat', async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { execFileSync } = require('child_process');
+  // Datenpaket mit CoT und KML bauen
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'pkg-'));
+  fs.mkdirSync(path.join(dir, 'MANIFEST'));
+  fs.writeFileSync(path.join(dir, 'MANIFEST', 'manifest.xml'), '<MissionPackageManifest/>');
+  fs.writeFileSync(path.join(dir, 'punkt.cot'), '<event version="2.0" uid="PKG-1" type="b-m-p-s-p-i"><point lat="1" lon="2"/><detail/></event>');
+  fs.writeFileSync(path.join(dir, 'gebiet.kml'), '<kml><Document><Placemark><name>A</name><Point><coordinates>14,48</coordinates></Point></Placemark></Document></kml>');
+  execFileSync('zip', ['-qr', 'p.zip', 'MANIFEST', 'punkt.cot', 'gebiet.kml'], { cwd: dir });
+  const zip = fs.readFileSync(path.join(dir, 'p.zip'));
+  fs.rmSync(dir, { recursive: true, force: true });
+  const HASH = 'ab'.repeat(32);
+  let subscribed = '';
+  const api = https.createServer({ key: serverKeyPem, cert: serverCertPem, ca: [ca.pem], requestCert: true, rejectUnauthorized: true }, (req, res) => {
+    const u = new URL(req.url, 'https://x');
+    const send = (type, body) => { res.writeHead(200, { 'Content-Type': type }); res.end(body); };
+    if (u.pathname === '/Marti/sync/search') return send('application/json', JSON.stringify({ resultCount: 1, results: [{ Hash: HASH, Name: 'Lage.zip', Size: zip.length, SubmissionUser: 'max' }] }));
+    if (u.pathname === '/Marti/sync/content' && u.searchParams.get('hash') === HASH) return send('application/zip', zip);
+    if (u.pathname === '/Marti/api/video') return send('application/xml', '<videoConnections><feed><alias>Drohne</alias><url>rtsp://10.0.0.9:8554/live</url></feed></videoConnections>');
+    if (u.pathname === '/Marti/api/missions') return send('application/json', JSON.stringify({ data: [{ name: 'Einsatz 1', description: 'Test', contents: [{}], uids: [{}] }] }));
+    if (u.pathname === '/Marti/api/missions/Einsatz%201/subscription' && req.method === 'PUT') { subscribed = u.searchParams.get('uid'); return send('application/json', '{}'); }
+    if (u.pathname === '/Marti/api/missions/Einsatz%201/cot') return send('application/xml', '<events><event version="2.0" uid="MIS-1" type="a-h-G"><point lat="1" lon="2"/><detail/></event></events>');
+    if (u.pathname === '/Marti/api/missions/Einsatz%201') return send('application/json', JSON.stringify({ data: [{ name: 'Einsatz 1', contents: [{ data: { name: 'gebiet.zip', hash: HASH } }] }] }));
+    res.writeHead(404); res.end();
+  });
+  await new Promise(r => api.listen(0, '127.0.0.1', r));
+  const conn = { host: '127.0.0.1', apiPort: api.address().port, caPems: [ca.pem], certPem: enrolled.certPem, keyPem: enrolled.keyPem };
+  try {
+    const { packages } = await tak.marti(conn, 'packages');
+    assert.equal(packages[0].name, 'Lage.zip');
+    const pkg = await tak.marti(conn, 'package', { hash: HASH, name: 'Lage.zip' });
+    assert.equal(pkg.cot.length, 1);
+    assert.match(pkg.cot[0], /PKG-1/);
+    assert.equal(pkg.overlays.length, 1);
+    assert.equal(pkg.overlays[0].name, 'gebiet');
+    assert.deepEqual((await tak.marti(conn, 'videos')).feeds, [{ alias: 'Drohne', url: 'rtsp://10.0.0.9:8554/live' }]);
+    assert.equal((await tak.marti(conn, 'missions')).missions[0].name, 'Einsatz 1');
+    const mis = await tak.marti(conn, 'mission', { name: 'Einsatz 1', uid: 'EUD-1' });
+    assert.equal(subscribed, 'EUD-1');
+    assert.ok(mis.cot.some(x => x.includes('MIS-1')) && mis.cot.some(x => x.includes('PKG-1')));
+    assert.equal(mis.overlays.length, 1);
+    await assert.rejects(tak.marti(conn, 'package', { hash: '../etc' }), /Ungültige/);
+    await assert.rejects(tak.marti({ ...conn, certPem: '' }, 'packages'), /Client-Zertifikat/);
+  } finally {
+    api.close();
+  }
+});
+
 test('Erlaubte TAK-Server', () => {
   assert.equal(tak.hostAllowed('', 'irgendwas'), true);
   assert.equal(tak.hostAllowed('tak.example.com, 10.0.0.5', 'TAK.example.com'), true);

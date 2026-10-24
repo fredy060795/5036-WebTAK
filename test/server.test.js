@@ -18,12 +18,21 @@ const HAS_FFMPEG = spawnSync('ffmpeg', ['-version'], { stdio: 'ignore' }).status
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 let proc, base, dataDir, cookie = '';
+let tileSrv, tileHits = 0;
 
 before(async () => {
+  // Nachgebauter Kachelserver (statt OpenStreetMap)
+  tileSrv = http.createServer((req, res) => {
+    tileHits++;
+    if (req.url.startsWith('/fail')) { res.writeHead(500); return res.end(); }
+    res.writeHead(200, { 'Content-Type': 'image/png' });
+    res.end(Buffer.alloc(100, 7));
+  });
+  await new Promise(r => tileSrv.listen(0, '127.0.0.1', r));
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'helmcam-test-'));
   proc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: '0', BIND: '127.0.0.1', DATA_DIR: dataDir, PUBLIC_URL: '', ADMIN_URL: 'https://admin.test:5036' },
+    env: { ...process.env, PORT: '0', BIND: '127.0.0.1', DATA_DIR: dataDir, PUBLIC_URL: '', ADMIN_URL: 'https://admin.test:5036', TILE_URL_OVERRIDE: `http://127.0.0.1:${tileSrv.address().port}/{z}/{x}/{y}` },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   base = await new Promise((resolve, reject) => {
@@ -39,6 +48,7 @@ before(async () => {
 });
 
 after(() => {
+  tileSrv.close();
   proc.kill('SIGTERM');
   fs.rmSync(dataDir, { recursive: true, force: true });
 });
@@ -738,4 +748,21 @@ test('TAK-EUD: App, Offline-Dateien, Vorgabe, erlaubte Server und Durchreiche (T
   c.ws.close();
   await api('tak', { method: 'POST', body: { allowedHosts: '', preset: null } });
   tak.close();
+});
+
+test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () => {
+  const sources = await (await fetch(base + '/eud/tiles/sources.json')).json();
+  assert.ok(sources.sources.some(s => s.id === 'osm'));
+  const before = tileHits;
+  let r = await fetch(base + '/eud/tiles/osm/5/10/12.png');
+  assert.equal(r.status, 200);
+  assert.equal(r.headers.get('content-type'), 'image/png');
+  assert.equal((await r.arrayBuffer()).byteLength, 100);
+  r = await fetch(base + '/eud/tiles/osm/5/10/12.png');
+  await r.arrayBuffer();
+  assert.equal(tileHits - before, 1, 'zweiter Abruf kommt aus dem Zwischenspeicher');
+  assert.ok(fs.existsSync(path.join(dataDir, 'tiles', 'osm', '5', '10', '12')));
+  for (const bad of ['/eud/tiles/xyz/1/0/0.png', '/eud/tiles/osm/5/99/0.png', '/eud/tiles/osm/25/0/0.png', '/eud/tiles/osm/../../db.json']) {
+    assert.equal((await fetch(base + bad)).status, 404, bad);
+  }
 });

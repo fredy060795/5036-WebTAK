@@ -22,6 +22,7 @@ const { Auth } = require('./lib/auth');
 const { StreamHub, normRotate, normFit, normFramesize } = require('./lib/streams');
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 const tak = require('./lib/tak');
+const { TileCache } = require('./lib/tiles');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -199,7 +200,7 @@ async function handleRegister(req, res) {
   const list = (registrations.get(ip) || []).filter(t => now - t < 3600 * 1000);
   if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: 'Zu viele Anmeldungen. Bitte später erneut versuchen.' });
   const body = await readJson(req);
-  const entry = hub.register(body.name, body.unit);
+  const entry = hub.register(body.name, body.unit, body.source === 'eud');
   list.push(now);
   registrations.set(ip, list);
   log('Selbst-Anmeldung', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
@@ -234,12 +235,27 @@ function serveVendor(res, name) {
   fs.createReadStream(file).pipe(res);
 }
 
+const tiles = new TileCache(path.join(config.dataDir, 'tiles'), 'HelmCamera-EUD/1.0 (TAK-Client; Kachel-Zwischenspeicher)', process.env.TILE_URL_OVERRIDE);
+
+async function serveTile(res, rel) {
+  const t = TileCache.parse(rel);
+  if (!t) return send(res, 404, 'Nicht gefunden');
+  try {
+    const { data, type } = await tiles.get(t);
+    res.writeHead(200, { 'Content-Type': type, 'Cache-Control': 'public, max-age=604800', 'Content-Length': data.length });
+    res.end(data);
+  } catch (e) {
+    send(res, 502, 'Kachel nicht verfügbar');
+  }
+}
+
 function takSettings() {
   const s = store.data.settings || {};
   return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
 }
 
 const eudLimits = new Map(); // ip -> [zeitpunkte] für Zertifikatsanforderungen
+const martiLimits = new Map(); // ip -> [zeitpunkte] für Anfragen an die TAK-Server-API
 
 async function handleEudApi(req, res, route) {
   if (route === 'config' && req.method === 'GET') {
@@ -263,6 +279,29 @@ async function handleEudApi(req, res, route) {
     const pems = String(body.data || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
     if (!pems.length) throw new Error('Keine Zertifikate in der Datei gefunden.');
     return json(res, 200, { kind: 'truststore', caPems: pems.map(p => p + '\n'), caInfo: pems.map(p => tak.certInfo(p)) });
+  }
+  if (route === 'extract') {
+    // Eigene Datei (KML/KMZ/Datenpaket) als Overlay laden
+    const body = await readJson(req, 25 * 1024 * 1024);
+    return json(res, 200, tak.extractContent(String(body.name || ''), Buffer.from(String(body.data || ''), 'base64')));
+  }
+  if (route === 'marti') {
+    const ip = clientIp(req);
+    const now = Date.now();
+    const list = (martiLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
+    if (list.length >= 600) return json(res, 429, { error: 'Zu viele Anfragen. Bitte später erneut versuchen.' });
+    list.push(now);
+    martiLimits.set(ip, list);
+    const body = await readJson(req, 512 * 1024);
+    const conn = body.server || {};
+    const host = String(conn.host || '').trim();
+    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK-Server ${host} ist auf diesem Server nicht freigegeben.` });
+    try {
+      return json(res, 200, await tak.marti({ ...conn, host }, String(body.action || ''), body.args || {}));
+    } catch (e) {
+      if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
+      throw e;
+    }
   }
   if (route === 'enroll') {
     const ip = clientIp(req);
@@ -635,6 +674,8 @@ async function handle(req, res) {
     if (p.startsWith('/api/eud/')) return await handleEudApi(req, res, p.slice(9));
     if (p === '/eud') return send(res, 302, '', 'text/plain', { Location: '/eud/' });
     if (p.startsWith('/eud/vendor/')) return serveVendor(res, p.slice(12));
+    if (p === '/eud/tiles/sources.json') return json(res, 200, { sources: TileCache.list() });
+    if (p.startsWith('/eud/tiles/')) return await serveTile(res, p.slice(11));
     if (p.startsWith('/eud/')) return serveStatic(res, 'eud', decodeURIComponent(p.slice(5)));
     if (p === '/api/app/info' && req.method === 'GET') return json(res, 200, { registration: registrationEnabled() });
     if (p === '/app') return send(res, 302, '', 'text/plain', { Location: '/app/' });
@@ -766,7 +807,7 @@ function handleUpgrade(req, socket, head) {
         } else if (msg.type === 'golive') {
           // Nutzer drückt "Stream starten"/"Stream stoppen"
           if (hub.liveMode() === 'admin') {
-            if (hub.userCanStart()) {
+            if (hub.userCanStart() || entry.eud) {
               if (!!msg.on !== live.onAir) {
                 hub.setOnAir(id, !!msg.on);
                 hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} hat den Stream ${msg.on ? 'gestartet' : 'beendet'}`);
