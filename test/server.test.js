@@ -894,6 +894,18 @@ test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Grup
     assert.equal(mock.state.missions['Einsatz Nord'].groups.length, 1);
     r = await api('ots/missions');
     assert.equal(r.data.missions[0].password, true);
+    assert.deepEqual(r.data.missions[0].groups, ['ZUG_3']);
+    // Ohne Gruppenwahl: alle Gruppen (sonst sieht ein Nutzer mit Team-Gruppe die Mission in OTS nicht)
+    await api('ots/missions', { method: 'POST', body: { name: 'Alle', description: '' } });
+    assert.equal(mock.state.missions.Alle.groups.length, mock.state.groups.size);
+    // Gruppen einer bestehenden Mission nachträglich setzen
+    mock.state.missions.Alle.groups = [];
+    assert.equal((await api('ots/missions/Alle/groups', { method: 'PUT', body: { groups: [] } })).status, 200);
+    assert.equal(mock.state.missions.Alle.groups.length, mock.state.groups.size);
+    assert.equal((await api('ots/missions/Alle/groups', { method: 'PUT', body: { groups: ['ZUG_3'] } })).status, 200);
+    r = await api('ots/missions');
+    assert.deepEqual(r.data.missions.find(m => m.name === 'Alle').groups, ['ZUG_3']);
+    await api('ots/missions/Alle', { method: 'DELETE' });
     await api('ots/missions/' + encodeURIComponent('Einsatz Nord'), { method: 'DELETE' });
     assert.equal(mock.state.missions['Einsatz Nord'], undefined);
     // Video-Feeds
