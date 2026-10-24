@@ -2014,6 +2014,7 @@ function setPitch(p, fromView) {
       map.invalidateSize({ pan: true, animate: false });
     }
     el.style.transform = p ? `rotateX(${p}deg)` : '';
+    el.style.setProperty('--tilt', p + 'deg'); // Symbole stehen dagegen aufrecht (CSS)
   }
   if (p > 0) { profile.pitch = p; saveProfile(); }
   pitchUi(p);

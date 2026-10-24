@@ -215,7 +215,9 @@
         continue;
       }
       // Symbole stehen aufrecht zur Kamera (wie in WinTAK), sitzen aber auf dem Gelände
-      const m = new lib.Marker({ element: el, offset, draggable: !!it.own, pitchAlignment: 'viewport', rotationAlignment: 'viewport' })
+      // Symbole stehen aufrecht und bleiben immer voll sichtbar (wie WinTAK). MapLibre würde Marker, deren
+      // Bodenpunkt vom Gelände verdeckt ist, auf 20 % abdunkeln – bei starker Neigung fast alle.
+      const m = new lib.Marker({ element: el, offset, draggable: !!it.own, pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
         .setLngLat([it.c.lon, it.c.lat]).addTo(ml);
       rec = { m, key, it };
       el.addEventListener('click', e => {
@@ -238,7 +240,7 @@
       el.className = 'm3d-self';
       el.innerHTML = `<svg width="34" height="34" viewBox="0 0 32 32"><path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></svg>`;
       // Eigener Pfeil liegt flach im Gelände und zeigt in die Bewegungs-/Blickrichtung
-      selfMark = new lib.Marker({ element: el, pitchAlignment: 'map', rotationAlignment: 'map' }).setLngLat([me.lon, me.lat]).addTo(ml);
+      selfMark = new lib.Marker({ element: el, pitchAlignment: 'map', rotationAlignment: 'map', opacityWhenCovered: '1' }).setLngLat([me.lon, me.lat]).addTo(ml);
     }
     const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0);
     selfMark.setLngLat([me.lon, me.lat]).setRotation(rot);
@@ -254,7 +256,7 @@
       el.className = 'cot-icon m3d ov3d';
       el.innerHTML = (p.icon ? `<img src="${esc(p.icon)}" width="24" height="24" alt="">` : `<span class="dot" style="background:${esc(p.color || '#ffd400')}"></span>`)
         + (p.name ? `<span class="lbl" style="top:24px">${esc(p.name)}</span>` : '');
-      ovMarks.push(new lib.Marker({ element: el, pitchAlignment: 'viewport', rotationAlignment: 'viewport' }).setLngLat([p.lon, p.lat]).addTo(ml));
+      ovMarks.push(new lib.Marker({ element: el, pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacityWhenCovered: '1' }).setLngLat([p.lon, p.lat]).addTo(ml));
     }
     for (const id of images) { if (ml.getLayer(id)) ml.removeLayer(id); if (ml.getSource(id)) ml.removeSource(id); }
     images = [];

@@ -38,7 +38,13 @@ svg { display: block; }
 #map3d { position: absolute; inset: 0; background: #cfe1f2; }
 #map3d .maplibregl-ctrl-attrib { font-size: 10px; }
 .m3d { cursor: pointer; }
-.m3d.stale { opacity: 0.45; }
+.m3d.stale > * { opacity: 0.45; }  /* veraltet: nur der Inhalt blass (Marker-Deckkraft steuert MapLibre) */
+.m3d svg { filter: drop-shadow(0 2px 2px rgba(0, 0, 0, .55)); }
+/* Flache Neigung ohne 3D (kein WebGL 2): Symbole gegen die Neigung drehen, damit sie aufrecht stehen */
+#map.tilted, #map.tilted .leaflet-map-pane, #map.tilted .leaflet-norotate-pane, #map.tilted .leaflet-marker-pane,
+#map.tilted .leaflet-marker-icon.cot-icon { transform-style: preserve-3d; }
+#map.leaflet-container.tilted { overflow: visible; } /* overflow:hidden würde 3D flach drücken; #mapWrap schneidet ab */
+#map.tilted .leaflet-marker-icon.cot-icon > * { transform: rotateX(calc(-1 * var(--tilt, 0deg))); transform-origin: 50% 100%; }
 .ov3d .dot { display: block; width: 12px; height: 12px; margin: 6px; border-radius: 50%; border: 1.5px solid #000; }
 .m3d-self { pointer-events: none; }
 .p3d .maplibregl-popup-content { background: var(--sheet); color: #fff; border-radius: 3px; padding: 10px 12px; font: 13px/1.4 var(--font); }
