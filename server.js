@@ -21,6 +21,7 @@ const { Store } = require('./lib/store');
 const { Auth } = require('./lib/auth');
 const { StreamHub, normRotate, normFit, normFramesize } = require('./lib/streams');
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
+const tak = require('./lib/tak');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -207,6 +208,89 @@ async function handleRegister(req, res) {
 }
 
 // ======================================================================
+// EUD (TAK-Client im Browser): Zertifikat anfordern, .p12 lesen
+// ======================================================================
+
+const VENDOR = {
+  'leaflet.js': 'leaflet/dist/leaflet.js',
+  'leaflet.css': 'leaflet/dist/leaflet.css',
+  'images/marker-icon.png': 'leaflet/dist/images/marker-icon.png',
+  'images/marker-shadow.png': 'leaflet/dist/images/marker-shadow.png',
+  'images/layers.png': 'leaflet/dist/images/layers.png',
+  'images/layers-2x.png': 'leaflet/dist/images/layers-2x.png',
+  'images/marker-icon-2x.png': 'leaflet/dist/images/marker-icon-2x.png',
+  'milsymbol.js': 'milsymbol/dist/milsymbol.js',
+  'jsQR.js': 'jsqr/dist/jsQR.js',
+};
+
+function serveVendor(res, name) {
+  const rel = VENDOR[name];
+  if (!rel) return send(res, 404, 'Nicht gefunden');
+  const file = require.resolve(rel.split('/')[0] + '/package.json').replace(/package\.json$/, '') + rel.split('/').slice(1).join('/');
+  res.writeHead(200, {
+    'Content-Type': TYPES[path.extname(file)] || 'application/octet-stream',
+    'Cache-Control': 'public, max-age=86400',
+  });
+  fs.createReadStream(file).pipe(res);
+}
+
+function takSettings() {
+  const s = store.data.settings || {};
+  return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
+}
+
+const eudLimits = new Map(); // ip -> [zeitpunkte] für Zertifikatsanforderungen
+
+async function handleEudApi(req, res, route) {
+  if (route === 'config' && req.method === 'GET') {
+    const t = takSettings();
+    return json(res, 200, { preset: t.preset, restricted: !!t.allowedHosts.trim() });
+  }
+  if (req.method !== 'POST') return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  if (route === 'p12') {
+    const body = await readJson(req, 512 * 1024);
+    const r = tak.readP12(String(body.data || ''), String(body.password || ''));
+    return json(res, 200, { ...r, info: r.certPem ? tak.certInfo(r.certPem) : null, caInfo: r.caPems.map(tak.certInfo) });
+  }
+  if (route === 'package') {
+    const body = await readJson(req, 6 * 1024 * 1024);
+    const r = tak.readDataPackage(String(body.data || ''));
+    return json(res, 200, { ...r, info: r.certPem ? tak.certInfo(r.certPem) : null });
+  }
+  if (route === 'pem') {
+    // Truststore als PEM-Datei (eine oder mehrere CAs)
+    const body = await readJson(req, 512 * 1024);
+    const pems = String(body.data || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
+    if (!pems.length) throw new Error('Keine Zertifikate in der Datei gefunden.');
+    return json(res, 200, { kind: 'truststore', caPems: pems.map(p => p + '\n'), caInfo: pems.map(p => tak.certInfo(p)) });
+  }
+  if (route === 'enroll') {
+    const ip = clientIp(req);
+    const now = Date.now();
+    const list = (eudLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
+    if (list.length >= 30) return json(res, 429, { error: 'Zu viele Anfragen. Bitte später erneut versuchen.' });
+    list.push(now);
+    eudLimits.set(ip, list);
+    const body = await readJson(req, 512 * 1024);
+    const host = String(body.host || '').trim();
+    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK-Server ${host} ist auf diesem Server nicht freigegeben.` });
+    try {
+      const r = await tak.enroll({
+        host, port: Number(body.port) || tak.ENROLL_PORT, username: body.username, password: body.password,
+        uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
+        fingerprint: String(body.fingerprint || ''),
+      });
+      log('EUD: Zertifikat angefordert', host, r.info.subject);
+      return json(res, 200, r);
+    } catch (e) {
+      if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
+      throw e;
+    }
+  }
+  return json(res, 404, { error: 'Unbekannte Anfrage.' });
+}
+
+// ======================================================================
 // Admin-API
 // ======================================================================
 
@@ -300,6 +384,31 @@ async function handleAdminApi(req, res, route) {
       autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
     });
   }
+  if (route === 'tak' && method === 'GET') {
+    return json(res, 200, { allowedHosts: takSettings().allowedHosts, preset: takSettings().preset, eudUrl: publicBase(req) + '/eud/' });
+  }
+  if (route === 'tak' && method === 'POST') {
+    const body = await readJson(req);
+    const preset = body.preset && body.preset.host ? {
+      host: String(body.preset.host).trim().slice(0, 200),
+      port: Number(body.preset.port) || 8089,
+      proto: ['ssl', 'tcp', 'udp'].includes(body.preset.proto) ? body.preset.proto : 'ssl',
+      enrollPort: Number(body.preset.enrollPort) || tak.ENROLL_PORT,
+    } : null;
+    store.data.settings = { ...(store.data.settings || {}), takHosts: String(body.allowedHosts || '').slice(0, 2000), eudPreset: preset };
+    store.save();
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'eud-qr.svg' && method === 'GET') {
+    const p = takSettings().preset;
+    let url = publicBase(req) + '/eud/';
+    if (p) url += '#' + new URLSearchParams({ host: p.host, port: p.port, proto: p.proto, enroll: p.enrollPort }).toString();
+    return send(res, 200, await QRCode.toString(url, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }), 'image/svg+xml');
+  }
+  if (route === 'eud-links' && method === 'GET') {
+    return json(res, 200, { links: [...takLinks.values()].map(l => l.info()) });
+  }
+
   if (route === 'public-url' && method === 'POST') {
     const body = await readJson(req);
     const url = normalizeBase(body.url);
@@ -523,6 +632,10 @@ async function handle(req, res) {
       return await handleAdminApi(req, res, p.slice(11));
     }
     if (p === '/api/app/register' && req.method === 'POST') return await handleRegister(req, res);
+    if (p.startsWith('/api/eud/')) return await handleEudApi(req, res, p.slice(9));
+    if (p === '/eud') return send(res, 302, '', 'text/plain', { Location: '/eud/' });
+    if (p.startsWith('/eud/vendor/')) return serveVendor(res, p.slice(12));
+    if (p.startsWith('/eud/')) return serveStatic(res, 'eud', decodeURIComponent(p.slice(5)));
     if (p === '/api/app/info' && req.method === 'GET') return json(res, 200, { registration: registrationEnabled() });
     if (p === '/app') return send(res, 302, '', 'text/plain', { Location: '/app/' });
     if (p.startsWith('/app/')) return serveStatic(res, 'app', decodeURIComponent(p.slice(5)));
@@ -542,9 +655,63 @@ async function handle(req, res) {
 // ======================================================================
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
+const takWss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
+const takLinks = new Map(); // ws -> Verbindungsinfo (für die Admin-Übersicht)
+const MAX_TAK_PER_IP = 5;
+
+// EUD <-> TAK-Server: der Browser schickt Zugangsdaten und CoT, wir reichen nur durch
+function handleTakSocket(ws, req) {
+  const ip = clientIp(req);
+  const perIp = [...takLinks.values()].filter(l => l.ip === ip).length;
+  if (perIp >= MAX_TAK_PER_IP) {
+    ws.send(JSON.stringify({ type: 'status', state: 'error', message: 'Zu viele Verbindungen von diesem Gerät.' }));
+    return ws.close(4002, 'limit');
+  }
+  let link = null;
+  const entry = { ip, since: Date.now(), host: '', callsign: '', state: 'idle', info() {
+    return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
+  } };
+  takLinks.set(ws, entry);
+  const say = (state, message, extra) => {
+    entry.state = state;
+    if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'status', state, message, ...(extra || {}) }));
+  };
+  const stop = () => { if (link) link.stop(); link = null; };
+
+  ws.on('message', async data => {
+    let msg;
+    try { msg = JSON.parse(data.toString()); } catch (e) { return; }
+    if (msg.type === 'connect') {
+      stop();
+      const host = String(msg.host || '').trim();
+      if (!host) return say('error', 'Kein TAK-Server angegeben.');
+      if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return say('error', `TAK-Server ${host} ist auf diesem Server nicht freigegeben.`);
+      if (ws.readyState !== 1) return;
+      stop();
+      entry.host = `${host}:${msg.port}`;
+      entry.callsign = String(msg.callsign || '').slice(0, 40);
+      link = new tak.TakLink({
+        host, port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
+        certPem: msg.certPem, keyPem: msg.keyPem, caPems: Array.isArray(msg.caPems) ? msg.caPems : [], fingerprint: msg.fingerprint,
+        onStatus: (state, message, extra) => say(state, message, extra),
+        onCot: xml => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'cot', xml })); },
+      });
+      link.start();
+      log('EUD verbindet', entry.callsign, '->', entry.host, msg.proto);
+    } else if (msg.type === 'cot' && link && typeof msg.xml === 'string' && msg.xml.length < 256 * 1024) {
+      if (/^\s*<event[\s>]/.test(msg.xml)) link.send(msg.xml);
+    } else if (msg.type === 'disconnect') {
+      stop();
+      say('closed', 'Getrennt.');
+    }
+  });
+  ws.on('close', () => { stop(); takLinks.delete(ws); });
+  ws.on('error', () => {});
+}
 
 function handleUpgrade(req, socket, head) {
   const url = new URL(req.url, 'http://x');
+  if (url.pathname === '/ws/tak') return takWss.handleUpgrade(req, socket, head, ws => handleTakSocket(ws, req));
   if (url.pathname !== '/ws/publish') return socket.destroy();
   wss.handleUpgrade(req, socket, head, ws => {
     const user = url.searchParams.get('u') || '';

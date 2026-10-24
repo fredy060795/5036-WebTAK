@@ -101,6 +101,42 @@ Admin-Fenster im Hintergrund ist.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
 sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.
 
+## TAK-EUD (Karte + Lagebild auf dem Handy)
+
+Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) – nur das
+Nötigste auf ATAK-CoT-Niveau, ohne Menüs und Sonderfunktionen. Läuft auf Android und iPhone
+(Safari → Teilen → „Zum Home-Bildschirm“).
+
+**Ablauf:** QR-Code aus dem Admin (Karte „TAK-EUD“) scannen → App öffnet sich → Server verbinden:
+
+- **QR-Code scannen**: ATAK-Enrollment (`tak://com.atakmap.app/enroll?host=…&username=…&token=…`),
+  iTAK (`Name,Host,Port,ssl`), `host:port:ssl` oder eigener Link mit Vorgaben
+- **Datei laden**: Datenpaket vom TAK-Server (`.zip` mit `.pref` + Zertifikaten), Client-Zertifikat
+  (`.p12`) oder Truststore (`.p12`/`.pem`)
+- **Von Hand**: Server, Port, SSL / TCP / UDP, Benutzer + Passwort → „Zertifikat anfordern“
+  (wie ATAK: Port 8446, `/Marti/api/tls/signClient/v2`)
+
+Unbekannte Server-Zertifikate werden erst nach Bestätigung des Fingerabdrucks benutzt; mit
+Truststore entfällt die Frage. Zugangsdaten gehen erst raus, wenn das Server-Zertifikat geprüft ist.
+
+**Auf der Karte:** alles, was der TAK-Server schickt (Nutzer in Teamfarbe mit Richtung, Symbole
+nach MIL-STD-2525, Punkte, Linien, Flächen, Kreise, Routen, Video-Links), eigene Position (wird als
+CoT gesendet), Kontaktliste, Chat „Alle“, Marker setzen und löschen.
+
+**Ohne Internet:** App, Karte (bereits angesehene oder unter ⚙ „Kartenausschnitt offline
+speichern“ gesicherte Kacheln) und das letzte Lagebild bleiben auf dem Gerät. GPS läuft weiter,
+neue Marker und Chats warten im Ausgang und gehen raus, sobald die Verbindung wieder steht;
+die App verbindet sich automatisch neu.
+
+**Sicherheit:** Dieser Server reicht die Daten nur durch (WebSocket `/ws/tak`). Zertifikate und
+Schlüssel liegen nur auf dem Handy und werden auf dem Server nicht gespeichert. Im Admin unter
+„Erlaubte TAK-Server“ sollte der eigene TAK-Server eingetragen werden, damit niemand den Server als
+offene Durchreiche benutzt. Ohne Eintrag sind alle Server erlaubt – außer dem Server-Rechner selbst
+(`localhost`) und Link-Local-Adressen; läuft der TAK-Server auf demselben Rechner, ihn also eintragen.
+
+Hinweis iPhone: iOS pausiert Web-Apps im Hintergrund – die Position wird nur gesendet, solange die
+App im Vordergrund ist („Bildschirm anlassen“ in ⚙ hilft).
+
 ## Admin
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt

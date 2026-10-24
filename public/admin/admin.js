@@ -220,6 +220,8 @@ function showApp() {
   $('appView').classList.remove('hidden');
   $('noFfmpeg').classList.toggle('hidden', !!me.ffmpeg);
   loadRegistration();
+  loadTak();
+  loadEudLinks();
   refresh();
   startPolling();
 }
@@ -916,3 +918,48 @@ function openWindow(id) {
     if (!(e instanceof ApiError)) showAuth('login');
   }
 })();
+
+// ======================================================================
+// TAK-EUD
+// ======================================================================
+
+async function loadTak() {
+  try {
+    const t = await api('tak');
+    $('eudUrl').value = t.eudUrl;
+    $('eudQr').src = '/api/admin/eud-qr.svg?t=' + Date.now();
+    const f = $('takForm');
+    f.allowedHosts.value = t.allowedHosts || '';
+    f.host.value = t.preset ? t.preset.host : '';
+    f.port.value = t.preset ? t.preset.port : '';
+    f.proto.value = t.preset ? t.preset.proto : 'ssl';
+    f.enrollPort.value = t.preset ? t.preset.enrollPort : '';
+  } catch (e) { /* nicht angemeldet */ }
+}
+
+async function loadEudLinks() {
+  try {
+    const { links } = await api('eud-links');
+    const box = $('eudLinks');
+    box.textContent = links.length ? 'Verbundene EUDs:' : 'Zurzeit kein EUD verbunden.';
+    for (const l of links) {
+      box.append(el('div', { text: `${l.callsign || '–'} → ${l.host || '–'} (${l.state})` }));
+    }
+  } catch (e) { /* ignorieren */ }
+}
+
+$('takForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  const f = e.target;
+  const host = f.host.value.trim();
+  try {
+    await api('tak', { method: 'POST', body: {
+      allowedHosts: f.allowedHosts.value,
+      preset: host ? { host, port: Number(f.port.value) || 8089, proto: f.proto.value, enrollPort: Number(f.enrollPort.value) || 8446 } : null,
+    } });
+    setMsg($('takMsg'), 'Gespeichert – der QR-Code ist angepasst.', true);
+    loadTak();
+  } catch (err) { setMsg($('takMsg'), err.message); }
+});
+$('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));
+setInterval(() => { if (!document.hidden && $('eudLinks').offsetParent) loadEudLinks(); }, 10000);
