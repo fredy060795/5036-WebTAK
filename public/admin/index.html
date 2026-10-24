@@ -126,7 +126,10 @@
             </div>
             <label>Erlaubte TAK-Server (Komma-getrennt, leer = alle) – schützt vor Missbrauch als offene Durchreiche</label>
             <input name="allowedHosts" placeholder="tak.example.com, 10.0.0.5" autocomplete="off">
-            <div class="row" style="margin-top:8px"><button class="sm pri" type="submit">Speichern</button></div>
+            <div class="row" style="margin-top:8px">
+              <button class="sm pri" type="submit">Speichern</button>
+              <button class="sm" type="button" id="eudQrBig">QR-Code groß anzeigen / Drucken</button>
+            </div>
           </form>
           <p class="msg" id="takMsg"></p>
           <div id="eudLinks" class="mut small"></div>

@@ -1,5 +1,6 @@
 // Daten vom TAK-Server: Datenpakete, Data Sync (Missionen), Video-Feeds und Karten-Overlays (KML/KMZ).
 // Abruf über die Durchreiche (/api/eud/marti) mit dem Client-Zertifikat dieses Geräts.
+// Vom Server geschickte Pakete und Missions-Einladungen werden wie bei ATAK automatisch übernommen.
 'use strict';
 
 (() => {
@@ -28,7 +29,7 @@
     return { all: () => tx('readonly', s => s.getAll()), put: o => tx('readwrite', s => s.put(o)), del: id => tx('readwrite', s => s.delete(id)) };
   })();
 
-  // ---------------- KML -> Leaflet ----------------
+  // ---------------- KML/KMZ -> Leaflet ----------------
 
   map.createPane('kml').style.zIndex = 390; // unter Zeichnungen und Markern
   const layers = new Map(); // overlay id -> Leaflet-Layer
@@ -41,79 +42,165 @@
   }
   const textOf = html => new DOMParser().parseFromString(String(html || ''), 'text/html').body.textContent.trim();
 
+  // KML lesen; bei Fehlern (z. B. "gx:" ohne Namensraum, nacktes "&") bereinigt erneut versuchen
+  function parseXml(text) {
+    const parse = t => new DOMParser().parseFromString(t, 'application/xml');
+    let doc = parse(text);
+    if (!doc.getElementsByTagName('parsererror').length) return doc;
+    const clean = String(text)
+      .replace(/<(\/?)[A-Za-z_][\w.-]*:/g, '<$1')
+      .replace(/\s[A-Za-z_][\w.-]*:[\w.-]+\s*=\s*("[^"]*"|'[^']*')/g, '')
+      .replace(/&(?!(amp|lt|gt|quot|apos|#\d+|#x[0-9a-f]+);)/gi, '&amp;');
+    doc = parse(clean);
+    if (doc.getElementsByTagName('parsererror').length) throw new Error('KML cannot be read.');
+    return doc;
+  }
+
+  // Pfad einer Datei relativ zur KML (z. B. "../1/0.png" in "0/0/0.kml")
+  function resolvePath(base, href) {
+    const parts = String(base || '').split('/').slice(0, -1);
+    for (const p of String(href).split('/')) {
+      if (p === '..') parts.pop();
+      else if (p && p !== '.') parts.push(p);
+    }
+    return parts.join('/');
+  }
+
   function kmlLayer(ov) {
-    const doc = new DOMParser().parseFromString(ov.kml, 'application/xml');
-    if (doc.getElementsByTagName('parsererror').length) throw new Error('KML lässt sich nicht lesen.');
-    const kids = (el, name) => [...el.children].filter(c => c.localName === name);
-    const kid = (el, name) => kids(el, name)[0];
-    const txt = (el, name) => { const n = el && el.getElementsByTagName(name)[0]; return n ? n.textContent.trim() : ''; };
-    const image = href => {
+    const imgs = ov.images || {};
+    const names = Object.keys(imgs);
+    const image = (href, docPath) => {
       if (!href) return '';
-      const imgs = ov.images || {};
+      href = href.trim();
+      if (/^data:image\//.test(href)) return href;
       if (imgs[href]) return imgs[href];
+      const rel = resolvePath(docPath, href);
+      if (imgs[rel]) return imgs[rel];
       const base = href.split('/').pop();
-      const k = Object.keys(imgs).find(n => n.split('/').pop() === base);
-      if (k) return imgs[k];
+      const hits = names.filter(n => n.split('/').pop() === base);
+      if (hits.length === 1) return imgs[hits[0]];
       return /^https?:\/\//i.test(href) ? href : '';
     };
-    const readStyle = st => {
-      const ls = kid(st, 'LineStyle'), ps = kid(st, 'PolyStyle'), is = kid(st, 'IconStyle');
-      return {
-        line: kmlColor(ls && txt(ls, 'color'), null), width: Number(ls && txt(ls, 'width')) || 2,
-        poly: kmlColor(ps && txt(ps, 'color'), null), fill: !(ps && txt(ps, 'fill') === '0'),
-        icon: is ? image(txt(is, 'href')) : '', iconColor: kmlColor(is && txt(is, 'color'), null),
-      };
-    };
-    const styles = {};
-    for (const st of doc.getElementsByTagName('Style')) if (st.getAttribute('id')) styles['#' + st.getAttribute('id')] = readStyle(st);
-    for (const sm of doc.getElementsByTagName('StyleMap')) {
-      const pair = [...sm.getElementsByTagName('Pair')].find(p => txt(p, 'key') === 'normal');
-      if (pair && sm.getAttribute('id')) styles['#' + sm.getAttribute('id')] = styles[txt(pair, 'styleUrl')] || {};
-    }
-    const coords = el => (el ? el.textContent.trim().split(/\s+/).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])).map(p => [p[1], p[0]]) : []);
     const group = L.featureGroup();
+    const grounds = []; // { bounds, url, span }
+    const docs = [[ov.path || 'doc.kml', ov.kml], ...Object.entries(ov.extra || {})];
 
-    for (const pm of doc.getElementsByTagName('Placemark')) {
-      const own = kid(pm, 'Style');
-      const st = Object.assign({}, styles[txt(pm, 'styleUrl')] || {}, own ? readStyle(own) : {});
-      const name = txt(pm, 'name');
-      const desc = textOf(txt(pm, 'description'));
-      const line = st.line || { color: '#ffd400', opacity: 1 };
-      const poly = st.poly || { color: line.color, opacity: 0.25 };
-      const popup = `<div class="t">${esc(name || ov.name)}</div>${desc ? `<div>${esc(desc)}</div>` : ''}<div class="k">${esc(ov.name)}</div>`;
-      const add = layer => { layer.bindPopup(popup, { maxWidth: 260 }); group.addLayer(layer); };
-      const walk = g => {
-        for (const el of g.children) {
-          if (el.localName === 'Point') {
-            const p = coords(kid(el, 'coordinates'))[0];
-            if (!p) continue;
-            const m = st.icon
-              ? L.marker(p, { pane: 'kml', icon: L.icon({ iconUrl: st.icon, iconSize: [24, 24], iconAnchor: [12, 12] }) })
-              : L.circleMarker(p, { pane: 'kml', radius: 6, color: '#000', weight: 1.5, fillColor: (st.iconColor || line).color, fillOpacity: 1 });
-            if (name) m.bindTooltip(name, { permanent: true, direction: 'right', className: 'ov-label', offset: [8, 0] });
-            add(m);
-          } else if (el.localName === 'LineString' || el.localName === 'LinearRing') {
-            const pts = coords(kid(el, 'coordinates'));
-            if (pts.length > 1) add(L.polyline(pts, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2 }));
-          } else if (el.localName === 'Polygon') {
-            const outer = kid(el, 'outerBoundaryIs'), inner = kids(el, 'innerBoundaryIs');
-            const rings = [coords(outer && outer.getElementsByTagName('coordinates')[0]), ...inner.map(i => coords(i.getElementsByTagName('coordinates')[0]))].filter(r => r.length > 2);
-            if (rings.length) add(L.polygon(rings, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2, fillColor: poly.color, fillOpacity: st.fill === false ? 0 : poly.opacity }));
-          } else if (el.localName === 'MultiGeometry') {
-            walk(el);
+    for (const [docPath, text] of docs) {
+      let doc;
+      try { doc = parseXml(text); } catch (e) { if (docPath === (ov.path || 'doc.kml')) throw e; continue; }
+      const kids = (el, name) => [...el.children].filter(c => c.localName === name);
+      const kid = (el, name) => kids(el, name)[0];
+      const txt = (el, name) => { const n = el && el.getElementsByTagName(name)[0]; return n ? n.textContent.trim() : ''; };
+      const readStyle = st => {
+        const ls = kid(st, 'LineStyle'), ps = kid(st, 'PolyStyle'), is = kid(st, 'IconStyle');
+        return {
+          line: kmlColor(ls && txt(ls, 'color'), null), width: Number(ls && txt(ls, 'width')) || 2,
+          poly: kmlColor(ps && txt(ps, 'color'), null), fill: !(ps && txt(ps, 'fill') === '0'),
+          icon: is ? image(txt(is, 'href'), docPath) : '', iconColor: kmlColor(is && txt(is, 'color'), null),
+        };
+      };
+      const styles = {};
+      for (const st of doc.getElementsByTagName('Style')) if (st.getAttribute('id')) styles['#' + st.getAttribute('id')] = readStyle(st);
+      for (const sm of doc.getElementsByTagName('StyleMap')) {
+        const pair = [...sm.getElementsByTagName('Pair')].find(p => txt(p, 'key') === 'normal');
+        if (pair && sm.getAttribute('id')) styles['#' + sm.getAttribute('id')] = styles[txt(pair, 'styleUrl').replace(/^[^#]*/, '')] || {};
+      }
+      const coords = el => (el ? el.textContent.trim().split(/\s+/).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])).map(p => [p[1], p[0]]) : []);
+
+      for (const pm of doc.getElementsByTagName('Placemark')) {
+        const own = kid(pm, 'Style');
+        const st = Object.assign({}, styles[txt(pm, 'styleUrl').replace(/^[^#]*/, '')] || {}, own ? readStyle(own) : {});
+        const name = txt(pm, 'name');
+        const desc = textOf(txt(pm, 'description'));
+        const line = st.line || { color: '#ffd400', opacity: 1 };
+        const poly = st.poly || { color: line.color, opacity: 0.25 };
+        const popup = `<div class="t">${esc(name || ov.name)}</div>${desc ? `<div>${esc(desc)}</div>` : ''}<div class="k">${esc(ov.name)}</div>`;
+        const add = layer => { layer.bindPopup(popup, { maxWidth: 260 }); group.addLayer(layer); };
+        const walk = g => {
+          for (const el of g.children) {
+            if (el.localName === 'Point') {
+              const p = coords(kid(el, 'coordinates'))[0];
+              if (!p) continue;
+              const m = st.icon
+                ? L.marker(p, { pane: 'kml', icon: L.icon({ iconUrl: st.icon, iconSize: [24, 24], iconAnchor: [12, 12] }) })
+                : L.circleMarker(p, { pane: 'kml', radius: 6, color: '#000', weight: 1.5, fillColor: (st.iconColor || line).color, fillOpacity: 1 });
+              if (name) m.bindTooltip(name, { permanent: true, direction: 'right', className: 'ov-label', offset: [8, 0] });
+              add(m);
+            } else if (el.localName === 'LineString' || el.localName === 'LinearRing') {
+              const pts = coords(kid(el, 'coordinates'));
+              if (pts.length > 1) add(L.polyline(pts, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2 }));
+            } else if (el.localName === 'Polygon') {
+              const outer = kid(el, 'outerBoundaryIs'), inner = kids(el, 'innerBoundaryIs');
+              const rings = [coords(outer && outer.getElementsByTagName('coordinates')[0]), ...inner.map(i => coords(i.getElementsByTagName('coordinates')[0]))].filter(r => r.length > 2);
+              if (rings.length) add(L.polygon(rings, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2, fillColor: poly.color, fillOpacity: st.fill === false ? 0 : poly.opacity }));
+            } else if (el.localName === 'MultiGeometry') {
+              walk(el);
+            }
           }
+        };
+        walk(pm);
+      }
+      // Rasterkarten (GroundOverlay) mit LatLonBox oder gx:LatLonQuad
+      for (const go of doc.getElementsByTagName('GroundOverlay')) {
+        const icon = go.getElementsByTagName('Icon')[0];
+        const url = image(txt(icon, 'href'), docPath);
+        if (!url) continue;
+        let b = null;
+        const box = go.getElementsByTagName('LatLonBox')[0];
+        if (box) {
+          b = [[Number(txt(box, 'south')), Number(txt(box, 'west'))], [Number(txt(box, 'north')), Number(txt(box, 'east'))]];
+        } else {
+          const quad = go.getElementsByTagName('gx:LatLonQuad')[0] || go.getElementsByTagName('LatLonQuad')[0];
+          const pts = quad ? coords(quad.getElementsByTagName('coordinates')[0] || quad) : [];
+          if (pts.length >= 4) b = [[Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1]))], [Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]];
+        }
+        if (b && b.flat().every(Number.isFinite)) grounds.push({ bounds: b, url, span: Math.abs(b[1][1] - b[0][1]) || 1e-9 });
+      }
+    }
+
+    // Rasterbilder: eine Detailstufe -> alle zeigen; mehrere (Super-Overlay) -> passende Stufe je Zoom, nur sichtbare
+    const levels = new Map();
+    for (const g of grounds) {
+      const k = Math.round(Math.log2(360 / g.span));
+      if (!levels.has(k)) levels.set(k, []);
+      levels.get(k).push(g);
+    }
+    if (levels.size <= 1) {
+      for (const g of grounds) group.addLayer(L.imageOverlay(g.url, g.bounds, { pane: 'kml', opacity: 0.9 }));
+    } else {
+      const keys = [...levels.keys()].sort((a, b) => a - b);
+      const raster = L.layerGroup();
+      const made = new Map();
+      const refresh = () => {
+        if (!map.hasLayer(group)) return;
+        const z = map.getZoom();
+        // Stufe, deren Bilder am Bildschirm etwa 256–512 px breit sind
+        const k = keys.reduce((best, lv) => {
+          const w = 256 * 2 ** z / 2 ** lv;
+          const bw = 256 * 2 ** z / 2 ** best;
+          return Math.abs(Math.log2(w / 384)) < Math.abs(Math.log2(bw / 384)) ? lv : best;
+        }, keys[0]);
+        const view = map.getBounds().pad(0.3);
+        raster.clearLayers();
+        for (const g of levels.get(k)) {
+          if (!view.intersects(L.latLngBounds(g.bounds))) continue;
+          if (!made.has(g)) made.set(g, L.imageOverlay(g.url, g.bounds, { pane: 'kml', opacity: 0.9 }));
+          raster.addLayer(made.get(g));
         }
       };
-      walk(pm);
+      group.addLayer(raster);
+      group.on('add', () => { map.on('moveend zoomend', refresh); setTimeout(refresh, 0); });
+      group.on('remove', () => map.off('moveend zoomend', refresh));
+      group._superBounds = L.latLngBounds(grounds.map(g => g.bounds).flat());
     }
-    for (const go of doc.getElementsByTagName('GroundOverlay')) {
-      const box = go.getElementsByTagName('LatLonBox')[0];
-      const href = image(txt(go.getElementsByTagName('Icon')[0], 'href'));
-      if (!box || !href) continue;
-      const b = [[Number(txt(box, 'south')), Number(txt(box, 'west'))], [Number(txt(box, 'north')), Number(txt(box, 'east'))]];
-      if (b.flat().every(Number.isFinite)) group.addLayer(L.imageOverlay(href, b, { pane: 'kml', opacity: 0.85 }));
-    }
+    if (grounds.length && !group._superBounds) group._superBounds = L.latLngBounds(grounds.map(g => g.bounds).flat());
     return group;
+  }
+
+  function boundsOf(l) {
+    const b = l.getBounds();
+    if (l._superBounds) return b.isValid() ? b.extend(l._superBounds) : l._superBounds;
+    return b;
   }
 
   function showOverlay(ov) {
@@ -123,25 +210,32 @@
       const l = kmlLayer(ov);
       l.addTo(map);
       layers.set(ov.id, l);
-    } catch (e) { toast(`Overlay „${ov.name}“: ${e.message}`); }
+    } catch (e) { toast(`Overlay "${ov.name}": ${e.message}`); }
   }
 
-  async function saveOverlays(list, source) {
+  async function saveOverlays(list, source, zoomTo) {
+    let first = null;
     for (const o of list) {
-      const ov = { id: source + ':' + o.name, name: o.name, source, kml: o.kml, images: o.images || {}, visible: true, date: Date.now() };
+      const ov = { id: source + ':' + o.name, name: o.name, source, kml: o.kml, path: o.path, extra: o.extra || {}, images: o.images || {}, visible: true, date: Date.now() };
       const old = overlays.find(x => x.id === ov.id);
       if (old) ov.visible = old.visible;
       overlays = overlays.filter(x => x.id !== ov.id).concat(ov);
-      try { await idb.put(ov); } catch (e) { toast('Overlay konnte nicht gespeichert werden (Speicher voll?).'); }
+      try { await idb.put(ov); } catch (e) { toast('Overlay could not be stored offline (storage full?).'); }
       showOverlay(ov);
+      if (!first) first = ov;
     }
     renderOverlays();
+    // Neues Overlay gleich zeigen (sonst liegt es oft außerhalb des Ausschnitts)
+    if (zoomTo && first && layers.has(first.id)) {
+      const b = boundsOf(layers.get(first.id));
+      if (b && b.isValid()) map.fitBounds(b, { maxZoom: 15 });
+    }
   }
 
   function renderOverlays() {
     const box = $('ovList');
     box.textContent = '';
-    if (!overlays.length) box.innerHTML = '<div class="empty">Noch keine Overlays.</div>';
+    if (!overlays.length) box.innerHTML = '<div class="empty">No overlays yet.</div>';
     for (const ov of overlays) {
       const row = document.createElement('div');
       row.className = 'item';
@@ -152,16 +246,22 @@
       const t = document.createElement('span');
       t.textContent = ov.name;
       const s = document.createElement('small');
-      s.textContent = ov.source.split(':')[0] === 'file' ? 'vom Gerät' : ov.source.replace(/^(pkg|mission):/, (m, k) => (k === 'pkg' ? 'Paket ' : 'Mission '));
+      const [kind, ...rest] = ov.source.split(':');
+      s.textContent = kind === 'file' ? 'from device' : (kind === 'pkg' ? 'package ' : 'mission ') + rest.join(':');
       t.append(s);
       t.style.cursor = 'pointer';
-      t.onclick = () => { const l = layers.get(ov.id); if (l && l.getBounds().isValid()) { window.eud.closePopup(); map.fitBounds(l.getBounds(), { maxZoom: 16 }); } };
+      t.onclick = () => {
+        const l = layers.get(ov.id);
+        const b = l && boundsOf(l);
+        if (b && b.isValid()) { window.eud.closePopup(); map.fitBounds(b, { maxZoom: 16 }); }
+      };
       const del = document.createElement('button');
       del.type = 'button';
       del.className = 'del';
       del.textContent = '×';
+      del.setAttribute('aria-label', 'Delete');
       del.onclick = async () => {
-        if (!confirm(`Overlay „${ov.name}“ löschen?`)) return;
+        if (!confirm(`Delete overlay "${ov.name}"?`)) return;
         overlays = overlays.filter(x => x !== ov);
         ov.visible = false;
         showOverlay(ov);
@@ -175,6 +275,7 @@
 
   // ---------------- Server-Auswahl und Abruf ----------------
 
+  const NEED_CERT = 'This needs a TAK server with SSL and a certificate (Menu → Servers).';
   const dataServers = () => getServers().filter(s => s.proto === 'ssl' && s.certPem && s.keyPem);
   function currentServer() {
     const list = dataServers();
@@ -190,7 +291,7 @@
   $('dataSrv').addEventListener('change', () => store.set('eud.dataSrv', $('dataSrv').value));
 
   async function marti(action, args, srv = currentServer()) {
-    if (!srv) throw new Error('Dafür wird ein TAK-Server mit SSL und Zertifikat gebraucht (Menü → Server).');
+    if (!srv || !srv.certPem) throw new Error(NEED_CERT);
     for (let i = 0; i < 2; i++) {
       try {
         return await postJson('/api/eud/marti', {
@@ -200,7 +301,7 @@
       } catch (e) {
         if (e.code !== 'UNTRUSTED' || i) throw e;
         const ok = await askTrust(`${srv.host}:${srv.apiPort || 8443}`, e.fingerprint, e.subject);
-        if (!ok) throw new Error('Abgebrochen.');
+        if (!ok) throw new Error('Cancelled.');
         srv.apiFingerprint = e.fingerprint;
         saveServers();
       }
@@ -209,41 +310,44 @@
   }
 
   // Ergebnis einspielen: CoT auf die Karte, Overlays speichern
-  async function apply(result, source) {
+  async function apply(result, source, zoomTo) {
     for (const xml of result.cot || []) handleCot(xml);
-    if ((result.overlays || []).length) await saveOverlays(result.overlays, source);
-    return `${(result.cot || []).length} Objekt(e), ${(result.overlays || []).length} Overlay(s)`;
+    if ((result.overlays || []).length) await saveOverlays(result.overlays, source, zoomTo);
+    let text = `${(result.cot || []).length} item(s), ${(result.overlays || []).length} overlay(s)`;
+    if ((result.errors || []).length) text += ` – ${result.errors.length} part(s) failed: ${result.errors[0]}`;
+    return text;
   }
 
   const busy = (btn, on) => { if (btn) btn.disabled = on; };
+  const fmtTime = t => { const d = new Date(t); return isNaN(d) ? '' : d.toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' }); };
 
   // ---------------- Datenpakete ----------------
 
   $('pkgLoad').addEventListener('click', async () => {
     const btn = $('pkgLoad');
     busy(btn, true);
-    msg('Lade Liste …', true);
+    msg('Loading list …', true);
     try {
       const { packages } = await marti('packages');
       const box = $('pkgList');
       box.textContent = '';
-      if (!packages.length) box.innerHTML = '<div class="empty">Keine Datenpakete auf dem Server.</div>';
+      if (!packages.length) box.innerHTML = '<div class="empty">No data packages on the server.</div>';
       for (const p of packages) {
         const row = document.createElement('div');
         row.className = 'item';
         const t = document.createElement('span');
         t.textContent = p.name;
         const s = document.createElement('small');
-        s.textContent = [p.user, p.time ? new Date(p.time).toLocaleString() : '', p.size ? Math.max(1, Math.round(p.size / 1024)) + ' KB' : ''].filter(Boolean).join(' · ');
+        s.textContent = [p.user, fmtTime(p.time), p.size ? Math.max(1, Math.round(p.size / 1024)) + ' KB' : ''].filter(Boolean).join(' · ');
         t.append(s);
         const b = document.createElement('button');
         b.type = 'button';
-        b.textContent = 'LADEN';
+        b.textContent = 'LOAD';
         b.onclick = async () => {
           b.disabled = true;
-          msg('Lade ' + p.name + ' …', true);
+          msg('Loading ' + p.name + ' …', true);
           try {
-            const summary = await apply(await marti('package', { hash: p.hash, name: p.name }), 'pkg:' + p.name);
+            const summary = await apply(await marti('package', { hash: p.hash, name: p.name }), 'pkg:' + p.name, true);
             msg(`${p.name}: ${summary}.`, true);
             b.textContent = '✓';
             b.className = 'on';
@@ -252,41 +356,54 @@
         row.append(t, b);
         box.append(row);
       }
-      msg('');
+      if (packages.length) msg('');
     } catch (e) { msg(e.message); } finally { busy(btn, false); }
   });
 
   // ---------------- Data Sync (Missionen) ----------------
 
-  let subs = store.get('eud.missions', []); // [{ srv, name }]
+  let subs = store.get('eud.missions', []); // [{ srv, name, password }]
   const isSub = (srv, name) => subs.some(s => s.srv === srv.id && s.name === name);
 
   async function syncMission(srv, name, quiet) {
-    const summary = await apply(await marti('mission', { name, uid: profile.uid }, srv), 'mission:' + name);
+    const sub = subs.find(s => s.srv === srv.id && s.name === name);
+    const summary = await apply(await marti('mission', { name, uid: profile.uid, password: sub ? sub.password : undefined }, srv), 'mission:' + name, !quiet);
     if (!quiet) msg(`${name}: ${summary}.`, true);
+  }
+
+  async function subscribe(srv, name, password) {
+    subs = subs.filter(x => !(x.srv === srv.id && x.name === name)).concat({ srv: srv.id, name, password: password || undefined });
+    store.set('eud.missions', subs);
+    try {
+      await syncMission(srv, name);
+    } catch (e) {
+      subs = subs.filter(x => !(x.srv === srv.id && x.name === name));
+      store.set('eud.missions', subs);
+      throw e;
+    }
   }
 
   $('misLoad').addEventListener('click', async () => {
     const btn = $('misLoad');
     const srv = currentServer();
     busy(btn, true);
-    msg('Lade Missionen …', true);
+    msg('Loading missions …', true);
     try {
       const { missions } = await marti('missions', {}, srv);
       const box = $('misList');
       box.textContent = '';
-      if (!missions.length) box.innerHTML = '<div class="empty">Keine Missionen auf dem Server.</div>';
+      if (!missions.length) box.innerHTML = '<div class="empty">No missions on the server.</div>';
       for (const m of missions) {
         const row = document.createElement('div');
         row.className = 'item';
         const t = document.createElement('span');
         t.textContent = m.name + (m.password ? ' 🔒' : '');
         const s = document.createElement('small');
-        s.textContent = [m.description, `${m.items} Objekte`, `${m.files} Dateien`].filter(Boolean).join(' · ');
+        s.textContent = [m.description, `${m.items} items`, `${m.files} files`].filter(Boolean).join(' · ');
         t.append(s);
         const b = document.createElement('button');
         b.type = 'button';
-        const label = () => { const on = isSub(srv, m.name); b.textContent = on ? '✓ ABO' : 'ABONNIEREN'; b.className = on ? 'on' : ''; };
+        const label = () => { const on = isSub(srv, m.name); b.textContent = on ? '✓ SUBSCRIBED' : 'SUBSCRIBE'; b.className = on ? 'on' : ''; };
         label();
         b.onclick = async () => {
           b.disabled = true;
@@ -294,13 +411,17 @@
             if (isSub(srv, m.name)) {
               await marti('unsubscribe', { name: m.name, uid: profile.uid }, srv).catch(() => {});
               subs = subs.filter(x => !(x.srv === srv.id && x.name === m.name));
-              msg(`${m.name}: Abo beendet.`, true);
+              store.set('eud.missions', subs);
+              msg(`${m.name}: unsubscribed.`, true);
             } else {
-              msg('Lade ' + m.name + ' …', true);
-              await syncMission(srv, m.name);
-              subs.push({ srv: srv.id, name: m.name });
+              let password;
+              if (m.password) {
+                password = prompt(`Password for mission "${m.name}":`);
+                if (password == null) return;
+              }
+              msg('Loading ' + m.name + ' …', true);
+              await subscribe(srv, m.name, password);
             }
-            store.set('eud.missions', subs);
             label();
           } catch (e) { msg(e.message); } finally { b.disabled = false; }
         };
@@ -312,7 +433,6 @@
   });
 
   // Abonnierte Missionen aktuell halten: bei Änderungsmeldung vom Server und alle 5 Minuten
-  let syncTimer = null;
   async function syncAll() {
     if (!navigator.onLine) return;
     for (const sub of subs) {
@@ -320,9 +440,63 @@
       if (srv) await syncMission(srv, sub.name, true).catch(() => {});
     }
   }
-  document.addEventListener('eud-mission-change', () => { clearTimeout(syncTimer); syncTimer = setTimeout(syncAll, 3000); });
   setInterval(syncAll, 5 * 60 * 1000);
   setTimeout(syncAll, 8000);
+
+  // ---------------- Vom Server geschickt (Auto-Push wie bei ATAK) ----------------
+
+  const detailAttr = (xml, tag, attr) => {
+    const m = new RegExp(`<${tag}\\b[^>]*\\b${attr}="([^"]*)"`).exec(xml);
+    return m ? m[1].replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"') : '';
+  };
+  const pushSrv = d => (d && d.srv && d.srv.certPem ? d.srv : dataServers()[0] || null);
+  const seenPush = new Set();
+
+  // Datenpaket an dieses Gerät geschickt (b-f-t-r mit <fileshare senderUrl=… sha256=…>)
+  document.addEventListener('eud-file-push', async e => {
+    const xml = e.detail.xml;
+    const url = detailAttr(xml, 'fileshare', 'senderUrl');
+    let hash = detailAttr(xml, 'fileshare', 'sha256');
+    try { hash = new URL(url).searchParams.get('hash') || hash; } catch (err) { /* keine URL */ }
+    const name = detailAttr(xml, 'fileshare', 'filename') || detailAttr(xml, 'fileshare', 'name') || 'package.zip';
+    const from = detailAttr(xml, 'fileshare', 'senderCallsign');
+    if (!hash || seenPush.has(hash)) return;
+    seenPush.add(hash);
+    const srv = pushSrv(e.detail);
+    if (!srv) return toast(`Data package "${name}" received, but ${NEED_CERT}`, 6000);
+    toast(`Receiving data package "${name}"${from ? ' from ' + from : ''} …`);
+    try {
+      const summary = await apply(await marti('package', { hash, name }, srv), 'pkg:' + name, true);
+      toast(`Data package "${name}": ${summary}.`, 6000);
+    } catch (err) {
+      seenPush.delete(hash);
+      toast(`Data package "${name}" failed: ${err.message}`, 6000);
+    }
+  });
+
+  // Einladung in eine Mission (t-x-m-i): wie ATAK direkt abonnieren
+  document.addEventListener('eud-mission-invite', async e => {
+    const name = detailAttr(e.detail.xml, 'mission', 'name');
+    const srv = pushSrv(e.detail);
+    if (!name || !srv || isSub(srv, name)) return;
+    toast(`Invited to mission "${name}" – subscribing …`);
+    try { await subscribe(srv, name); toast(`Mission "${name}" subscribed.`); } catch (err) { toast(`Mission "${name}": ${err.message}`, 6000); }
+  });
+
+  // Mission geändert (t-x-m-c): diese Mission neu laden (kurz gesammelt)
+  const changeTimers = new Map();
+  document.addEventListener('eud-mission-change', e => {
+    const name = e.detail ? detailAttr(e.detail.xml, 'mission', 'name') : '';
+    const targets = name ? subs.filter(s => s.name === name) : subs;
+    for (const sub of targets) {
+      const key = sub.srv + ':' + sub.name;
+      clearTimeout(changeTimers.get(key));
+      changeTimers.set(key, setTimeout(() => {
+        const srv = getServers().find(s => s.id === sub.srv);
+        if (srv) syncMission(srv, sub.name, true).catch(() => {});
+      }, 2000));
+    }
+  });
 
   // ---------------- Overlays vom Gerät ----------------
 
@@ -330,15 +504,15 @@
     const f = e.target.files[0];
     e.target.value = '';
     if (!f) return;
-    msg('Lade ' + f.name + ' …', true);
+    msg('Loading ' + f.name + ' …', true);
     try {
       const data = await new Promise((resolve, reject) => {
         const r = new FileReader();
         r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
-        r.onerror = () => reject(new Error('Datei lässt sich nicht lesen.'));
+        r.onerror = () => reject(new Error('Cannot read file.'));
         r.readAsDataURL(f);
       });
-      const summary = await apply(await postJson('/api/eud/extract', { name: f.name, data }), 'file:' + f.name);
+      const summary = await apply(await postJson('/api/eud/extract', { name: f.name, data }), 'file:' + f.name, true);
       msg(`${f.name}: ${summary}.`, true);
     } catch (err) { msg(err.message); }
   });
@@ -352,7 +526,7 @@
     try {
       const { feeds } = await marti('videos');
       box.textContent = '';
-      if (!feeds.length) box.innerHTML = '<div class="empty">Keine Video-Feeds auf dem Server.</div>';
+      if (!feeds.length) box.innerHTML = '<div class="empty">No video feeds on the server.</div>';
       for (const f of feeds) {
         const row = document.createElement('div');
         row.className = 'item';
@@ -361,17 +535,14 @@
         const s = document.createElement('small');
         s.textContent = f.url;
         t.append(s);
-        let b;
+        const b = document.createElement('button');
+        b.type = 'button';
         if (/^https?:\/\//i.test(f.url)) {
-          b = document.createElement('button');
-          b.type = 'button';
           b.textContent = '▶';
           b.onclick = () => { window.eud.closePopup(); window.eudPlay(f.alias, f.url); };
         } else {
-          b = document.createElement('button');
-          b.type = 'button';
-          b.textContent = 'KOPIEREN';
-          b.onclick = () => navigator.clipboard.writeText(f.url).then(() => toast('Adresse kopiert – z. B. in VLC öffnen.'), () => toast(f.url, 8000));
+          b.textContent = 'COPY';
+          b.onclick = () => navigator.clipboard.writeText(f.url).then(() => toast('Address copied – open it e.g. in VLC.'), () => toast(f.url, 8000));
         }
         row.append(t, b);
         box.append(row);
@@ -390,7 +561,7 @@
     });
   }
   document.addEventListener('eud-popup', e => {
-    if (e.detail === 'data') { fillServers(); renderOverlays(); msg(dataServers().length ? '' : 'Dafür wird ein TAK-Server mit SSL und Zertifikat gebraucht (Menü → Server).'); }
+    if (e.detail === 'data') { fillServers(); renderOverlays(); msg(dataServers().length ? '' : NEED_CERT); }
   });
 
   idb.all().then(list => {

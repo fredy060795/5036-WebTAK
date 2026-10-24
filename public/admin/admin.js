@@ -961,5 +961,26 @@ $('takForm').addEventListener('submit', async e => {
     loadTak();
   } catch (err) { setMsg($('takMsg'), err.message); }
 });
+function showEudQr() {
+  const img = el('img', { class: 'qr', alt: 'QR-Code zum TAK-EUD', src: '/api/admin/eud-qr.svg?t=' + Date.now() });
+  const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (!w) return;
+    const d = w.document;
+    d.title = 'TAK EUD';
+    d.body.style.fontFamily = 'system-ui, sans-serif';
+    d.body.style.textAlign = 'center';
+    const h = d.createElement('h1'); h.textContent = 'TAK EUD';
+    const i = d.createElement('img'); i.src = img.src; i.style.width = '340px';
+    const t = d.createElement('p'); t.textContent = '1. Scan  2. Enter callsign  3. Connect to the TAK server';
+    const t2 = d.createElement('p'); t2.textContent = 'iPhone: Safari → Share → Add to Home Screen';
+    d.body.append(h, i, t, t2);
+    i.onload = () => w.print();
+  } });
+  openModal('QR-Code TAK-EUD', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
+}
+$('eudQrBig').addEventListener('click', showEudQr);
+$('eudQr').addEventListener('click', showEudQr);
+$('eudQr').style.cursor = 'pointer';
 $('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));
 setInterval(() => { if (!document.hidden && $('eudLinks').offsetParent) loadEudLinks(); }, 10000);

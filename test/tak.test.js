@@ -112,7 +112,7 @@ test('Zertifikat anfordern: unbekannter Server wird erst nach Bestätigung des F
   );
   await assert.rejects(
     tak.enroll({ host: '127.0.0.1', port: enrollPort, username: 'max', password: 'falsch', fingerprint: tak.fingerprintOf(serverCertPem) }),
-    /lehnt Benutzername\/Passwort ab/,
+    /rejected user name\/password/,
   );
   enrolled = await tak.enroll({ host: '127.0.0.1', port: enrollPort, username: 'max', password: 'geheim', uid: 'EUD-1', fingerprint: tak.fingerprintOf(serverCertPem) });
   assert.match(enrolled.certPem, /BEGIN CERTIFICATE/);
@@ -168,7 +168,7 @@ test('.p12 lesen: Client-Zertifikat und Truststore', () => {
   assert.equal(r.kind, 'client');
   assert.equal(tak.fingerprintOf(r.certPem), tak.fingerprintOf(enrolled.certPem));
   assert.equal(r.caPems.length, 1);
-  assert.throws(() => tak.readP12(b64, 'falsch'), /Passwort falsch/);
+  assert.throws(() => tak.readP12(b64, 'falsch'), /wrong password/);
 
   const ts = forge.pkcs12.toPkcs12Asn1(null, [ca.cert], 'atakatak', { algorithm: '3des' });
   const t = tak.readP12(forge.util.encode64(forge.asn1.toDer(ts).getBytes()), 'atakatak');
@@ -252,11 +252,34 @@ test('TAK-Server-API: Datenpakete, Missionen (Data Sync), Video-Feeds mit Client
     assert.equal(subscribed, 'EUD-1');
     assert.ok(mis.cot.some(x => x.includes('MIS-1')) && mis.cot.some(x => x.includes('PKG-1')));
     assert.equal(mis.overlays.length, 1);
-    await assert.rejects(tak.marti(conn, 'package', { hash: '../etc' }), /Ungültige/);
-    await assert.rejects(tak.marti({ ...conn, certPem: '' }, 'packages'), /Client-Zertifikat/);
+    await assert.rejects(tak.marti(conn, 'package', { hash: '../etc' }), /Invalid id/);
+    await assert.rejects(tak.marti({ ...conn, certPem: '' }, 'packages'), /client certificate/);
   } finally {
     api.close();
   }
+});
+
+test('KMZ-Overlay im Datenpaket: KML mit Namensraum und Bild (GroundOverlay)', () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'kmz-'));
+  fs.mkdirSync(path.join(dir, 'k', 'files'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'k', 'doc.kml'), '<?xml version="1.0"?><kml xmlns="http://www.opengis.net/kml/2.2"><Document><GroundOverlay><Icon><href>files/karte.png</href></Icon><LatLonBox><north>48.4</north><south>48.3</south><east>14.4</east><west>14.3</west></LatLonBox></GroundOverlay></Document></kml>');
+  fs.writeFileSync(path.join(dir, 'k', 'files', 'karte.png'), Buffer.alloc(200, 1));
+  fs.mkdirSync(path.join(dir, 'k', '1'));
+  fs.writeFileSync(path.join(dir, 'k', '1', '0.kml'), '<kml><GroundOverlay><Icon><href>0.png</href></Icon></GroundOverlay></kml>');
+  execFileSync('zip', ['-qr', '../karte.kmz', '.'], { cwd: path.join(dir, 'k') });
+  execFileSync('zip', ['-q', 'paket.zip', 'karte.kmz'], { cwd: dir });
+  const r = tak.extractContent('paket.zip', fs.readFileSync(path.join(dir, 'paket.zip')));
+  fs.rmSync(dir, { recursive: true, force: true });
+  assert.equal(r.overlays.length, 1);
+  assert.equal(r.overlays[0].name, 'karte');
+  assert.match(r.overlays[0].kml, /GroundOverlay/);
+  assert.match(r.overlays[0].images['files/karte.png'], /^data:image\/png;base64,/);
+  assert.equal(r.overlays[0].path, 'doc.kml');
+  assert.deepEqual(Object.keys(r.overlays[0].extra), ['1/0.kml']);
 });
 
 test('Erlaubte TAK-Server', () => {

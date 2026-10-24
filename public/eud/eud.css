@@ -21,7 +21,10 @@
 
 * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
 html, body { height: 100%; width: 100%; background: var(--bg); color: var(--text); font-family: var(--font); font-size: 15px; overflow: hidden; position: fixed; }
-#map { position: fixed; inset: 0; background: #0a0a0a; z-index: 1; }
+#mapWrap { position: fixed; inset: 0; overflow: hidden; perspective: 1100px; background: linear-gradient(#05080b 0%, #121b24 40%, #1b2530 100%); z-index: 1; }
+#map { position: absolute; inset: 0; background: #0a0a0a; transform-origin: 50% 50%; }
+/* Gekippt: Karte größer als der Bildschirm, damit der hintere Teil gefüllt ist */
+#map.tilted { inset: -110vh -80vw; }
 .hidden { display: none !important; }
 button { font-family: var(--font); color: var(--text); cursor: pointer; }
 svg { display: block; }
@@ -33,17 +36,19 @@ svg { display: block; }
   padding-left: max(10px, var(--left)); padding-right: max(10px, var(--right));
   background: rgba(0, 0, 0, 0.82); border-bottom: 1px solid rgba(255, 255, 255, 0.08);
   display: flex; align-items: center; gap: 8px; font-size: 0.75rem;
+  overflow-x: auto; overflow-y: hidden; scrollbar-width: none;
 }
+#tsb::-webkit-scrollbar { display: none; }
 #clock { font-weight: bold; font-size: 0.85rem; letter-spacing: 1px; flex-shrink: 0; }
 .sep { width: 1px; height: 20px; background: rgba(255, 255, 255, 0.2); flex-shrink: 0; }
 .info { display: flex; align-items: center; gap: 4px; flex-shrink: 0; white-space: nowrap; }
-.info svg { width: 18px; height: 18px; }
+.info svg { width: 16px; height: 16px; }
 .conn { background: none; border: none; font-size: 0.75rem; font-weight: bold; padding: 6px 0; }
 .dot { display: inline-block; width: 10px; height: 10px; border-radius: 50%; background: #555; flex-shrink: 0; }
 .dot.ok { background: var(--green2); box-shadow: 0 0 6px rgba(46, 204, 113, 0.6); }
 .dot.warn { background: var(--yellow); box-shadow: 0 0 6px rgba(243, 156, 18, 0.6); }
 .dot.err { background: #e74c3c; box-shadow: 0 0 6px rgba(231, 76, 60, 0.6); }
-#userBlock { display: flex; flex-direction: column; flex: 1; min-width: 0; overflow: hidden; line-height: 1.15; }
+#userBlock { display: flex; flex-direction: column; flex: 1; min-width: 70px; overflow: hidden; line-height: 1.15; background: none; border: none; text-align: left; padding: 4px 0; font-size: 0.75rem; }
 #meName { color: var(--blue); font-weight: bold; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #meTeam { color: var(--blue); font-size: 0.68rem; white-space: nowrap; }
 .zoom { display: flex; gap: 6px; flex-shrink: 0; }
@@ -57,8 +62,7 @@ svg { display: block; }
 .tsb-btn.live { background: rgba(220, 53, 69, 0.45); box-shadow: 0 0 10px rgba(220, 53, 69, 0.7); animation: pulse 1.5s infinite; }
 .badge { position: absolute; top: -4px; right: -4px; background: var(--red); color: #fff; font-size: 0.7rem; font-weight: bold; padding: 2px 6px; border-radius: 10px; min-width: 18px; text-align: center; animation: pulse 1.5s infinite; }
 @keyframes pulse { 0%, 100% { transform: scale(1); opacity: 1; } 50% { transform: scale(1.08); opacity: 0.8; } }
-@media (max-width: 520px) { .zoom, #batt, #batt + .sep { display: none; } }
-@media (max-width: 360px) { #clock, #clock + .sep { display: none; } }
+@media (max-width: 480px) { .tsb-btn { width: 38px; height: 40px; } .zbtn { width: 34px; height: 36px; } #tsb { gap: 6px; } }
 
 /* ── Werkzeugleiste unten ── */
 #toolbar {
@@ -79,7 +83,7 @@ svg { display: block; }
   background: var(--green); border: none; padding: 15px 40px; border-radius: 30px; font-weight: bold; font-size: 1.2em; box-shadow: 0 0 15px rgba(0, 255, 0, 0.3); }
 
 /* ── Video-Vorschau ── */
-#livePreview { position: fixed; z-index: 6004; left: max(10px, var(--left)); top: calc(64px + var(--top)); width: 120px; border: 2px solid var(--red); border-radius: 6px; overflow: hidden; background: #000; cursor: pointer; }
+#livePreview { position: fixed; z-index: 6004; left: max(10px, var(--left)); top: calc(178px + var(--top)); width: 120px; border: 2px solid var(--red); border-radius: 6px; overflow: hidden; background: #000; cursor: pointer; }
 #livePreview.ready { border-color: var(--yellow); }
 #livePreview video, #livePreview img { width: 100%; display: block; max-height: 160px; object-fit: cover; }
 .live-tag { position: absolute; left: 4px; top: 4px; background: var(--red); font-size: 0.65rem; font-weight: bold; padding: 1px 5px; border-radius: 3px; }
@@ -211,7 +215,7 @@ code { display: block; padding: 10px; border-radius: 6px; background: #000; word
 .leaflet-container a.leaflet-popup-close-button { color: #aaa; }
 .leaflet-control-attribution { background: rgba(0, 0, 0, 0.6) !important; color: #888 !important; font-size: 9px !important; }
 .leaflet-control-attribution a { color: #aaa !important; }
-.leaflet-top { top: calc(56px + var(--top)); }
+
 
 /* Karte: Offline-Bereiche */
 .subhead { margin: 18px 0 6px; padding-top: 10px; border-top: 1px solid var(--line); color: var(--blue); font-size: 0.75em; font-weight: bold; letter-spacing: 1px; }
@@ -254,3 +258,61 @@ code { display: block; padding: 10px; border-radius: 6px; background: #000; word
 #viewer.full .vw-body img, #viewer.full .vw-body video { max-height: none; height: 100%; }
 #vwMsg { position: absolute; left: 10px; right: 10px; text-align: center; color: #aaa; font-size: 0.8em; pointer-events: none; }
 .leaflet-popup-content button.play { background: rgba(52, 152, 219, 0.2); border-color: #3498db; color: #3498db; }
+
+/* Kompass (oben links) */
+#compass { position: fixed; z-index: 6010; top: calc(60px + var(--top)); left: max(10px, var(--left)); width: 84px; background: none; border: none; padding: 0;
+  display: flex; flex-direction: column; align-items: center; gap: 1px; }
+#compass svg { width: 56px; height: 56px; }
+#needle { transform-box: fill-box; transform-origin: center; transition: transform 0.25s ease; }
+#compassText { font-size: 15px; color: rgba(255, 255, 255, 0.85); text-shadow: 0 0 3px #000; }
+#compassMode { font-size: 9px; font-weight: bold; color: #9ad1ff; background: rgba(0, 0, 0, 0.55); padding: 1px 5px; border-radius: 3px; }
+#compass.heading svg { filter: drop-shadow(0 0 6px rgba(0, 123, 255, 0.9)); }
+#compass.heading #compassMode { color: #fff; background: var(--blue); }
+
+/* Kippen (oben rechts) */
+#pitchWrap { position: fixed; z-index: 6010; top: calc(60px + var(--top)); right: max(10px, var(--right)); display: flex; flex-direction: column; align-items: center; gap: 2px; }
+#pitchWrap label { color: #bbb; font-size: 9px; }
+#pitchBox { position: relative; width: 34px; height: 96px; cursor: ns-resize; touch-action: none; }
+#pitchBox svg { position: absolute; inset: 4px 0; width: 100%; height: calc(100% - 8px); }
+#pitchThumb { position: absolute; left: 50%; width: 22px; height: 6px; background: var(--blue); border-radius: 3px; transform: translateX(-50%); pointer-events: none; box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5); top: 88px; }
+#pitchText { color: #9ad1ff; font-size: 9px; font-weight: bold; }
+
+/* Entfernung messen */
+#measureHint { position: fixed; z-index: 6008; top: calc(62px + var(--top)); left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.88); color: #ffd700;
+  padding: 6px 16px; border-radius: 16px; font-weight: bold; font-size: 0.75rem; border: 1px solid rgba(255, 215, 0, 0.5); white-space: nowrap; pointer-events: none; }
+.tsb-btn.measuring { background: rgba(255, 215, 0, 0.25); box-shadow: 0 0 8px rgba(255, 215, 0, 0.5); }
+.tsb-btn.pinned { background: rgba(255, 215, 0, 0.2); box-shadow: 0 0 8px rgba(255, 215, 0, 0.4); }
+.measure-label { background: rgba(20, 20, 20, 0.88) !important; color: #ffd700 !important; border: 1px solid #ffd700 !important; border-radius: 4px; padding: 2px 8px !important;
+  font: bold 13px var(--font) !important; white-space: nowrap; box-shadow: none !important; }
+.measure-label::before { display: none; }
+
+/* Kopfzeile: Verbindung nur als Punkt */
+.grow { flex: 1; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+#connBtn { padding: 10px 6px; }
+#connBtn .dot { width: 14px; height: 14px; background: #e74c3c; box-shadow: 0 0 6px rgba(231, 76, 60, 0.6); }
+#connBtn .dot.ok { background: var(--green2); box-shadow: 0 0 8px rgba(46, 204, 113, 0.8); }
+#connBtn .dot.warn { background: var(--yellow); box-shadow: 0 0 6px rgba(243, 156, 18, 0.6); }
+#btnLocate { position: fixed; z-index: 6004; right: max(12px, var(--right)); bottom: calc(96px + var(--bottom)); width: 44px; height: 44px; border-radius: 50%;
+  background: rgba(26, 26, 26, 0.92); border: 2px solid #444; display: flex; align-items: center; justify-content: center; padding: 0; }
+#btnLocate svg { width: 24px; height: 24px; }
+#btnLocate.active { border-color: var(--blue); box-shadow: 0 0 10px rgba(0, 123, 255, 0.5); }
+
+/* Fenster minimieren / schließen */
+#chatWin { top: calc(62px + var(--top)); bottom: calc(86px + var(--bottom)); height: auto; max-height: 520px; }
+#chatWin.min { bottom: auto; width: 220px; left: auto; right: max(10px, var(--right)); }
+#chatWin.min .chat-msgs, #chatWin.min .chat-foot { display: none; }
+.chat-head { cursor: pointer; }
+.chat-ctl { display: flex; gap: 6px; }
+#viewer.min .vw-body { display: none; }
+#viewer.min { left: auto; right: max(8px, var(--right)); width: 220px; }
+.lp-btns { position: absolute; right: 2px; top: 2px; display: flex; gap: 2px; }
+.lp-btns button { width: 24px; height: 22px; padding: 0; border: none; border-radius: 3px; background: rgba(0, 0, 0, 0.65); font-size: 13px; line-height: 1; }
+#livePreview.min { width: 64px; }
+#livePreview.min video, #livePreview.min img { max-height: 40px; }
+#livePreview.min .lp-btns button#lpClose { display: none; }
+/* Ausgeblendet: Video bleibt winzig im Bild (iPhone liefert sonst keine Bilder), Stream läuft weiter */
+#livePreview.gone { width: 2px; height: 2px; opacity: 0.01; border: none; pointer-events: none; }
+#livePreview.gone .lp-btns, #livePreview.gone .live-tag { display: none; }
+#placeHint { position: fixed; z-index: 6008; top: calc(62px + var(--top)); left: 50%; transform: translateX(-50%); background: rgba(20, 20, 20, 0.88); color: #9ad1ff;
+  padding: 6px 16px; border-radius: 16px; font-weight: bold; font-size: 0.75rem; border: 1px solid rgba(0, 123, 255, 0.5); white-space: nowrap; pointer-events: none; }

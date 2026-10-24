@@ -690,7 +690,7 @@ test('Nutzer startet selbst (wenn erlaubt) und Admin bekommt Hinweise', async ()
 });
 
 test('TAK-EUD: App, Offline-Dateien, Vorgabe, erlaubte Server und Durchreiche (TCP)', async () => {
-  for (const p of ['/eud/', '/eud/sw.js', '/eud/eud.js', '/eud/manifest.webmanifest', '/eud/vendor/leaflet.js', '/eud/vendor/milsymbol.js', '/eud/vendor/jsQR.js', '/eud/vendor/images/layers.png']) {
+  for (const p of ['/eud/', '/eud/sw.js', '/eud/eud.js', '/eud/manifest.webmanifest', '/eud/vendor/leaflet.js', '/eud/vendor/leaflet-rotate.js', '/eud/vendor/milsymbol.js', '/eud/vendor/jsQR.js', '/eud/vendor/images/layers.png']) {
     const r = await fetch(base + p);
     assert.equal(r.status, 200, p);
     await r.arrayBuffer();
@@ -728,7 +728,7 @@ test('TAK-EUD: App, Offline-Dateien, Vorgabe, erlaubte Server und Durchreiche (T
   let c = connectTak();
   await c.open;
   c.ws.send(JSON.stringify({ type: 'connect', host: '127.0.0.1', port: tak.address().port, proto: 'tcp' }));
-  assert.match((await waitMsg(c.msgs, m => m.state === 'error')).message, /nicht freigegeben/);
+  assert.match((await waitMsg(c.msgs, m => m.state === 'error')).message, /not allowed/);
   c.ws.close();
 
   await api('tak', { method: 'POST', body: { allowedHosts: '127.0.0.1', preset: null } });

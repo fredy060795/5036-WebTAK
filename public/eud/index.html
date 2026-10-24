@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="de">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
@@ -16,76 +16,110 @@
 <link rel="stylesheet" href="eud.css">
 </head>
 <body>
-<div id="map"></div>
+<div id="mapWrap"><div id="map"></div></div>
 
-<!-- Statusleiste oben -->
+<!-- Top task bar -->
 <header id="tsb">
   <span id="clock">--:--</span>
   <span class="sep"></span>
-  <span class="info" id="batt" title="Akku">
-    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="7" width="17" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/><rect id="battFill" x="4" y="9" width="13" height="6" fill="#2ecc71" stroke="none"/></svg>
-    <span id="battText"></span>
-  </span>
-  <span class="sep"></span>
-  <button type="button" class="info conn" id="connBtn" title="Server"><span id="dot" class="dot"></span><span id="statusText">OFFLINE</span></button>
-  <span class="sep"></span>
-  <div id="userBlock"><span id="meName">---</span><span id="meTeam"></span></div>
-  <div class="zoom">
-    <button type="button" class="zbtn" id="zoomOut" aria-label="Verkleinern">−</button>
-    <button type="button" class="zbtn" id="zoomIn" aria-label="Vergrößern">+</button>
-  </div>
+  <button type="button" class="info conn" id="connBtn" title="Servers" aria-label="Server connection">
+    <span id="dot" class="dot"></span><span id="statusText" class="sr">OFFLINE</span>
+  </button>
+  <span class="grow"></span>
   <div class="acts">
+    <button type="button" class="tsb-btn" id="btnPin" title="Show marker symbols" aria-label="Marker symbols">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#ffd700" stroke-width="2"><line x1="12" y1="17" x2="12" y2="22"/><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V17z"/></svg>
+    </button>
     <button type="button" class="tsb-btn" id="btnChat" title="Chat" aria-label="Chat">
       <svg viewBox="0 0 24 24" fill="#2ecc71" stroke="#fff" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
       <span id="chatBadge" class="badge hidden"></span>
     </button>
-    <button type="button" class="tsb-btn" id="btnVideo" title="Videostream" aria-label="Videostream">
+    <button type="button" class="tsb-btn" id="btnVideo" title="Video stream" aria-label="Video stream">
       <svg viewBox="0 0 24 24" fill="#007bff" stroke="#fff" stroke-width="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
     </button>
-    <button type="button" class="tsb-btn" id="btnMenu" title="Menü" aria-label="Menü">
+    <button type="button" class="tsb-btn" id="btnMenu" title="Menu" aria-label="Menu">
       <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
     </button>
   </div>
 </header>
 
-<!-- Marker setzen -->
-<div id="crosshair" class="hidden"></div>
-<div id="drawBar" class="hidden">
-  <div class="draw-hint" id="drawHint">Punkte der Strecke auf der Karte antippen</div>
-  <div class="draw-btns">
-    <button type="button" class="mbtn" id="drawUndo">ZURÜCK</button>
-    <button type="button" class="mbtn red" id="drawCancel">ABBRECHEN</button>
-    <button type="button" class="mbtn pri" id="drawDone">FERTIG</button>
+<!-- Compass (top left): tap = map follows heading, tap again = north up -->
+<button type="button" id="compass" title="Compass – tap: heading up / north up">
+  <svg viewBox="0 0 28 28" fill="none">
+    <circle cx="14" cy="14" r="13" fill="rgba(0,0,0,0.5)" stroke="rgba(255,255,255,0.35)" stroke-width="1"/>
+    <line x1="14" y1="2" x2="14" y2="5.5" stroke="rgba(255,255,255,0.7)" stroke-width="1.2"/>
+    <line x1="26" y1="14" x2="22.5" y2="14" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+    <line x1="14" y1="26" x2="14" y2="22.5" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+    <line x1="2" y1="14" x2="5.5" y2="14" stroke="rgba(255,255,255,0.3)" stroke-width="0.8"/>
+    <g id="needle">
+      <polygon points="14,3 12.6,14 15.4,14" fill="#ff3333"/>
+      <polygon points="14,25 12.6,14 15.4,14" fill="rgba(200,200,200,0.45)"/>
+      <circle cx="14" cy="14" r="1.8" fill="#fff" stroke="rgba(0,0,0,0.4)" stroke-width="0.5"/>
+    </g>
+  </svg>
+  <span id="compassText">000°</span>
+  <span id="compassMode">N-UP</span>
+</button>
+
+<!-- Map tilt (top right) -->
+<div id="pitchWrap">
+  <label>60°</label>
+  <div id="pitchBox" title="Tilt map (0°–60°)">
+    <svg viewBox="0 0 34 88" preserveAspectRatio="none">
+      <polygon points="12,2 22,2 32,86 2,86" fill="rgba(255,255,255,0.08)" stroke="#555" stroke-width="1"/>
+      <polygon id="pitchFill" points="12,2 22,2 32,86 2,86" fill="rgba(0,123,255,0.18)" stroke="none"/>
+    </svg>
+    <div id="pitchThumb"></div>
   </div>
+  <label>0°</label>
+  <div id="pitchText">0°</div>
 </div>
-<button type="button" id="setBtn" class="hidden">PUNKT SETZEN</button>
-<nav id="toolbar">
-  <button type="button" class="tool" id="btnCenter" title="Auf mich zentrieren" aria-label="Auf mich zentrieren">
-    <svg viewBox="0 0 32 32"><path d="M16 3 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
-  </button>
-  <span class="tsep"></span>
-  <button type="button" class="tool" data-tool="a-h-G" title="Feind" aria-label="Feind"></button>
-  <button type="button" class="tool" data-tool="a-f-G" title="Freund" aria-label="Freund"></button>
+
+<button type="button" id="btnLocate" title="Center on my position" aria-label="Center on my position">
+  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><circle cx="12" cy="12" r="7"/><circle cx="12" cy="12" r="2" fill="#007bff" stroke="#007bff"/><path d="M12 1v4M12 19v4M1 12h4M19 12h4"/></svg>
+</button>
+
+<div id="measureHint" class="hidden">📏 Tap the map to measure · tap the ruler again to finish</div>
+
+<!-- Place markers -->
+<div id="placeHint" class="hidden">Tap the map to place the marker</div>
+<nav id="toolbar" class="hidden">
+  <button type="button" class="tool" data-tool="a-h-G" title="Hostile" aria-label="Hostile"></button>
+  <button type="button" class="tool" data-tool="a-f-G" title="Friendly" aria-label="Friendly"></button>
   <button type="button" class="tool" data-tool="a-n-G" title="Neutral" aria-label="Neutral"></button>
-  <button type="button" class="tool" data-tool="a-u-G" title="Unbekannt" aria-label="Unbekannt"></button>
-  <button type="button" class="tool" data-tool="b-m-p-s-p-i" title="Punkt" aria-label="Punkt">
-    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#ff3030" stroke="#000" stroke-width="2"/></svg>
+  <button type="button" class="tool" data-tool="a-u-G" title="Unknown" aria-label="Unknown"></button>
+  <span class="tsep"></span>
+  <button type="button" class="tool" id="btnMeasure" title="Measure distance" aria-label="Measure distance">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#ffd700" stroke-width="1.8"><path d="M3 17L17 3"/><path d="M3 17h3v-3"/><line x1="7" y1="13" x2="7" y2="11"/><line x1="11" y1="9" x2="11" y2="7"/><line x1="15" y1="5" x2="15" y2="3"/></svg>
   </button>
 </nav>
-
-<!-- Laufender Videostream: kleine Vorschau -->
-<div id="livePreview" class="hidden" title="Videostream">
-  <video id="camVideo" playsinline muted autoplay></video>
-  <img id="camImg" class="hidden" alt="Helmkamera">
-  <span class="live-tag" id="liveTag">BEREIT</span>
+<div id="drawBar" class="hidden">
+  <div class="draw-hint" id="drawHint">Tap the points of the route on the map</div>
+  <div class="draw-btns">
+    <button type="button" class="mbtn" id="drawUndo">UNDO</button>
+    <button type="button" class="mbtn red" id="drawCancel">CANCEL</button>
+    <button type="button" class="mbtn pri" id="drawDone">DONE</button>
+  </div>
 </div>
 
-<!-- Stream ansehen -->
+<!-- Own stream: small preview -->
+<div id="livePreview" class="hidden" title="Video stream">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <img id="camImg" class="hidden" alt="Helmet camera">
+  <span class="live-tag" id="liveTag">READY</span>
+  <div class="lp-btns">
+    <button type="button" id="lpMin" aria-label="Minimize">–</button>
+    <button type="button" id="lpClose" aria-label="Hide preview">✕</button>
+  </div>
+</div>
+
+<!-- Watch a stream -->
 <section id="viewer" class="hidden">
   <div class="vw-head">
     <span id="vwTitle"></span>
-    <button type="button" id="vwFull" aria-label="Vollbild">⛶</button>
-    <button type="button" id="vwClose" aria-label="Schließen">✕</button>
+    <button type="button" id="vwMin" aria-label="Minimize">–</button>
+    <button type="button" id="vwFull" aria-label="Full screen">⛶</button>
+    <button type="button" id="vwClose" aria-label="Close">✕</button>
   </div>
   <div class="vw-body">
     <img id="vwImg" class="hidden" alt="">
@@ -97,231 +131,236 @@
 <!-- Chat -->
 <section id="chatWin" class="hidden">
   <div class="chat-head">
-    <span><svg viewBox="0 0 24 24" fill="#2ecc71" stroke="#fff" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> CHAT · ALLE</span>
-    <button type="button" class="chat-x" id="chatClose" aria-label="Schließen">✕</button>
+    <span><svg viewBox="0 0 24 24" fill="#2ecc71" stroke="#fff" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> CHAT · ALL</span>
+    <span class="chat-ctl">
+      <button type="button" class="chat-x" id="chatMin" aria-label="Minimize">–</button>
+      <button type="button" class="chat-x" id="chatClose" aria-label="Close">✕</button>
+    </span>
   </div>
   <div class="chat-msgs" id="chatLog"></div>
   <form class="chat-foot" id="chatForm">
-    <input id="chatIn" autocomplete="off" placeholder="Nachricht …" maxlength="500">
-    <button type="submit" class="chat-send">SENDEN</button>
+    <input id="chatIn" autocomplete="off" placeholder="Type message…" maxlength="500">
+    <button type="submit" class="chat-send">SEND</button>
   </form>
 </section>
 
-<!-- Menü (rechts) -->
+<!-- Menu (right) -->
 <div id="sidebar" class="hidden">
   <div class="sb-overlay" data-sbclose></div>
   <div class="sb-panel">
-    <div class="sb-head"><span>MENÜ</span><button type="button" class="sb-x" data-sbclose aria-label="Schließen">✕</button></div>
+    <div class="sb-head"><span>MENU</span><button type="button" class="sb-x" data-sbclose aria-label="Close">✕</button></div>
     <div class="sb-grid">
       <button type="button" class="tile" data-open="server">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="2" y="3" width="20" height="7" rx="1"/><rect x="2" y="14" width="20" height="7" rx="1"/><circle cx="6" cy="6.5" r="1" fill="#bbb"/><circle cx="6" cy="17.5" r="1" fill="#bbb"/></svg><span>Server</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="2" y="3" width="20" height="7" rx="1"/><rect x="2" y="14" width="20" height="7" rx="1"/><circle cx="6" cy="6.5" r="1" fill="#bbb"/><circle cx="6" cy="17.5" r="1" fill="#bbb"/></svg><span>Servers</span></button>
       <button type="button" class="tile" data-open="video">
         <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span>Video</span></button>
       <button type="button" class="tile" data-open="chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button>
       <button type="button" class="tile" data-open="contacts">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M1 21v-1a7 7 0 0 1 14 0v1"/><path d="M17 4a4 4 0 0 1 0 8M23 21v-1a7 7 0 0 0-4-6"/></svg><span>Kontakte</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M1 21v-1a7 7 0 0 1 14 0v1"/><path d="M17 4a4 4 0 0 1 0 8M23 21v-1a7 7 0 0 0-4-6"/></svg><span>Contacts</span></button>
       <button type="button" class="tile" data-open="me">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5 17a4 4 0 0 1 8 0M15 10h3M15 14h3"/></svg><span>Rufname</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5 17a4 4 0 0 1 8 0M15 10h3M15 14h3"/></svg><span>Callsign</span></button>
       <button type="button" class="tile" data-open="data">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M3 17v3h18v-3"/></svg><span>TAK-Daten</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M3 17v3h18v-3"/></svg><span>TAK Data</span></button>
       <button type="button" class="tile" data-open="map">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg><span>Karte</span></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg><span>Map</span></button>
     </div>
   </div>
 </div>
 
-<!-- Fenster für die Menüpunkte -->
+<!-- Menu windows -->
 <div id="popup" class="modal hidden">
   <div class="backdrop" data-pclose></div>
   <div class="mbox">
-    <div class="mhead"><span id="popupTitle"></span><button type="button" data-pclose aria-label="Schließen">×</button></div>
+    <div class="mhead"><span id="popupTitle"></span><button type="button" data-pclose aria-label="Close">×</button></div>
     <div class="mbody">
 
-      <!-- Server: Liste -->
+      <!-- Servers -->
       <section data-sec="server">
         <div id="srvList"></div>
-        <button type="button" class="mbtn pri" id="addSrvBtn">＋ SERVER HINZUFÜGEN</button>
-        <p class="hint">Mehrere Server gleichzeitig möglich. Alles landet auf einer Karte; was du sendest, geht an alle verbundenen Server.</p>
+        <button type="button" class="mbtn pri" id="addSrvBtn">＋ ADD SERVER</button>
+        <p class="hint">Several servers can be connected at once. Everything shows on one map; what you send goes to all connected servers.</p>
       </section>
 
-      <!-- Server: Bearbeiten -->
+      <!-- Server: edit -->
       <section data-sec="edit">
         <div class="row2">
-          <button type="button" class="mbtn" id="scanBtn">QR SCANNEN</button>
-          <label class="mbtn" for="fileIn">DATEI LADEN</label>
+          <button type="button" class="mbtn" id="scanBtn">SCAN QR</button>
+          <label class="mbtn" for="fileIn">IMPORT FILE</label>
           <input type="file" id="fileIn" accept=".zip,.p12,.pfx,.pem,.crt,.cer,application/zip,application/x-pkcs12" hidden>
         </div>
-        <p class="hint">QR-Code (ATAK/iTAK), Datenpaket (.zip), Zertifikat (.p12) oder Truststore – oder von Hand:</p>
+        <p class="hint">QR code (ATAK/iTAK), data package (.zip), certificate (.p12) or truststore – or enter manually:</p>
         <label for="fName">Name</label>
-        <input id="fName" class="in" placeholder="z. B. TAK-Server" autocomplete="off" maxlength="40">
-        <label for="fHost">Adresse</label>
+        <input id="fName" class="in" placeholder="e.g. TAK Server" autocomplete="off" maxlength="40">
+        <label for="fHost">Address</label>
         <input id="fHost" class="in" placeholder="tak.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
         <div class="row2">
           <div><label for="fPort">Port</label><input id="fPort" class="in" type="number" inputmode="numeric" min="1" max="65535" placeholder="8089"></div>
-          <div><label for="fProto">Protokoll</label>
-            <select id="fProto" class="in"><option value="ssl">SSL</option><option value="tcp">TCP</option><option value="udp">UDP (nur senden)</option></select></div>
+          <div><label for="fProto">Protocol</label>
+            <select id="fProto" class="in"><option value="ssl">SSL</option><option value="tcp">TCP</option><option value="udp">UDP (send only)</option></select></div>
         </div>
         <div id="sslBox">
-          <div id="certState" class="state">Kein Zertifikat</div>
-          <label for="fUser">Benutzer</label>
+          <div id="certState" class="state">No certificate</div>
+          <label for="fUser">User</label>
           <input id="fUser" class="in" autocomplete="username" autocapitalize="off" spellcheck="false">
-          <label for="fPass">Passwort</label>
+          <label for="fPass">Password</label>
           <input id="fPass" class="in" type="password" autocomplete="current-password">
           <div class="row2">
-            <div><label for="fEnroll">Port Zertifikat</label><input id="fEnroll" class="in" type="number" inputmode="numeric" placeholder="8446"></div>
-            <div><label for="fApi">Port Daten (API)</label><input id="fApi" class="in" type="number" inputmode="numeric" placeholder="8443"></div>
+            <div><label for="fEnroll">Enrollment port</label><input id="fEnroll" class="in" type="number" inputmode="numeric" placeholder="8446"></div>
+            <div><label for="fApi">Data port (API)</label><input id="fApi" class="in" type="number" inputmode="numeric" placeholder="8443"></div>
           </div>
-          <button type="button" class="mbtn blue" id="enrollBtn">ZERTIFIKAT ANFORDERN</button>
+          <button type="button" class="mbtn blue" id="enrollBtn">REQUEST CERTIFICATE</button>
         </div>
         <p class="msg" id="setupMsg"></p>
         <div class="row2">
-          <button type="button" class="mbtn" id="editCancel">ZURÜCK</button>
-          <button type="button" class="mbtn pri" id="editSave">SPEICHERN &amp; VERBINDEN</button>
+          <button type="button" class="mbtn" id="editCancel">BACK</button>
+          <button type="button" class="mbtn pri" id="editSave">SAVE &amp; CONNECT</button>
         </div>
       </section>
 
-      <!-- Rufname -->
+      <!-- Callsign -->
       <section data-sec="me">
-        <label for="fCallsign">Rufname</label>
-        <input id="fCallsign" class="in" maxlength="40" autocomplete="off" placeholder="z. B. ALPHA-1">
+        <label for="fCallsign">Callsign</label>
+        <input id="fCallsign" class="in" maxlength="40" autocomplete="off" placeholder="e.g. ALPHA-1">
         <div class="row2">
           <div><label for="fTeam">Team</label><select id="fTeam" class="in"></select></div>
-          <div><label for="fRole">Rolle</label><select id="fRole" class="in"></select></div>
+          <div><label for="fRole">Role</label><select id="fRole" class="in"></select></div>
         </div>
-        <button type="button" class="mbtn pri" id="meSave">ÜBERNEHMEN</button>
-        <p class="hint">Gerätekennung: <span id="uidText"></span></p>
+        <button type="button" class="mbtn pri" id="meSave">APPLY</button>
+        <p class="hint">Device UID: <span id="uidText"></span></p>
       </section>
 
       <!-- Video -->
       <section data-sec="video">
         <div id="vidStart">
-          <button type="button" class="mbtn big" id="phoneBtn">📱 HANDY-KAMERA</button>
-          <button type="button" class="mbtn big" id="bleBtn">⛑ HELMKAMERA (BLUETOOTH)</button>
-          <p class="hint">Antippen – der Stream startet sofort und ist für alle im TAK sichtbar.</p>
+          <button type="button" class="mbtn big" id="phoneBtn">📱 PHONE CAMERA</button>
+          <button type="button" class="mbtn big" id="bleBtn">⛑ HELMET CAMERA (BLUETOOTH)</button>
+          <p class="hint">Tap – the stream starts right away and is visible to everyone on TAK.</p>
         </div>
         <div id="vidRun" class="hidden">
           <div class="nw-banner ok" id="vidBanner"><span class="dot ok"></span><span id="vidState">LIVE</span></div>
-          <div class="kv"><span>Kamera</span><b id="vidCam">–</b></div>
-          <div class="kv"><span>Bilder/s</span><b id="vidFps">–</b></div>
-          <div class="kv"><span>Zuschauer</span><b id="vidViewers">–</b></div>
-          <div class="kv" id="camPickRow"><span>Quelle</span><select id="camSelect" class="in"></select></div>
-          <button type="button" class="mbtn red big" id="vidStop">■ STREAM STOPPEN</button>
+          <div class="kv"><span>Camera</span><b id="vidCam">–</b></div>
+          <div class="kv"><span>Frames/s</span><b id="vidFps">–</b></div>
+          <div class="kv"><span>Viewers</span><b id="vidViewers">–</b></div>
+          <div class="kv" id="camPickRow"><span>Source</span><select id="camSelect" class="in"></select></div>
+          <button type="button" class="mbtn hidden" id="lpShow">SHOW PREVIEW</button>
+          <button type="button" class="mbtn red big" id="vidStop">■ STOP STREAM</button>
         </div>
         <p class="msg" id="vidMsg"></p>
-        <div class="subhead">STREAMS ANSEHEN</div>
+        <div class="subhead">WATCH STREAMS</div>
         <div id="streamList"></div>
-        <div class="subhead">FEEDS VOM TAK-SERVER</div>
-        <button type="button" class="mbtn blue" id="feedLoad">VIDEO-FEEDS ABRUFEN</button>
+        <div class="subhead">FEEDS FROM TAK SERVER</div>
+        <button type="button" class="mbtn blue" id="feedLoad">LOAD VIDEO FEEDS</button>
         <div id="feedList"></div>
       </section>
 
-      <!-- Daten vom TAK-Server -->
+      <!-- TAK data -->
       <section data-sec="data">
-        <div id="dataSrvRow"><label for="dataSrv">TAK-Server</label><select id="dataSrv" class="in"></select></div>
+        <div id="dataSrvRow"><label for="dataSrv">TAK server</label><select id="dataSrv" class="in"></select></div>
         <div class="seg" id="dataTabs">
-          <button type="button" data-tab="packages" class="on">PAKETE</button>
+          <button type="button" data-tab="packages" class="on">PACKAGES</button>
           <button type="button" data-tab="sync">DATA SYNC</button>
           <button type="button" data-tab="overlays">OVERLAYS</button>
         </div>
         <div data-pane="packages">
-          <button type="button" class="mbtn blue" id="pkgLoad">DATENPAKETE ABRUFEN</button>
+          <button type="button" class="mbtn blue" id="pkgLoad">LOAD DATA PACKAGES</button>
           <div id="pkgList"></div>
         </div>
         <div data-pane="sync" class="hidden">
-          <button type="button" class="mbtn blue" id="misLoad">MISSIONEN ABRUFEN</button>
+          <button type="button" class="mbtn blue" id="misLoad">LOAD MISSIONS</button>
           <div id="misList"></div>
         </div>
         <div data-pane="overlays" class="hidden">
           <div id="ovList"></div>
-          <label class="mbtn" for="ovFile">KML / KMZ VOM GERÄT LADEN</label>
+          <label class="mbtn" for="ovFile">IMPORT KML / KMZ FROM DEVICE</label>
           <input type="file" id="ovFile" accept=".kml,.kmz,.zip,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden>
-          <p class="hint">Overlays aus Paketen und Missionen landen hier und bleiben offline auf dem Gerät.</p>
+          <p class="hint">Overlays from packages and missions appear here and stay available offline.</p>
         </div>
         <p class="msg" id="dataMsg"></p>
       </section>
 
-      <!-- Kontakte -->
+      <!-- Contacts -->
       <section data-sec="contacts"><div id="listBody"></div></section>
 
-      <!-- Karte -->
+      <!-- Map -->
       <section data-sec="map">
-        <label for="fTiles">Kartenquelle</label>
+        <label for="fTiles">Map source</label>
         <select id="fTiles" class="in"></select>
         <div id="customBox" class="hidden">
-          <label for="fCustom">Eigene Quelle (URL mit {z} {x} {y})</label>
+          <label for="fCustom">Custom source (URL with {z} {x} {y})</label>
           <input id="fCustom" class="in" placeholder="https://…/{z}/{x}/{y}.png" autocomplete="off" autocapitalize="off" spellcheck="false">
-          <button type="button" class="mbtn blue" id="customSave">QUELLE ÜBERNEHMEN</button>
+          <button type="button" class="mbtn blue" id="customSave">USE SOURCE</button>
         </div>
 
-        <div class="subhead">OFFLINE SPEICHERN</div>
+        <div class="subhead">SAVE FOR OFFLINE USE</div>
         <div class="seg" id="areaMode">
-          <button type="button" data-mode="view" class="on">AUSSCHNITT</button>
-          <button type="button" data-mode="corridor">KORRIDOR</button>
+          <button type="button" data-mode="view" class="on">VISIBLE AREA</button>
+          <button type="button" data-mode="corridor">CORRIDOR</button>
         </div>
         <div id="corridorBox" class="hidden">
           <div class="row2">
-            <div><label for="fWidth">Breite links + rechts (m)</label><input id="fWidth" class="in" type="number" inputmode="numeric" min="50" max="20000" value="1000"></div>
-            <div class="end"><button type="button" class="mbtn blue" id="drawBtn">KORRIDOR ZEICHNEN</button></div>
+            <div><label for="fWidth">Width each side (m)</label><input id="fWidth" class="in" type="number" inputmode="numeric" min="50" max="20000" value="1000"></div>
+            <div class="end"><button type="button" class="mbtn blue" id="drawBtn">DRAW CORRIDOR</button></div>
           </div>
-          <p class="hint" id="corridorInfo">Noch kein Korridor gezeichnet.</p>
+          <p class="hint" id="corridorInfo">No corridor drawn yet.</p>
         </div>
         <div class="row2">
-          <div><label for="fZmin">Zoom von</label><select id="fZmin" class="in"></select></div>
-          <div><label for="fZmax">Zoom bis</label><select id="fZmax" class="in"></select></div>
+          <div><label for="fZmin">Zoom from</label><select id="fZmin" class="in"></select></div>
+          <div><label for="fZmax">Zoom to</label><select id="fZmax" class="in"></select></div>
         </div>
         <p class="hint" id="estimate"></p>
         <div class="row2">
-          <button type="button" class="mbtn pri" id="prefetchBtn">SPEICHERN</button>
-          <button type="button" class="mbtn red hidden" id="prefetchStop">STOPP</button>
+          <button type="button" class="mbtn pri" id="prefetchBtn">SAVE</button>
+          <button type="button" class="mbtn red hidden" id="prefetchStop">STOP</button>
         </div>
         <p class="msg ok" id="prefetchMsg"></p>
         <div id="areaList"></div>
 
-        <div class="subhead">SONSTIGES</div>
-        <label class="check"><input type="checkbox" id="fWake"> Bildschirm anlassen</label>
+        <div class="subhead">OTHER</div>
+        <label class="check"><input type="checkbox" id="fWake"> Keep screen on</label>
         <div class="row2">
-          <button type="button" class="mbtn" id="clearPicBtn">LAGEBILD LEEREN</button>
-          <button type="button" class="mbtn red" id="resetBtn">ALLES LÖSCHEN</button>
+          <button type="button" class="mbtn" id="clearPicBtn">CLEAR MAP DATA</button>
+          <button type="button" class="mbtn red" id="resetBtn">RESET ALL</button>
         </div>
       </section>
     </div>
   </div>
 </div>
 
-<!-- Server-Zertifikat bestätigen -->
+<!-- Confirm server certificate -->
 <div id="trust" class="modal hidden">
   <div class="backdrop"></div>
   <div class="mbox">
-    <div class="mhead"><span>UNBEKANNTES ZERTIFIKAT</span></div>
+    <div class="mhead"><span>UNKNOWN CERTIFICATE</span></div>
     <div class="mbody">
-      <p>Der Server <b id="trustHost"></b> nutzt ein Zertifikat, das nicht geprüft werden kann. Fingerabdruck mit dem vom TAK-Admin vergleichen:</p>
+      <p>Server <b id="trustHost"></b> uses a certificate that cannot be verified. Compare the fingerprint with the one from your TAK admin:</p>
       <p class="hint" id="trustSubject"></p>
       <code id="trustFp"></code>
-      <p class="hint">Mit Truststore (CA) vom TAK-Server entfällt diese Frage.</p>
+      <p class="hint">With the truststore (CA) of the TAK server this question does not appear.</p>
       <div class="row2">
-        <button type="button" class="mbtn" id="trustNo">ABBRECHEN</button>
-        <button type="button" class="mbtn pri" id="trustYes">VERTRAUEN</button>
+        <button type="button" class="mbtn" id="trustNo">CANCEL</button>
+        <button type="button" class="mbtn pri" id="trustYes">TRUST</button>
       </div>
     </div>
   </div>
 </div>
 
-<!-- QR-Scanner -->
+<!-- QR scanner -->
 <div id="scanner" class="hidden">
   <video id="scanVideo" playsinline muted></video>
   <div class="scan-frame"></div>
   <div class="scan-bar">
-    <label class="mbtn" for="scanFile">FOTO WÄHLEN</label>
+    <label class="mbtn" for="scanFile">PICK PHOTO</label>
     <input type="file" id="scanFile" accept="image/*" hidden>
-    <button type="button" class="mbtn" id="scanClose">ABBRECHEN</button>
+    <button type="button" class="mbtn" id="scanClose">CANCEL</button>
   </div>
-  <p id="scanMsg">QR-Code in den Rahmen halten</p>
+  <p id="scanMsg">Hold the QR code inside the frame</p>
 </div>
 
 <div id="toast" class="hidden" role="status"></div>
 
 <script src="vendor/leaflet.js"></script>
+<script src="vendor/leaflet-rotate.js"></script>
 <script src="vendor/milsymbol.js"></script>
 <script src="vendor/jsQR.js"></script>
 <script src="eud.js"></script>
