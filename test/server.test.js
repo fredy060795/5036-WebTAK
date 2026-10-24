@@ -896,7 +896,9 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     const pub = (p, body) => fetch(base + '/api/access/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, data: await r.json() }));
     const flat = m => m.replace(/=\n/g, '').replace(/=3D/g, '=');
     const waitMails = async n => { for (let i = 0; i < 100 && sink.mails.length < n; i++) await sleep(30); };
-    let r = await pub('register', { name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' });
+    await api('public-url', { method: 'POST', body: { url: 'https://webtak.example.com' } });
+    let r = await fetch(base + '/api/access/register', { method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'evil.example', 'X-Forwarded-Host': 'evil.example' },
+      body: JSON.stringify({ name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' }) }).then(async x => ({ status: x.status, data: await x.json() }));
     assert.equal(r.data.status, 'unconfirmed');
     await waitMails(1);
     const confirm = flat(sink.mails[0]);
@@ -909,7 +911,8 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     const toAdmin = sink.mails.map(flat).filter(m => /^To: chef@example\.com/m.test(m));
     assert.equal(toAdmin.length, 1, 'Admin bekommt genau einen Hinweis');
     assert.match(toAdmin[0], /WebTAK-Zugang angefragt: Mail Test/);
-    assert.doesNotMatch(toAdmin[0], /https?:\/\//, 'kein Link im Admin-Hinweis');
+    assert.match(toAdmin[0], /^https:\/\/admin\.test:5036\/admin\/#users$/m, 'Admin-Hinweis mit Link zum Admin-Bereich (eingestellte Adresse, Admin-Domain)');
+    assert.doesNotMatch(toAdmin[0], /evil\.example/, 'nie aus dem Host-Header der Anfrage');
     for (const m of toUser) assert.doesNotMatch(m, /\/admin/i, 'kein Admin-Link an den Nutzer');
     assert.ok(sink.mails.map(flat).every(m => !/^To: mutti@example\.com/m.test(m) || !/WebTAK-Zugang angefragt/.test(m)), 'Admin-Hinweis nie an den Nutzer');
     // Admin-Adresse gleich der Adresse der Anfrage: kein Admin-Hinweis an diese Adresse
@@ -922,6 +925,7 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     assert.equal(newMails.filter(m => /WebTAK-Zugang angefragt/.test(m)).length, 0);
     assert.equal(newMails.filter(m => /your registration request for WebTAK has been received/.test(m)).length, 1);
     // aufräumen für die folgenden Tests
+    await api('public-url', { method: 'POST', body: { url: '' } });
     const st = await api('takusers/state');
     for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
   } finally {

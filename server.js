@@ -321,10 +321,14 @@ function requestMail(u, link) {
 function newRequest(u, suffix) {
   const text = `WebTAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}${suffix}`;
   hub.event('tak', 'takreg', text);
-  // Ohne Link: die Adresse des Admin-Bereichs steht nie in einer Mail (und nie aus dem Host-Header der Anfrage)
+  // Link zum Admin-Bereich nur in dieser Mail an die Admin-Adresse – und nur aus einer vertrauenswürdigen Quelle:
+  // eingestellte Adresse (ADMIN_URL/öffentliche Adresse) oder die, unter der der Admin selbst angemeldet war.
+  // Nie aus dem Host-Header der Anfrage (den bestimmt der, der sich registriert).
+  const base = resetBase() || ((store.data.takVideo || {}).lastBase) || '';
   mailAdmin('WebTAK – neue Registrierungsanfrage',
     `${text}\nE-Mail: ${u.email}\n${u.requestedCallsign ? `Gewünschter Rufname: ${u.requestedCallsign}\n` : ''}\n`
-    + 'Bitte im WebTAK-Admin unter „Benutzer & Anfragen“ prüfen und freigeben oder ablehnen.\n', u.email);
+    + 'Bitte im WebTAK-Admin unter „Benutzer & Anfragen“ prüfen und freigeben oder ablehnen'
+    + (base ? `:\n${base}/admin/#users\n` : '.\n'), u.email);
 }
 
 async function handleAccessApi(req, res, route) {
