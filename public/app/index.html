@@ -28,9 +28,17 @@ header { display: flex; justify-content: space-between; align-items: center; gap
     <span class="badge off" id="srvBadge">Server …</span>
   </header>
 
-  <section class="card hidden" id="noLink">
-    <h2>Kein Stream-Link</h2>
-    <p>Bitte den QR-Code scannen, den du vom Admin bekommen hast.</p>
+  <section class="card hidden" id="register">
+    <h2>Anmelden</h2>
+    <p class="mut small">Einmalig Name und Einheit eingeben – daraus wird dein Stream. Das Handy merkt sich die Anmeldung.</p>
+    <form id="regForm">
+      <label for="regName">Name</label>
+      <input id="regName" maxlength="40" required autocomplete="name" placeholder="z. B. Max Müller">
+      <label for="regUnit">Einheit / Bezeichnung</label>
+      <input id="regUnit" maxlength="40" placeholder="z. B. Trupp 2">
+      <button class="pri big" type="submit" id="regBtn">Weiter</button>
+      <p class="msg" id="regMsg"></p>
+    </form>
   </section>
 
   <section class="card hidden" id="blocked">
@@ -119,7 +127,7 @@ function readLink() {
   return link;
 }
 
-const link = readLink();
+let link = readLink();
 let ws = null, wsOk = false, wsRetry = 0, wsTimer = null, blockedState = null;
 let device = null, cmdChr = null, camConnected = false;
 let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
@@ -230,9 +238,16 @@ function connectServer() {
       blockedState = 'stopped';
     } else if (msg.type === 'replaced') {
       block('Anderes Gerät aktiv', msg.message);
-    } else if (msg.type === 'revoked' || msg.type === 'removed' || msg.type === 'invalid') {
+    } else if (msg.type === 'revoked') {
       try { localStorage.removeItem(STORE_KEY); } catch (e) {}
-      block('Kein Zugang', (msg.message || 'Link ungültig.') + ' Bitte beim Admin einen neuen QR-Code holen.');
+      block('Kein Zugang', msg.message || 'Zugang wurde vom Admin entzogen.');
+    } else if (msg.type === 'removed' || msg.type === 'invalid') {
+      // Stream gibt es nicht mehr: neu anmelden lassen
+      try { localStorage.removeItem(STORE_KEY); } catch (e) {}
+      blockedState = 'removed';
+      stopLive();
+      link = null;
+      showRegister(msg.type === 'removed' ? 'Dein Stream wurde vom Admin gelöscht. Bitte neu anmelden.' : '');
     }
     setSteps();
   };
@@ -281,6 +296,7 @@ async function setupGatt() {
 
 // Vollständiger Link (mit Schlüssel) zum Weitergeben an Bluefy/Chrome
 function fullAppLink() {
+  if (!link) return location.origin + '/app/';
   return `${location.origin}/app/#u=${encodeURIComponent(link.u)}&s=${encodeURIComponent(link.s)}&k=${encodeURIComponent(link.k)}`;
 }
 
@@ -450,22 +466,54 @@ $('res').onchange = () => {
   sendHello();
 };
 
-if (!link) {
-  $('noLink').classList.remove('hidden');
+function showRegister(text) {
+  $('main').classList.add('hidden');
+  $('register').classList.remove('hidden');
   $('srvBadge').classList.add('hidden');
-} else {
+  if (text) { $('regMsg').textContent = text; $('regMsg').className = 'msg err'; }
+}
+
+function startApp() {
+  $('register').classList.add('hidden');
   $('main').classList.remove('hidden');
-  if (!navigator.bluetooth && window.isSecureContext) {
-    // Gleich beim Öffnen erklären, statt erst nach dem Tippen auf „Kamera verbinden“
-    $(isIOS ? 'iosHelp' : 'noBle').classList.remove('hidden');
-    $('camBtn').disabled = true;
-  }
-  $('copyLink').onclick = () => copyAppLink($('copyMsg'));
-  $('copyLink2').onclick = () => copyAppLink($('copyMsg2'));
-  $('streamName').textContent = link.u + '/' + link.s;
+  $('srvBadge').classList.remove('hidden');
+  $('streamName').textContent = link.label || (link.u + '/' + link.s);
+  blockedState = null;
   setSteps();
   connectServer();
 }
+
+$('regForm').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('regBtn').disabled = true;
+  try {
+    const res = await fetch('/api/app/register', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name: $('regName').value, unit: $('regUnit').value }),
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Anmeldung fehlgeschlagen');
+    link = { u: data.u, s: data.s, k: data.k, label: data.label };
+    try { localStorage.setItem(STORE_KEY, JSON.stringify(link)); } catch (err) { /* privater Modus */ }
+    startApp();
+  } catch (err) {
+    $('regMsg').textContent = err.message;
+    $('regMsg').className = 'msg err';
+  } finally {
+    $('regBtn').disabled = false;
+  }
+});
+
+if (!navigator.bluetooth && window.isSecureContext) {
+  // Gleich beim Öffnen erklären, statt erst nach dem Tippen auf „Kamera verbinden“
+  $(isIOS ? 'iosHelp' : 'noBle').classList.remove('hidden');
+  $('camBtn').disabled = true;
+}
+$('copyLink').onclick = () => copyAppLink($('copyMsg'));
+$('copyLink2').onclick = () => copyAppLink($('copyMsg2'));
+
+if (link) startApp(); else showRegister();
 </script>
 </body>
 </html>

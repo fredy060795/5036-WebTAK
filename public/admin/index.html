@@ -77,10 +77,29 @@
 
   <main class="wrap">
     <section class="card">
+      <div class="row between">
+        <h2>QR-Code für alle Nutzer</h2>
+        <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
+      </div>
+      <div class="appqr">
+        <img id="appQr" class="qr-small" alt="QR-Code zur Handy-Seite">
+        <div class="grow">
+          <p class="mut small">Nutzer scannen diesen Code, geben <b>Name</b> und <b>Einheit</b> ein, verbinden die Kamera und
+            starten den Stream. Jeder bekommt automatisch einen eigenen Stream – er erscheint unten in der Liste.
+            Einzelne QR-Codes pro Nutzer sind nicht nötig.</p>
+          <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
+          <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
+          <p class="msg" id="regMsg"></p>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>Stream manuell anlegen <span class="mut small">(optional, mit eigenem QR-Code)</span></h2>
       <form class="row" id="createForm">
         <div class="grow"><label for="cUser">Benutzer</label><input id="cUser" placeholder="z. B. mueller" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,31}"></div>
         <div class="grow"><label for="cLabel">Bezeichnung (optional)</label><input id="cLabel" placeholder="z. B. Trupp 2 Helm" maxlength="60"></div>
-        <div class="actions-end"><button class="pri" type="submit">Neuer Stream</button></div>
+        <div class="actions-end"><button type="submit">Anlegen</button></div>
       </form>
       <p class="msg" id="createMsg"></p>
     </section>

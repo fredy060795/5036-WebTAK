@@ -18,9 +18,9 @@ table.streams { width: 100%; border-collapse: collapse; font-size: 14px; }
 .streams .num { font-variant-numeric: tabular-nums; text-align: right; }
 .streams .name b { display: block; }
 .streams .name code { color: var(--mut); }
-.link { display: flex; gap: 4px; min-width: 260px; }
+.link { display: flex; gap: 4px; min-width: 200px; }
 .link input { font-size: 12px; padding: 5px 8px; font-family: ui-monospace, monospace; }
-.btns { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; min-width: 300px; }
+.btns { display: flex; flex-wrap: wrap; gap: 4px; justify-content: flex-end; min-width: 220px; }
 
 @media (max-width: 900px) {
   .streams thead { display: none; }
@@ -63,3 +63,6 @@ input.rot { width: 76px; padding: 5px 6px; font-size: 13px; text-align: right; }
 .win-align select { width: auto; padding: 4px 8px; font-size: 13px; }
 .win-align input[type=range] { padding: 0; }
 .win-bar button.pri { color: var(--acc-fg); }
+.appqr { display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; }
+.appqr.off .qr-small { opacity: .3; }
+.qr-small { width: 140px; height: 140px; background: #fff; border-radius: 8px; flex: 0 0 auto; }

@@ -211,9 +211,49 @@ function showApp() {
   $('authView').classList.add('hidden');
   $('appView').classList.remove('hidden');
   $('noFfmpeg').classList.toggle('hidden', !!me.ffmpeg);
+  loadRegistration();
   refresh();
   startPolling();
 }
+
+// ---- allgemeiner QR-Code + Selbst-Anmeldung --------------------------------
+async function loadRegistration() {
+  try {
+    const r = await api('registration');
+    $('regToggle').checked = r.enabled;
+    $('appUrl').value = r.appUrl;
+    $('appQr').src = '/api/admin/app-qr.svg?t=' + Date.now();
+    $('appQr').closest('.appqr').classList.toggle('off', !r.enabled);
+  } catch (e) { /* angezeigt durch api() */ }
+}
+
+$('regToggle').addEventListener('change', async () => {
+  const enabled = $('regToggle').checked;
+  try {
+    await api('registration', { method: 'POST', body: { enabled } });
+    setMsg($('regMsg'), enabled ? 'Selbst-Anmeldung erlaubt.' : 'Selbst-Anmeldung gesperrt – neue Nutzer können sich nicht mehr anmelden.', enabled);
+    loadRegistration();
+  } catch (e) { setMsg($('regMsg'), e.message); }
+});
+$('appUrlCopy').addEventListener('click', () => copy($('appUrl').value, $('appUrlCopy')));
+$('appQrBig').addEventListener('click', () => {
+  const img = el('img', { class: 'qr', alt: 'QR-Code zur Handy-Seite', src: '/api/admin/app-qr.svg?t=' + Date.now() });
+  const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+    const w = window.open('', '_blank', 'width=480,height=640');
+    if (!w) return;
+    const d = w.document;
+    d.title = 'Helm Camera';
+    d.body.style.fontFamily = 'system-ui, sans-serif';
+    d.body.style.textAlign = 'center';
+    const h = d.createElement('h1'); h.textContent = 'Helmkamera';
+    const i = d.createElement('img'); i.src = img.src; i.style.width = '340px';
+    const t = d.createElement('p'); t.textContent = '1. Scannen  2. Name und Einheit eingeben  3. Kamera verbinden  4. Stream starten';
+    const t2 = d.createElement('p'); t2.textContent = 'Android: Chrome · iPhone: App „Bluefy“';
+    d.body.append(h, i, t, t2);
+    i.onload = () => w.print();
+  } });
+  openModal('QR-Code für alle Nutzer', img, el('p', { class: 'mut small', text: $('appUrl').value }), el('div', { class: 'row' }, print));
+});
 
 function startPolling() {
   stopPolling();

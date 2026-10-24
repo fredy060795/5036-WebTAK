@@ -473,3 +473,39 @@ test('HTTPS direkt mit eigenem Zertifikat (z. B. Port 5036)', { skip: spawnSync(
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+test('Selbst-Anmeldung über den allgemeinen QR-Code', async () => {
+  const reg = async body => {
+    const r = await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    return { status: r.status, data: await r.json() };
+  };
+  assert.equal((await reg({ name: '', unit: 'x' })).status, 400);
+  const a = await reg({ name: 'Jörg Müller', unit: 'Trupp 2' });
+  const b = await reg({ name: 'Jörg Müller', unit: 'Trupp 3' });
+  assert.equal(a.status, 200);
+  assert.equal(a.data.u, 'joerg-mueller');
+  assert.equal(a.data.label, 'Jörg Müller – Trupp 2');
+  assert.notEqual(a.data.s, b.data.s, 'gleicher Name, trotzdem getrennte Streams');
+
+  const st = (await api('streams')).data.streams.find(x => x.streamId === a.data.s);
+  assert.equal(st.self, true);
+  assert.equal(st.label, 'Jörg Müller – Trupp 2');
+
+  const p = publisher({ user: a.data.u, streamId: a.data.s }, a.data.k);
+  await p.waitFor('welcome');
+  p.ws.send(JPEG_A);
+  await sleep(100);
+  const snap = await fetch(`${base}/${a.data.u}/${a.data.s}/snapshot.jpg`);
+  assert.equal(snap.status, 200);
+  p.ws.close();
+
+  // Admin sperrt die Anmeldung
+  assert.equal((await api('registration', { method: 'POST', body: { enabled: false } })).status, 200);
+  assert.equal((await api('registration')).data.enabled, false);
+  assert.equal((await reg({ name: 'Neu' })).status, 403);
+  assert.equal((await (await fetch(base + '/api/app/info')).json()).registration, false);
+  await api('registration', { method: 'POST', body: { enabled: true } });
+  assert.equal((await reg({ name: 'Neu' })).status, 200);
+  const qr = await fetch(base + '/api/admin/app-qr.svg', { headers: { cookie } });
+  assert.match(await qr.text(), /^<svg/);
+});

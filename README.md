@@ -55,19 +55,18 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 
 ## Ablauf
 
-1. Im Admin-Fenster Benutzer eintragen (z. B. `mueller`) → **Neuer Stream**. Es erscheinen QR-Code und Links.
-2. QR-Code dem Benutzer geben (anzeigen, drucken oder Bild schicken). Den Stream-Link in ATAK/WinTAK eintragen.
-3. Benutzer scannt den QR-Code → Handy-App öffnet sich → **Kamera verbinden** (Helmkamera auswählen) → **Stream starten**.
-4. Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst trennt das Handy Bluetooth).
+1. Im Admin-Fenster oben den **QR-Code für alle Nutzer** groß anzeigen oder drucken (ein Code für alle).
+2. Der Nutzer scannt ihn, gibt **Name** und **Einheit** ein → er bekommt automatisch einen eigenen Stream
+   (z. B. `https://<domain>:5036/max-mueller/qugzu48s8q`). Das Handy merkt sich die Anmeldung.
+3. **Kamera verbinden** (Helmkamera auswählen) → **Stream starten**.
+4. Der Stream erscheint sofort in der Admin-Liste – dort ausrichten, Link für ATAK/OpenTAKServer kopieren,
+   stoppen, rauswerfen oder löschen.
 
-Handy-Browser: **Android mit Chrome** (nicht Samsung Internet/Firefox). **iPhone:** kein Browser auf dem iPhone kann
-Bluetooth (Apple erlaubt es nicht) – dort die kostenlose App **Bluefy** verwenden. Öffnet der QR-Code Safari, zeigt
-die Seite den Weg: Bluefy laden → „Link für Bluefy kopieren“ → in Bluefy einfügen. Die Seite muss über
-**HTTPS** laufen, sonst erlaubt der Browser kein Bluetooth.
+Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst trennt das Handy Bluetooth).
 
-Der QR-Code enthält einen geheimen Zugangsschlüssel. **Rauswerfen** erzeugt einen neuen Schlüssel: Das Handy wird
-sofort getrennt, der alte QR-Code gilt nicht mehr, der Stream-Link für ATAK bleibt gleich. Pro Stream sendet immer
-nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste getrennt.
+**Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
+Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
+sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.
 
 ## Admin
 
