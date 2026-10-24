@@ -318,6 +318,7 @@
     if ((result.overlays || []).length) await saveOverlays(result.overlays, source, zoomTo);
     let text = `${(result.cot || []).length} item(s), ${(result.overlays || []).length} overlay(s)`;
     if ((result.errors || []).length) text += ` – ${result.errors.length} part(s) failed: ${result.errors[0]}`;
+    if ((result.warnings || []).length) text += ` – ${result.warnings[0]}`;
     return text;
   }
 
@@ -395,18 +396,29 @@
       const { missions } = await marti('missions', {}, srv);
       const box = $('misList');
       box.textContent = '';
-      if (!missions.length) box.innerHTML = '<div class="empty">No missions on the server.</div>';
+      if (!missions.length) box.innerHTML = '<div class="empty">No missions visible – the server has none, or none for your groups.</div>';
       for (const m of missions) {
         const row = document.createElement('div');
         row.className = 'item';
         const t = document.createElement('span');
         t.textContent = m.name + (m.password ? ' 🔒' : '');
         const s = document.createElement('small');
-        s.textContent = [m.description, `${m.items} items`, `${m.files} files`].filter(Boolean).join(' · ');
+        s.textContent = [m.description, `${m.items} items`, `${m.files} files`, m.groups && m.groups.length ? m.groups.join(', ') : ''].filter(Boolean).join(' · ');
         t.append(s);
+        // Abonnierte Mission sofort neu laden
+        const re = document.createElement('button');
+        re.type = 'button';
+        re.className = 'sm';
+        re.textContent = '⟳';
+        re.title = 'Sync now';
+        re.onclick = async () => {
+          re.disabled = true;
+          msg('Syncing ' + m.name + ' …', true);
+          try { await syncMission(srv, m.name); } catch (e) { msg(e.message); } finally { re.disabled = false; }
+        };
         const b = document.createElement('button');
         b.type = 'button';
-        const label = () => { const on = isSub(srv, m.name); b.textContent = on ? '✓ SUBSCRIBED' : 'SUBSCRIBE'; b.className = on ? 'on' : ''; };
+        const label = () => { const on = isSub(srv, m.name); b.textContent = on ? '✓ SUBSCRIBED' : 'SUBSCRIBE'; b.className = on ? 'on' : ''; re.classList.toggle('hidden', !on); };
         label();
         b.onclick = async () => {
           b.disabled = true;
@@ -428,10 +440,10 @@
             label();
           } catch (e) { msg(e.message); } finally { b.disabled = false; }
         };
-        row.append(t, b);
+        row.append(t, re, b);
         box.append(row);
       }
-      if (missions.length) msg('');
+      if (missions.length) msg(`${missions.length} mission(s).`, true);
     } catch (e) { msg(e.message); } finally { busy(btn, false); }
   });
 
@@ -566,6 +578,18 @@
   document.addEventListener('eud-popup', e => {
     if (e.detail === 'data') { fillServers(); renderOverlays(); msg(dataServers().length ? '' : NEED_CERT); }
   });
+
+  // Für "Clear Content" in eud.js
+  window.eud.overlayApi = {
+    list: () => overlays,
+    clear: async () => {
+      const n = overlays.length;
+      for (const ov of overlays) { ov.visible = false; showOverlay(ov); await idb.del(ov.id).catch(() => {}); }
+      overlays = [];
+      renderOverlays();
+      return n;
+    },
+  };
 
   idb.all().then(list => {
     overlays = (list || []).sort((a, b) => a.date - b.date);

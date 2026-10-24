@@ -197,7 +197,7 @@ function showMe() {
 // Menü und Fenster
 // ======================================================================
 
-const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts', map: 'Map', data: 'TAK Data' };
+const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts & Markers', map: 'Map', data: 'TAK Data', clear: 'Clear Content' };
 let popupSec = null;
 // Wie ATAK: immer nur ein Sheet unten offen
 function closeSheets(except) {
@@ -215,6 +215,7 @@ function openPopup(sec, title) {
   $('popup').classList.remove('hidden');
   if (sec === 'server') renderServers();
   if (sec === 'contacts') renderList();
+  if (sec === 'clear') renderClear();
   if (sec === 'me') fillMe();
   if (sec === 'map') fillMap();
   document.dispatchEvent(new CustomEvent('eud-popup', { detail: sec }));
@@ -926,11 +927,8 @@ map.on('popupopen', e => {
   if (!btn) return;
   btn.addEventListener('click', () => {
     const uid = btn.getAttribute('data-del');
-    const now = new Date();
-    const xml = `<event version="2.0" uid="${xmlEsc(rnd(8))}" type="t-x-d-d" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 20000))}">`
-      + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
     removeItem(uid);
-    sendCot(xml, true);
+    sendCot(deleteXml(uid), true);
     map.closePopup();
   });
 });
@@ -939,40 +937,174 @@ map.on('popupopen', e => {
 // Kontakte
 // ======================================================================
 
+// Inhalte nach Art getrennt, wie im ATAK Overlay Manager: Kontakte (Nutzer), Marker nach Zugehörigkeit,
+// sonstige Punkte und Zeichnungen. Jede Gruppe lässt sich einzeln bereinigen.
+const CATS = [
+  { id: 'contacts', label: 'Contacts', color: '#2fd8ff' },
+  { id: 'f', label: 'Friendly', color: '#80e0ff' },
+  { id: 'h', label: 'Hostile', color: '#ff8080' },
+  { id: 'n', label: 'Neutral', color: '#aaffaa' },
+  { id: 'u', label: 'Unknown', color: '#ffff80' },
+  { id: 'points', label: 'Other points', color: '#d0d0d0' },
+  { id: 'shapes', label: 'Drawings & routes', color: '#ffd400' },
+];
+// 2525-Zugehörigkeit (3. Zeichen des CoT-Typs) -> eine der vier ATAK-Gruppen
+const AFF_GROUP = { f: 'f', a: 'f', d: 'f', m: 'f', h: 'h', s: 'h', j: 'h', k: 'h', n: 'n', u: 'u', p: 'u', o: 'u', x: 'u', g: 'u' };
+function categoryOf(it) {
+  const c = it.c;
+  if (!isPoint(c)) return 'shapes';
+  if (c.type.startsWith('a-')) return c.team ? 'contacts' : (AFF_GROUP[c.type[2]] || 'u');
+  return 'points';
+}
+function itemsByCat() {
+  const out = Object.fromEntries(CATS.map(c => [c.id, []]));
+  for (const it of items.values()) out[categoryOf(it)].push(it);
+  return out;
+}
+function posOf(c) {
+  if (Number.isFinite(c.lat) && !(c.lat === 0 && c.lon === 0)) return { lat: c.lat, lon: c.lon };
+  return c.linkPoints.length ? { lat: c.linkPoints[0][0], lon: c.linkPoints[0][1] } : null;
+}
+function deleteXml(uid) {
+  const now = new Date();
+  return `<event version="2.0" uid="${xmlEsc(rnd(8))}" type="t-x-d-d" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 20000))}">`
+    + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
+}
+// Gruppen vom Gerät entfernen. Eigene Marker auf Wunsch auch beim TAK-Server löschen (wie "Delete" in ATAK).
+function clearCats(ids, { serverToo = false } = {}) {
+  const groups = itemsByCat();
+  let n = 0;
+  for (const id of ids) {
+    for (const it of groups[id] || []) {
+      if (serverToo && it.own) sendCot(deleteXml(it.uid), true);
+      removeItem(it.uid);
+      n++;
+    }
+  }
+  if (popupSec === 'contacts') renderList();
+  if (popupSec === 'clear') renderClear();
+  return n;
+}
+
+function listRow(it) {
+  const row = document.createElement('div');
+  row.className = 'contact' + (Date.now() > it.c.stale ? ' stale' : '');
+  const icon = document.createElement('span');
+  icon.className = 'sym';
+  const cat = categoryOf(it);
+  if (cat === 'contacts') {
+    icon.innerHTML = `<span class="sw" style="background:${TEAMS[it.c.team] || '#0ff'}"></span>`;
+  } else if (cat === 'shapes') {
+    icon.innerHTML = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="#ffd400" stroke-width="2"><path d="M3 18 9 6l6 9 6-7"/></svg>';
+  } else {
+    try { icon.innerHTML = symbolSvg(sidcFor(it.c.type), 18).svg; } catch (e) { icon.innerHTML = '<span class="sw"></span>'; }
+  }
+  const name = document.createElement('span');
+  name.className = 'name';
+  name.textContent = it.c.callsign || toolName(it.c.type) || it.uid;
+  const pos = posOf(it.c);
+  const dist = document.createElement('span');
+  dist.className = 'dist';
+  dist.textContent = me && pos ? fmtDist(distance(me, pos)) : ago(it.c.time);
+  row.append(icon, name, dist);
+  if (it.own) row.title = 'My marker';
+  row.addEventListener('click', () => {
+    if (!pos) return;
+    closePopup();
+    follow = false;
+    $('btnLocate').classList.remove('active');
+    map.setView([pos.lat, pos.lon], Math.max(map.getZoom(), 15));
+    if (it.layer) it.layer.openPopup();
+  });
+  return row;
+}
+
+const listOpen = store.get('eud.listOpen', { contacts: true, f: true, h: true, n: true, u: true, points: false, shapes: false });
 function renderList() {
   const box = $('listBody');
   box.textContent = '';
-  const list = [...items.values()].filter(it => it.c.type.startsWith('a-') && Number.isFinite(it.c.lat));
-  list.sort((a, b) => (b.c.team ? 1 : 0) - (a.c.team ? 1 : 0) || String(a.c.callsign || a.uid).localeCompare(String(b.c.callsign || b.uid)));
-  if (!list.length) {
+  const groups = itemsByCat();
+  let any = false;
+  for (const cat of CATS) {
+    const list = groups[cat.id];
+    if (!list.length) continue;
+    any = true;
+    list.sort((a, b) => String(a.c.callsign || a.uid).localeCompare(String(b.c.callsign || b.uid)));
+    const head = document.createElement('div');
+    head.className = 'grp' + (listOpen[cat.id] ? ' open' : '');
+    head.innerHTML = `<span class="arr">▸</span><span class="sw" style="background:${cat.color}"></span><b>${esc(cat.label)}</b><span class="cnt">${list.length}</span>`;
+    const del = document.createElement('button');
+    del.type = 'button';
+    del.className = 'del';
+    del.title = `Clear ${cat.label}`;
+    del.setAttribute('aria-label', del.title);
+    del.innerHTML = '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13"/></svg>';
+    del.addEventListener('click', e => {
+      e.stopPropagation();
+      if (!confirm(`Remove all ${list.length} "${cat.label}" from this device?` + (cat.id === 'contacts' ? '\n\nContacts come back with their next position update.' : ''))) return;
+      clearCats([cat.id]);
+      toast(`${cat.label} cleared`);
+    });
+    head.append(del);
+    head.addEventListener('click', () => { listOpen[cat.id] = !listOpen[cat.id]; store.set('eud.listOpen', listOpen); renderList(); });
+    box.append(head);
+    if (listOpen[cat.id]) for (const it of list) box.append(listRow(it));
+  }
+  if (!any) {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'No contacts yet.';
+    e.textContent = 'Nothing on the map yet.';
     box.append(e);
   }
-  for (const it of list) {
-    const row = document.createElement('div');
-    row.className = 'contact' + (Date.now() > it.c.stale ? ' stale' : '');
-    const sw = document.createElement('span');
-    sw.className = 'sw';
-    sw.style.background = it.c.team ? (TEAMS[it.c.team] || '#0ff') : ({ f: '#80e0ff', h: '#ff8080', n: '#aaffaa', u: '#ffff80' })[it.c.type.split('-')[1]] || '#ccc';
-    const name = document.createElement('span');
-    name.className = 'name';
-    name.textContent = it.c.callsign || it.uid;
-    const dist = document.createElement('span');
-    dist.className = 'dist';
-    dist.textContent = me ? fmtDist(distance(me, it.c)) : ago(it.c.time);
-    row.append(sw, name, dist);
-    row.addEventListener('click', () => {
-      closePopup();
-      follow = false;
-      $('btnLocate').classList.remove('active');
-      map.setView([it.c.lat, it.c.lon], Math.max(map.getZoom(), 15));
-      if (it.layer) it.layer.openPopup();
-    });
-    box.append(row);
+  const btn = document.createElement('button');
+  btn.type = 'button';
+  btn.className = 'mbtn red';
+  btn.textContent = 'CLEAR CONTENT …';
+  btn.addEventListener('click', () => openPopup('clear'));
+  box.append(btn);
+}
+
+// Clear Content: mehrere Gruppen auf einmal bereinigen (auch Overlays und Chat)
+function renderClear() {
+  const box = $('clearBody');
+  box.textContent = '';
+  const groups = itemsByCat();
+  const ov = window.eud.overlayApi ? window.eud.overlayApi.list() : [];
+  const rows = [...CATS.map(c => ({ id: c.id, label: c.id === 'contacts' ? 'Contacts (users)' : (c.id.length === 1 ? 'Markers – ' + c.label : c.label), color: c.color, n: groups[c.id].length })),
+    { id: 'overlays', label: 'Overlays (KML/KMZ)', color: '#b388ff', n: ov.length },
+    { id: 'chat', label: 'Chat messages', color: '#888', n: chat.length }];
+  for (const r of rows) {
+    const l = document.createElement('label');
+    l.className = 'clr' + (r.n ? '' : ' none');
+    l.innerHTML = `<input type="checkbox" value="${r.id}"${r.n && r.id !== 'contacts' && r.id !== 'chat' ? ' checked' : ''}${r.n ? '' : ' disabled'}>`
+      + `<span class="sw" style="background:${r.color}"></span><span class="name">${esc(r.label)}</span><span class="cnt">${r.n}</span>`;
+    box.append(l);
   }
 }
+
+$('clearAll').addEventListener('click', () => {
+  const boxes = [...document.querySelectorAll('#clearBody input:not(:disabled)')];
+  const on = boxes.some(b => !b.checked);
+  for (const b of boxes) b.checked = on;
+});
+$('clearGo').addEventListener('click', async () => {
+  const ids = [...document.querySelectorAll('#clearBody input:checked')].map(b => b.value);
+  if (!ids.length) return toast('Nothing selected.');
+  const serverToo = $('clearServer').checked;
+  if (!confirm('Remove the selected content from this device?' + (serverToo ? '\n\nYour own markers are also deleted on the TAK server (for everyone).' : ''))) return;
+  let n = clearCats(ids.filter(id => CATS.some(c => c.id === id)), { serverToo });
+  if (ids.includes('overlays') && window.eud.overlayApi) n += await window.eud.overlayApi.clear();
+  if (ids.includes('chat')) {
+    n += chat.length;
+    chat = [];
+    store.set('eud.chat', chat);
+    unread = 0;
+    updateBadge();
+    renderChat();
+  }
+  renderClear();
+  toast(`${n} item(s) removed`);
+});
 
 // ======================================================================
 // Rufname

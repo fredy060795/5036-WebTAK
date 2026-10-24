@@ -284,3 +284,19 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 .drawing .leaflet-marker-pane, .drawing .leaflet-tooltip-pane, .drawing .leaflet-popup-pane, .drawing .leaflet-interactive { pointer-events: none !important; }
 .drawing { cursor: crosshair !important; }
 #toolbar > .sheet-head, #toolbar > .mk-row, #toolbar > .mk-syms, #toolbar > .mk-dims { flex-shrink: 0; }
+
+/* Kontakte & Marker nach Art (wie ATAK Overlay Manager), Clear Content */
+.grp { display: flex; align-items: center; gap: 8px; padding: 10px 2px; border-bottom: 1px solid var(--line); cursor: pointer; font-size: 14px; color: #fff; background: #20252d; margin-top: 4px; }
+.grp .arr { width: 12px; color: var(--mut); transition: transform .15s; }
+.grp.open .arr { transform: rotate(90deg); }
+.grp b { flex: 1; font-weight: 500; }
+.grp .cnt, .clr .cnt { color: var(--mut); font-size: 12px; min-width: 22px; text-align: right; }
+.grp .sw, .clr .sw, .contact .sym .sw { width: 12px; height: 12px; border-radius: 50%; border: 1px solid #000; flex: none; display: inline-block; }
+.grp .del { background: none; border: 0; color: #ff8a80; padding: 4px 6px; cursor: pointer; display: flex; }
+.contact { padding-left: 14px; }
+.contact .sym { width: 24px; display: flex; align-items: center; justify-content: center; flex: none; }
+.contact .sym svg { max-width: 24px; max-height: 22px; }
+.clr { display: flex !important; align-items: center; gap: 10px; padding: 11px 2px; border-bottom: 1px solid var(--line); font-size: 14px; color: #fff; margin: 0; }
+.clr input { width: 18px; height: 18px; }
+.clr .name { flex: 1; }
+.clr.none { opacity: .45; }

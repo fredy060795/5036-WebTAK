@@ -230,7 +230,16 @@ test('TAK-Server-API: Datenpakete, Missionen (Data Sync), Video-Feeds mit Client
     if (u.pathname === '/Marti/sync/search') return send('application/json', JSON.stringify({ resultCount: 1, results: [{ Hash: HASH, Name: 'Lage.zip', Size: zip.length, SubmissionUser: 'max' }] }));
     if (u.pathname === '/Marti/sync/content' && u.searchParams.get('hash') === HASH) return send('application/zip', zip);
     if (u.pathname === '/Marti/api/video') return send('application/xml', '<videoConnections><feed><alias>Drohne</alias><url>rtsp://10.0.0.9:8554/live</url></feed></videoConnections>');
-    if (u.pathname === '/Marti/api/missions') return send('application/json', JSON.stringify({ data: [{ name: 'Einsatz 1', description: 'Test', contents: [{}], uids: [{}] }] }));
+    // wie OpenTAKServer: nur Missionen mit genau passendem "tool" (in ATAK angelegt = public)
+    if (u.pathname === '/Marti/api/missions') {
+      const all = [{ name: 'Einsatz 1', description: 'Test', tool: 'public', contents: [{}], uids: [{}] }, { name: 'Ohne Tool', tool: null }];
+      return send('application/json', JSON.stringify({ data: all.filter(m => m.tool === (u.searchParams.get('tool') || null)) }));
+    }
+    if (u.pathname === '/Marti/api/missions/Nur%20UIDs/subscription') { res.writeHead(400, { 'Content-Type': 'application/json' }); return res.end('{"success":false,"error":"Invalid UID: EUD-2"}'); }
+    if (u.pathname === '/Marti/api/missions/Nur%20UIDs/cot') return send('application/xml', '<events/>');
+    if (u.pathname === '/Marti/api/missions/Nur%20UIDs') {
+      return send('application/json', JSON.stringify({ data: [{ name: 'Nur UIDs', uids: [{ data: 'U-1', details: { type: 'a-h-G', callsign: 'Feind', location: { lat: 48.1, lon: 11.5 } } }] }] }));
+    }
     if (u.pathname === '/Marti/api/missions/Einsatz%201/subscription' && req.method === 'PUT') { subscribed = u.searchParams.get('uid'); return send('application/json', '{}'); }
     if (u.pathname === '/Marti/api/missions/Einsatz%201/cot') return send('application/xml', '<events><event version="2.0" uid="MIS-1" type="a-h-G"><point lat="1" lon="2"/><detail/></event></events>');
     if (u.pathname === '/Marti/api/missions/Einsatz%201') return send('application/json', JSON.stringify({ data: [{ name: 'Einsatz 1', contents: [{ data: { name: 'gebiet.zip', hash: HASH } }] }] }));
@@ -247,7 +256,14 @@ test('TAK-Server-API: Datenpakete, Missionen (Data Sync), Video-Feeds mit Client
     assert.equal(pkg.overlays.length, 1);
     assert.equal(pkg.overlays[0].name, 'gebiet');
     assert.deepEqual((await tak.marti(conn, 'videos')).feeds, [{ alias: 'Drohne', url: 'rtsp://10.0.0.9:8554/live' }]);
-    assert.equal((await tak.marti(conn, 'missions')).missions[0].name, 'Einsatz 1');
+    assert.deepEqual((await tak.marti(conn, 'missions')).missions.map(m => m.name), ['Einsatz 1', 'Ohne Tool']);
+    // Gerät dem Server noch unbekannt: Inhalte trotzdem, mit Hinweis; Punkte aus den Missions-Metadaten
+    const only = await tak.marti(conn, 'mission', { name: 'Nur UIDs', uid: 'EUD-2' });
+    assert.equal(only.subscribed, false);
+    assert.match(only.warnings[0], /connect this device/);
+    assert.equal(only.cot.length, 1);
+    assert.match(only.cot[0], /uid="U-1" type="a-h-G"/);
+    assert.match(only.cot[0], /callsign="Feind"/);
     const mis = await tak.marti(conn, 'mission', { name: 'Einsatz 1', uid: 'EUD-1' });
     assert.equal(subscribed, 'EUD-1');
     assert.ok(mis.cot.some(x => x.includes('MIS-1')) && mis.cot.some(x => x.includes('PKG-1')));
