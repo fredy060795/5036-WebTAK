@@ -77,6 +77,10 @@ Admin sichtbar; der Admin kann sie dort jederzeit ändern.
 **Helmkamera (Bluetooth):** Android mit **Chrome** (nicht Samsung Internet/Firefox). Auf dem iPhone kann kein Browser
 Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den Weg („Link für Bluefy kopieren“).
 
+**Adresse des Servers** (im Admin oben): legt fest, welche Adresse in QR-Codes und allen Links steht, z. B.
+`https://tak.example.com:5036`. Leer bzw. „Automatisch“ = `PUBLIC_URL` oder die aufgerufene Adresse. Die Einstellung
+gilt vor `PUBLIC_URL` und bleibt nach einem Neustart erhalten.
+
 **Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
 sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.

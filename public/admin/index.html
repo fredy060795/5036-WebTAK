@@ -88,6 +88,14 @@
             starten den Stream. Jeder bekommt automatisch einen eigenen Stream – er erscheint unten in der Liste.
             Einzelne QR-Codes pro Nutzer sind nicht nötig.</p>
           <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
+          <form id="baseForm">
+            <label for="baseUrl">Adresse des Servers (für QR-Codes und alle Links)</label>
+            <div class="link">
+              <input id="baseUrl" placeholder="automatisch" autocomplete="off">
+              <button class="sm pri" type="submit">Speichern</button>
+              <button class="sm" type="button" id="baseAuto">Automatisch</button>
+            </div>
+          </form>
           <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
           <p class="msg" id="regMsg"></p>
         </div>

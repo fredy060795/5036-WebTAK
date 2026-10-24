@@ -222,6 +222,8 @@ async function loadRegistration() {
     const r = await api('registration');
     $('regToggle').checked = r.enabled;
     $('appUrl').value = r.appUrl;
+    if (document.activeElement !== $('baseUrl')) $('baseUrl').value = r.publicUrl;
+    $('baseUrl').placeholder = 'automatisch: ' + r.autoUrl;
     $('appQr').src = '/api/admin/app-qr.svg?t=' + Date.now();
     $('appQr').closest('.appqr').classList.toggle('off', !r.enabled);
   } catch (e) { /* angezeigt durch api() */ }
@@ -236,6 +238,19 @@ $('regToggle').addEventListener('change', async () => {
   } catch (e) { setMsg($('regMsg'), e.message); }
 });
 $('appUrlCopy').addEventListener('click', () => copy($('appUrl').value, $('appUrlCopy')));
+
+async function saveBase(url) {
+  try {
+    const r = await api('public-url', { method: 'POST', body: { url } });
+    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – QR-Code und Links sind angepasst.'
+      : 'Adresse wieder automatisch.', true);
+    await loadRegistration();
+    await refresh();
+    me = await api('me');
+  } catch (e) { setMsg($('regMsg'), e.message); }
+}
+$('baseForm').addEventListener('submit', e => { e.preventDefault(); saveBase($('baseUrl').value); });
+$('baseAuto').addEventListener('click', () => { $('baseUrl').value = ''; saveBase(''); });
 $('appQrBig').addEventListener('click', () => {
   const img = el('img', { class: 'qr', alt: 'QR-Code zur Handy-Seite', src: '/api/admin/app-qr.svg?t=' + Date.now() });
   const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {

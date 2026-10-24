@@ -77,18 +77,34 @@ function clientIp(req) {
   return req.socket.remoteAddress || '';
 }
 
+// Öffentliche Adresse: im Admin eingestellt > PUBLIC_URL > aus der Anfrage
+function configuredBase() {
+  return ((store.data.settings || {}).publicUrl) || config.publicUrl;
+}
+
 function publicBase(req) {
   const host = ((config.trustProxy && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
-  return config.publicUrl || `${protoOf(req)}://${host}`;
+  return configuredBase() || `${protoOf(req)}://${host}`;
+}
+
+// "https://domain:5036/irgendwas" -> "https://domain:5036"; leer = automatisch
+function normalizeBase(value) {
+  const text = String(value || '').trim();
+  if (!text) return '';
+  let u;
+  try { u = new URL(/^https?:\/\//i.test(text) ? text : 'https://' + text); } catch (e) { u = null; }
+  if (!u || !/^https?:$/.test(u.protocol) || !u.hostname) throw new Error('Bitte eine gültige Adresse eingeben, z. B. https://example.com:5036');
+  return u.origin;
 }
 
 // Adresse für Links in Reset-Mails: nur aus der Konfiguration, nie aus der Anfrage
 // (sonst könnte jemand über einen gefälschten Host-Header den Link umleiten).
 function resetBase() {
   if (config.adminUrl) return config.adminUrl;
-  if (!config.publicUrl) return null;
-  if (!config.adminHost) return config.publicUrl;
-  const u = new URL(config.publicUrl);
+  const pub = configuredBase();
+  if (!pub) return null;
+  if (!config.adminHost) return pub;
+  const u = new URL(pub);
   u.hostname = config.adminHost;
   return u.origin;
 }
@@ -273,7 +289,21 @@ async function handleAdminApi(req, res, route) {
   if (auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
 
   if (route === 'registration' && method === 'GET') {
-    return json(res, 200, { enabled: registrationEnabled(), appUrl: publicBase(req) + '/app/' });
+    const host = ((config.trustProxy && req.headers['x-forwarded-host']) || req.headers.host || '').split(',')[0].trim();
+    return json(res, 200, {
+      enabled: registrationEnabled(),
+      appUrl: publicBase(req) + '/app/',
+      publicUrl: (store.data.settings || {}).publicUrl || '',           // im Admin eingestellt
+      autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
+    });
+  }
+  if (route === 'public-url' && method === 'POST') {
+    const body = await readJson(req);
+    const url = normalizeBase(body.url);
+    store.data.settings = { ...(store.data.settings || {}), publicUrl: url };
+    store.save();
+    log('Öffentliche Adresse', url || '(automatisch)');
+    return json(res, 200, { ok: true, publicUrl: url });
   }
   if (route === 'registration' && method === 'POST') {
     const body = await readJson(req);

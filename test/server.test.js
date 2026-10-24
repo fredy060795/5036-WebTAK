@@ -525,3 +525,27 @@ test('Nutzer richtet am Handy selbst aus (options über WebSocket)', async () =>
   assert.equal(st.mirror, true);
   p.ws.close();
 });
+
+test('Adresse im Admin einstellen: Links und QR-Codes passen sich an', async () => {
+  const QRCode = require('qrcode');
+  const qrOf = text => QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
+  const appQr = async () => (await fetch(base + '/api/admin/app-qr.svg', { headers: { cookie } })).text();
+
+  assert.equal((await api('public-url', { method: 'POST', body: { url: 'kein link !' } })).status, 400);
+  const set = await api('public-url', { method: 'POST', body: { url: 'tak.example.com:5036/egal' } });
+  assert.equal(set.status, 200);
+  assert.equal(set.data.publicUrl, 'https://tak.example.com:5036');
+
+  const reg = (await api('registration')).data;
+  assert.equal(reg.appUrl, 'https://tak.example.com:5036/app/');
+  assert.equal(await appQr(), await qrOf('https://tak.example.com:5036/app/'), 'allgemeiner QR-Code enthält den neuen Link');
+
+  const s = (await api('streams')).data.streams[0];
+  assert.ok(s.links.stream.startsWith('https://tak.example.com:5036/'));
+  const streamQr = await (await fetch(`${base}/api/admin/streams/${s.user}/${s.streamId}/qr.svg`, { headers: { cookie } })).text();
+  assert.equal(streamQr, await qrOf(s.links.app), 'Stream-QR-Code enthält den neuen Link');
+
+  assert.equal((await api('public-url', { method: 'POST', body: { url: '' } })).data.publicUrl, '');
+  assert.equal((await api('registration')).data.appUrl, base + '/app/');
+  assert.equal(await appQr(), await qrOf(base + '/app/'));
+});
