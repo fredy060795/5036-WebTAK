@@ -6,8 +6,8 @@ RUN npm ci --omit=dev
 COPY server.js ./
 COPY lib ./lib
 COPY public ./public
-ENV PORT=8080 DATA_DIR=/data
+ENV PORT=5036 DATA_DIR=/data
 VOLUME /data
-EXPOSE 8080
+EXPOSE 5036
 USER node
 CMD ["node", "server.js"]

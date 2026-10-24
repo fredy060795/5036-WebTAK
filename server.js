@@ -23,7 +23,7 @@ const { StreamHub, normRotate, normFit } = require('./lib/streams');
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 
 const config = {
-  port: process.env.PORT ? Number(process.env.PORT) : 8080,
+  port: process.env.PORT ? Number(process.env.PORT) : 5036,
   bind: process.env.BIND || '0.0.0.0',
   publicUrl: (process.env.PUBLIC_URL || '').replace(/\/+$/, ''),
   adminHost: (process.env.ADMIN_HOST || '').toLowerCase(),
@@ -32,7 +32,9 @@ const config = {
   ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
   tlsCert: process.env.TLS_CERT || '',
   tlsKey: process.env.TLS_KEY || '',
-  trustProxy: process.env.TRUST_PROXY !== '0',
+  // X-Forwarded-* nur auswerten, wenn ein Reverse-Proxy davor sitzt. Mit eigenem
+  // Zertifikat (TLS_CERT) läuft der Server direkt im Netz, dann standardmäßig aus.
+  trustProxy: process.env.TRUST_PROXY !== undefined ? process.env.TRUST_PROXY !== '0' : !process.env.TLS_CERT,
 };
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -78,10 +80,15 @@ function publicBase(req) {
   return config.publicUrl || `${protoOf(req)}://${host}`;
 }
 
-function adminBase(req) {
+// Adresse für Links in Reset-Mails: nur aus der Konfiguration, nie aus der Anfrage
+// (sonst könnte jemand über einen gefälschten Host-Header den Link umleiten).
+function resetBase() {
   if (config.adminUrl) return config.adminUrl;
-  if (config.adminHost) return `https://${config.adminHost}`;
-  return publicBase(req);
+  if (!config.publicUrl) return null;
+  if (!config.adminHost) return config.publicUrl;
+  const u = new URL(config.publicUrl);
+  u.hostname = config.adminHost;
+  return u.origin;
 }
 
 // Admin nur auf der Admin-Domain, wenn eine eingestellt ist
@@ -180,9 +187,11 @@ async function handleAdminApi(req, res, route) {
     const who = String(body.username || '').trim().toLowerCase();
     const admin = auth.admin;
     if (who && admin.email && (who === admin.username.toLowerCase() || who === admin.email.toLowerCase())) {
-      if (smtpConfigured(store.data.smtp)) {
+      if (!resetBase()) {
+        log('Passwort-Reset angefordert, aber PUBLIC_URL/ADMIN_URL ist nicht gesetzt – keine Mail gesendet.');
+      } else if (smtpConfigured(store.data.smtp)) {
         const token = auth.createResetToken();
-        const link = `${adminBase(req)}/admin/#reset=${token}`;
+        const link = `${resetBase()}/admin/#reset=${token}`;
         sendMail(store.data.smtp, {
           to: admin.email,
           subject: 'Helm Camera Streams – Passwort zurücksetzen',
@@ -461,6 +470,22 @@ const server = config.tlsCert && config.tlsKey
   ? https.createServer({ cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey) }, handle)
   : http.createServer(handle);
 server.on('upgrade', handleUpgrade);
+
+// Erneuertes Zertifikat (z. B. Let's Encrypt) ohne Neustart übernehmen
+if (config.tlsCert && config.tlsKey) {
+  let stamp = fs.statSync(config.tlsCert).mtimeMs;
+  setInterval(() => {
+    try {
+      const now = fs.statSync(config.tlsCert).mtimeMs;
+      if (now === stamp) return;
+      server.setSecureContext({ cert: fs.readFileSync(config.tlsCert), key: fs.readFileSync(config.tlsKey) });
+      stamp = now;
+      log('Neues TLS-Zertifikat geladen');
+    } catch (e) {
+      log('Zertifikat konnte nicht neu geladen werden:', e.message);
+    }
+  }, 60 * 60 * 1000).unref();
+}
 server.keepAliveTimeout = 65000;
 
 server.listen(config.port, config.bind, () => {

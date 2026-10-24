@@ -77,18 +77,28 @@ nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste 
 
 ## Installation auf dem Server
 
-### Mit Docker (empfohlen)
+### Mit Docker (empfohlen) – Port 5036
 
-1. Zwei DNS-Einträge auf den Server zeigen lassen, z. B. `cam.example.com` (Streams + Handy-App) und
-   `admin.example.com` (Admin).
-2. Domains in `docker-compose.yml` und `deploy/Caddyfile` eintragen.
-3. `docker compose up -d` – Caddy holt die HTTPS-Zertifikate automatisch.
-4. `https://admin.example.com/admin/` öffnen, mit admin / admin123 anmelden.
+Der Server läuft auf **Port 5036** mit HTTPS (nötig für Bluetooth im Handy-Browser). Am einfachsten mit dem
+Zertifikat, das auf dem Server schon vorhanden ist (z. B. Let's Encrypt des TAK-Servers):
+
+1. In `docker-compose.yml` `tak.example.com` durch die eigene Domain ersetzen (bei `PUBLIC_URL` und den
+   Zertifikatspfaden).
+2. Port 5036 in der Firewall freigeben.
+3. `docker compose up -d`
+4. `https://<domain>:5036/admin/` öffnen, mit admin / admin123 anmelden.
+
+Stream-Links sehen dann so aus: `https://<domain>:5036/<benutzer>/<streamId>`. Erneuerte Zertifikate werden
+automatisch übernommen.
+
+Sind die Ports 80/443 frei, kann stattdessen Caddy die Zertifikate holen: `docker compose --profile caddy up -d`
+(Domains in `deploy/Caddyfile` eintragen, `TLS_CERT`/`TLS_KEY` in `docker-compose.yml` entfernen).
 
 ### Ohne Docker
 
-Voraussetzungen: Node.js 18 oder neuer, ffmpeg (für HLS/MPEG-TS, optional), ein Reverse-Proxy mit HTTPS
-(Beispiele: `deploy/Caddyfile`, `deploy/nginx.conf`).
+Voraussetzungen: Node.js 18 oder neuer, ffmpeg (für HLS/MPEG-TS, optional) und ein Zertifikat. Der Dienst
+`deploy/helm-camera.service` startet den Server mit HTTPS direkt auf Port 5036; alternativ hinter einem
+Reverse-Proxy (Beispiele: `deploy/Caddyfile`, `deploy/nginx.conf`).
 
 ```sh
 sudo useradd --system helmcam
@@ -102,14 +112,14 @@ sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 
 | Variable | Bedeutung | Standard |
 |---|---|---|
-| `PUBLIC_URL` | Öffentliche Adresse für Links und QR-Codes, z. B. `https://cam.example.com` | aus der Anfrage |
+| `PUBLIC_URL` | Öffentliche Adresse für Links, QR-Codes und Reset-Mails, z. B. `https://tak.example.com:5036` – **setzen**, sonst gibt es keine Reset-Mails | aus der Anfrage |
 | `ADMIN_HOST` | Admin nur unter dieser Domain erreichbar, z. B. `admin.example.com` | Admin auf jeder Domain |
-| `ADMIN_URL` | Adresse für Links in Reset-Mails | `https://<ADMIN_HOST>` |
-| `PORT` / `BIND` | Port und Adresse des Servers | `8080` / `0.0.0.0` |
+| `ADMIN_URL` | Adresse für Links in Reset-Mails | aus `PUBLIC_URL` (mit `ADMIN_HOST` als Domain) |
+| `PORT` / `BIND` | Port und Adresse des Servers | `5036` / `0.0.0.0` |
 | `DATA_DIR` | Datenordner (Admin, SMTP, Streams) | `./data` |
 | `FFMPEG_PATH` | Pfad zu ffmpeg | `ffmpeg` |
 | `TLS_CERT` / `TLS_KEY` | HTTPS direkt im Server statt Reverse-Proxy | – |
-| `TRUST_PROXY` | `0` = X-Forwarded-Header ignorieren (wenn kein Proxy davor) | `1` |
+| `TRUST_PROXY` | `1` = X-Forwarded-Header vom Reverse-Proxy auswerten | `1`, mit `TLS_CERT` `0` |
 
 Alle Daten liegen in `DATA_DIR/db.json` (Passwort nur als scrypt-Hash).
 
@@ -117,7 +127,7 @@ Alle Daten liegen in `DATA_DIR/db.json` (Passwort nur als scrypt-Hash).
 
 ```sh
 npm install
-npm start      # http://localhost:8080/admin/
+npm start      # http://localhost:5036/admin/
 npm test       # Ende-zu-Ende-Tests (Admin, Handy-WebSocket, MJPEG, HLS/TS, Drehung, Stoppen/Rauswerfen, SMTP-Reset)
 ```
 

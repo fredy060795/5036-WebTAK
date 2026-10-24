@@ -1,15 +1,15 @@
 # Zwei Domains, beide zeigen auf diesen Server (DNS A/AAAA-Eintrag).
 # Caddy besorgt die HTTPS-Zertifikate automatisch.
-# Ohne Docker "helmcam:8080" durch "127.0.0.1:8080" ersetzen.
+# Ohne Docker "helmcam:5036" durch "127.0.0.1:5036" ersetzen.
 
 cam.example.com {
-	reverse_proxy helmcam:8080 {
+	reverse_proxy helmcam:5036 {
 		flush_interval -1
 	}
 }
 
 admin.example.com {
-	reverse_proxy helmcam:8080 {
+	reverse_proxy helmcam:5036 {
 		flush_interval -1
 	}
 }

@@ -23,7 +23,7 @@ before(async () => {
   dataDir = fs.mkdtempSync(path.join(os.tmpdir(), 'helmcam-test-'));
   proc = spawn(process.execPath, ['server.js'], {
     cwd: ROOT,
-    env: { ...process.env, PORT: '0', BIND: '127.0.0.1', DATA_DIR: dataDir, PUBLIC_URL: '' },
+    env: { ...process.env, PORT: '0', BIND: '127.0.0.1', DATA_DIR: dataDir, PUBLIC_URL: '', ADMIN_URL: 'https://admin.test:5036' },
     stdio: ['ignore', 'pipe', 'pipe'],
   });
   base = await new Promise((resolve, reject) => {
@@ -331,6 +331,20 @@ test('Passwort vergessen per SMTP: Mail mit Link, neues Passwort, Login', async 
     assert.equal((await api('forgot', { method: 'POST', body: { username: 'chef@example.com' } })).status, 200);
     for (let i = 0; i < 50 && sink.mails.length < 2; i++) await sleep(50);
     const mail = sink.mails[1].replace(/=\n/g, '').replace(/=3D/g, '=');
+    assert.match(mail, /https:\/\/admin\.test:5036\/admin\/#reset=/, 'Link aus ADMIN_URL');
+
+    // Gefälschter Host-Header darf den Link in der Mail nicht umleiten
+    await new Promise((resolve, reject) => {
+      const u = new URL(base + '/api/admin/forgot');
+      const req = http.request({ host: u.hostname, port: u.port, path: u.pathname, method: 'POST',
+        headers: { Host: 'evil.example', 'X-Forwarded-Host': 'evil.example', 'X-Requested-With': 'helm', 'Content-Type': 'application/json' } },
+      res => { res.resume(); res.on('end', resolve); });
+      req.on('error', reject);
+      req.end(JSON.stringify({ username: 'chef' }));
+    });
+    for (let i = 0; i < 50 && sink.mails.length < 3; i++) await sleep(50);
+    assert.doesNotMatch(sink.mails[2], /evil\.example/);
+    assert.match(sink.mails[2].replace(/=\n/g, ''), /admin\.test:5036/);
     const token = mail.match(/#reset=([\w-]+)/)[1];
     assert.equal((await api('reset', { method: 'POST', body: { token, password: 'kurz' } })).status, 400);
     assert.equal((await api('reset', { method: 'POST', body: { token, password: 'ganz-neues-passwort' } })).status, 200);
@@ -430,5 +444,32 @@ test('HLS läuft weiter, wenn das Bild von quer auf hoch wechselt', { skip: !HAS
   } finally {
     clearInterval(feeder);
     p.ws.close();
+  }
+});
+
+test('HTTPS direkt mit eigenem Zertifikat (z. B. Port 5036)', { skip: spawnSync('openssl', ['version']).status !== 0 && 'openssl fehlt' }, async () => {
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'helmcam-tls-'));
+  const cert = path.join(dir, 'cert.pem'), key = path.join(dir, 'key.pem');
+  spawnSync('openssl', ['req', '-x509', '-newkey', 'rsa:2048', '-nodes', '-days', '1', '-subj', '/CN=localhost',
+    '-keyout', key, '-out', cert], { stdio: 'ignore' });
+  const p = spawn(process.execPath, ['server.js'], {
+    cwd: ROOT,
+    env: { ...process.env, PORT: '0', BIND: '127.0.0.1', DATA_DIR: dir, TLS_CERT: cert, TLS_KEY: key, TRUST_PROXY: '' },
+    stdio: ['ignore', 'pipe', 'inherit'],
+  });
+  try {
+    const port = await new Promise(resolve => {
+      let out = '';
+      p.stdout.on('data', d => { out += d; const m = out.match(/https:\/\/127\.0\.0\.1:(\d+)/); if (m) resolve(m[1]); });
+    });
+    const status = await new Promise((resolve, reject) => {
+      require('https').get({ host: '127.0.0.1', port, path: '/health', rejectUnauthorized: false }, res => {
+        res.resume(); resolve(res.statusCode);
+      }).on('error', reject);
+    });
+    assert.equal(status, 200);
+  } finally {
+    p.kill('SIGTERM');
+    fs.rmSync(dir, { recursive: true, force: true });
   }
 });
