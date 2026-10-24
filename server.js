@@ -508,6 +508,9 @@ function handleUpgrade(req, socket, head) {
           if (msg.camera !== undefined) live.camera = String(msg.camera).slice(0, 40);
           if (msg.phone !== undefined) live.phone = String(msg.phone).slice(0, 120);
           if (msg.resolution !== undefined) live.resolution = String(msg.resolution).slice(0, 20);
+        } else if (msg.type === 'options') {
+          // Nutzer richtet am Handy selbst aus (Drehung/Spiegeln); Admin sieht und kann es ändern
+          hub.setOptions(id, { rotate: msg.rotate, mirror: msg.mirror });
         }
       } catch (e) { /* ignorieren */ }
     });

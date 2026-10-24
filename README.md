@@ -40,7 +40,7 @@ OpenTAKServer nutzt MediaMTX. MediaMTX kann eine fremde Quelle abholen, aber kei
 
 ## Bild ausrichten (jeder Helm ist anders montiert)
 
-Das Ausrichten macht nur der Admin – der Benutzer scannt nur den QR-Code und startet den Stream.
+Ausrichten kann der Nutzer am Handy selbst (Karte „Ausrichten“) und der Admin im Ansehen-Fenster – beide sehen dieselbe Einstellung.
 
 - **Ansehen** → **∠ Ausrichten**: Regler für jeden Winkel von 0 bis 359,5° (im Uhrzeigersinn), Feinschritte
   −90/−5/−1/+1/+5/+90°, 0°, **Spiegeln** und bei schrägen Winkeln **Füllen** (Rand wird abgeschnitten, keine schwarzen
@@ -65,7 +65,14 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
 **Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s, Bildgröße
-wählbar bis 1280x720. Die Admin-Drehung gilt nur für die Helmkamera; das Handy-Bild kommt schon aufrecht an.
+wählbar bis 1280x720. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
+und angesteckte **USB/UVC-Kameras** (Windows/macOS/Linux, iPad mit USB-C, manche Android-Geräte; iPhone nicht).
+Das Handy merkt sich die Auswahl.
+
+**Ausrichten am Handy:** Nach dem Verbinden zeigt die Seite eine Vorschau und die Karte **Ausrichten**
+(⟲/⟳ 90°, ±5°, ±1°, 0°, Spiegeln). Die Vorschau zeigt genau das Bild, das gesendet wird – also vor
+„Stream starten“ ausrichten. Die Einstellung gilt für Handy- und Helmkamera, wird am Server gespeichert und ist im
+Admin sichtbar; der Admin kann sie dort jederzeit ändern.
 
 **Helmkamera (Bluetooth):** Android mit **Chrome** (nicht Samsung Internet/Firefox). Auf dem iPhone kann kein Browser
 Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den Weg („Link für Bluefy kopieren“).

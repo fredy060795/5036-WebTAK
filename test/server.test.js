@@ -509,3 +509,19 @@ test('Selbst-Anmeldung über den allgemeinen QR-Code', async () => {
   const qr = await fetch(base + '/api/admin/app-qr.svg', { headers: { cookie } });
   assert.match(await qr.text(), /^<svg/);
 });
+
+test('Nutzer richtet am Handy selbst aus (options über WebSocket)', async () => {
+  const r = await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Ausrichter' }) });
+  const reg = await r.json();
+  const p = publisher({ user: reg.u, streamId: reg.s }, reg.k);
+  await p.waitFor('welcome');
+  p.messages.length = 0;
+  p.ws.send(JSON.stringify({ type: 'options', rotate: 92.3, mirror: true }));
+  const cfg = await p.waitFor('config');
+  assert.equal(cfg.rotate, 92.5);
+  assert.equal(cfg.mirror, true);
+  const st = (await api('streams')).data.streams.find(x => x.streamId === reg.s);
+  assert.equal(st.rotate, 92.5);
+  assert.equal(st.mirror, true);
+  p.ws.close();
+});

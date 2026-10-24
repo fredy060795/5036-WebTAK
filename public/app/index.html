@@ -11,6 +11,11 @@ main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px; }
 .view { position: relative; background: #000; border-radius: 10px; aspect-ratio: 4 / 3; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #98a0ac; }
 .view img { width: 100%; height: 100%; object-fit: contain; }
+/* Kamera-Video bleibt im Bild (iPhone liefert sonst keine Bilder), die Vorschau zeigt das gesendete Bild */
+.view video.tiny { position: absolute; right: 0; bottom: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
+.align { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; }
+.align button { padding: 10px 4px; }
+.angle { font-size: 20px; font-weight: 700; text-align: center; margin: 4px 0 10px; }
 .live-dot { position: absolute; top: 10px; left: 10px; background: #c62828; color: #fff; font-size: 12px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
 .big { width: 100%; padding: 14px; font-size: 17px; margin-top: 12px; }
 .kv { display: grid; grid-template-columns: max-content 1fr; gap: 4px 12px; }
@@ -77,15 +82,34 @@ header { display: flex; justify-content: space-between; align-items: center; gap
     </div>
 
     <section class="card">
-      <div class="view"><span id="viewText">Noch kein Bild</span><img id="img" class="hidden" alt="Kamerabild"><span id="liveDot" class="live-dot hidden">LIVE</span></div>
-      <video id="video" class="hidden" playsinline muted autoplay></video>
+      <div class="view"><span id="viewText">Noch kein Bild</span><img id="img" class="hidden" alt="Kamerabild"><video id="video" class="hidden tiny" playsinline muted autoplay></video><span id="liveDot" class="live-dot hidden">LIVE</span></div>
       <div id="srcBtns">
         <button class="pri big" id="phoneBtn" type="button">Handy-Kamera</button>
         <button class="pri big" id="bleBtn" type="button">Helmkamera (Bluetooth)</button>
       </div>
       <button class="big hidden" id="camBtn" type="button">Kamera trennen</button>
       <button class="big hidden" id="liveBtn">Stream starten</button>
+      <div id="camPick" class="hidden">
+        <label for="camSelect">Kamera</label>
+        <select id="camSelect"></select>
+      </div>
       <p class="msg" id="msg"></p>
+    </section>
+
+    <section class="card hidden" id="alignCard">
+      <h2>Ausrichten</h2>
+      <p class="mut small">Kamera so drehen, dass das Bild gerade steht. Gilt sofort, auch während der Stream läuft.</p>
+      <div class="angle" id="angle">0°</div>
+      <div class="align">
+        <button type="button" data-rot="-90">⟲ 90°</button>
+        <button type="button" data-rot="-5">−5°</button>
+        <button type="button" data-rot="-1">−1°</button>
+        <button type="button" data-rot="0">0°</button>
+        <button type="button" data-rot="90">⟳ 90°</button>
+        <button type="button" data-rot="5">+5°</button>
+        <button type="button" data-rot="1">+1°</button>
+        <button type="button" id="mirrorBtn">Spiegeln</button>
+      </div>
     </section>
 
     <section class="card">
@@ -104,7 +128,7 @@ header { display: flex; justify-content: space-between; align-items: center; gap
         <option value="11">1280x720 – nur Handy-Kamera</option>
       </select>
       <p class="mut small">Bildschirm anlassen und die App im Vordergrund lassen, sonst stoppt das Handy Kamera und Bluetooth.
-        iPhone: in der App „Bluefy“ öffnen.</p>
+        Helmkamera am iPhone: nur in der App „Bluefy“.</p>
     </section>
   </div>
 </main>
@@ -143,6 +167,7 @@ let rotate = 0, mirror = false, fit = 'fill';  // vom Admin pro Stream eingestel
 let busy = false;                // gerade wird ein Bild gedreht
 let source = null;               // 'phone' = Handy-Kamera, 'ble' = Helmkamera
 let mediaStream = null, captureTimer = null, capturing = false;
+const CAM_KEY = 'helmcam.camera';  // zuletzt gewählte Kamera
 const PHONE_FPS = 5;             // Bilder/s der Handy-Kamera
 const RES_PX = { 1: 160, 5: 320, 8: 640, 11: 1280 }; // längere Bildseite je Auswahl
 
@@ -178,8 +203,25 @@ async function rotateJpeg(jpeg, deg, flip, fit = 'fill') {
 }
 window.rotateJpeg = rotateJpeg; // für Tests
 
+const normDeg = v => {
+  const r = Number(v);
+  if (!Number.isFinite(r)) return 0;
+  return (Math.round((((r % 360) + 360) % 360) * 2) / 2) % 360;
+};
+
 function showRotation() {
-  $('rotation').textContent = (rotate ? String(rotate).replace('.', ',') + '° (vom Admin, nur Helmkamera)' : 'keine') + (mirror ? ', gespiegelt' : '');
+  const text = String(rotate).replace('.', ',') + '°';
+  $('rotation').textContent = (rotate ? text : 'keine') + (mirror ? ', gespiegelt' : '');
+  $('angle').textContent = text + (mirror ? ' · gespiegelt' : '');
+  $('mirrorBtn').classList.toggle('pri', mirror);
+}
+
+// Nutzer richtet selbst aus: sofort lokal anwenden, der Server speichert es (Admin sieht es)
+function setAlignment(newRotate, newMirror) {
+  rotate = normDeg(newRotate);
+  mirror = !!newMirror;
+  showRotation();
+  if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'options', rotate, mirror }));
 }
 
 function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
@@ -191,6 +233,8 @@ function setSteps() {
   $('srvBadge').textContent = wsOk ? 'Server verbunden' : 'Server getrennt';
   $('srvBadge').className = 'badge ' + (wsOk ? 'live' : 'wait');
   $('srcBtns').classList.toggle('hidden', camConnected);
+  $('alignCard').classList.toggle('hidden', !camConnected);
+  $('camPick').classList.toggle('hidden', !(camConnected && source === 'phone'));
   // Bluetooth-Hinweis nur zeigen, solange noch keine Kamera gewählt ist
   const noBt = !navigator.bluetooth && window.isSecureContext;
   $(isIOS ? 'iosHelp' : 'noBle').classList.toggle('hidden', !noBt || camConnected);
@@ -232,8 +276,6 @@ function connectServer() {
       if (resumeLive) {
         resumeLive = false; // Admin hat wieder freigegeben: dort weitermachen, wo gestoppt wurde
         startLive();
-      } else if (wantLive && camConnected) {
-        startCameraStream();
       }
     } else if (msg.type === 'config') {
       rotate = msg.rotate || 0;
@@ -278,7 +320,7 @@ function sendHello() {
   if (ws && ws.readyState === 1) {
     ws.send(JSON.stringify({
       type: 'hello',
-      camera: source === 'phone' ? 'Handy-Kamera' : (device ? device.name || 'Helmkamera' : ''),
+      camera: source === 'phone' ? $('camName').textContent : (device ? device.name || 'Helmkamera' : ''),
       phone: navigator.userAgent,
       resolution: $('res').selectedOptions[0].textContent.split(' ')[0],
     }));
@@ -305,7 +347,7 @@ async function setupGatt() {
   $('camName').textContent = (device.name || 'Helmkamera') + ' (Bluetooth)';
   sendHello();
   setSteps();
-  if (wantLive) startCameraStream();
+  startPreview(); // Helmkamera liefert gleich Bilder für die Vorschau
 }
 
 // Vollständiger Link (mit Schlüssel) zum Weitergeben an Bluefy/Chrome
@@ -395,13 +437,17 @@ function disconnectCamera() {
     if (mediaStream) mediaStream.getTracks().forEach(t => t.stop());
     mediaStream = null;
     $('video').srcObject = null;
+    $('video').classList.add('hidden');
   } else {
+    if (camConnected) camSend({ cmd: 'stream', on: false });
     const d = device;
     device = null;
     if (d && d.gatt.connected) d.gatt.disconnect();
   }
   source = null;
   camConnected = false;
+  $('img').classList.add('hidden');
+  $('viewText').classList.remove('hidden');
   $('camName').textContent = 'nicht verbunden';
   setSteps();
 }
@@ -426,31 +472,114 @@ function onImagePacket(ev) {
 // ----------------------------------------------------------------------
 // Handy-Kamera (Rückkamera, geht in jedem Handy-Browser über HTTPS – auch Safari)
 // ----------------------------------------------------------------------
+// iPhone-Apps wie Bluefy sind keine echten Safari-Browser und dürfen die Kamera oft nicht nutzen
+const inIOSApp = isIOS && !/Safari\//.test(navigator.userAgent);
+
 async function connectPhoneCamera() {
   if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-    setMsg('Die Handy-Kamera geht nur über HTTPS. Bitte die Seite über https öffnen.', 'err');
+    setMsg(inIOSApp
+      ? 'In dieser App ist die Kamera nicht verfügbar. Für die Handy-Kamera die Seite in Safari öffnen (Link kopieren und in Safari einfügen).'
+      : 'Die Handy-Kamera geht nur über HTTPS. Bitte die Seite über https öffnen.', 'err');
     return;
   }
-  try {
-    mediaStream = await navigator.mediaDevices.getUserMedia({
-      video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } },
-      audio: false,
-    });
-    const v = $('video');
-    v.srcObject = mediaStream;
-    await v.play().catch(() => {});
-    source = 'phone';
-    camConnected = true;
-    $('camName').textContent = 'Handy-Kamera';
-    sendHello();
-    setSteps();
-    setMsg('Handy-Kamera bereit.', 'ok');
-    if (wantLive) startCameraStream();
-  } catch (e) {
-    if (e.name === 'NotAllowedError') setMsg('Kamera-Zugriff wurde verweigert. In den Browser-Einstellungen für diese Seite die Kamera erlauben.', 'err');
-    else if (e.name === 'NotFoundError' || e.name === 'OverconstrainedError') setMsg('Keine Kamera gefunden.', 'err');
-    else setMsg('Handy-Kamera konnte nicht gestartet werden: ' + e.message, 'err');
+  // Erst mit Wunsch-Auflösung, dann immer einfacher – manche Handys lehnen Vorgaben ab
+  let saved = '';
+  try { saved = localStorage.getItem(CAM_KEY) || ''; } catch (e) { /* privat */ }
+  const attempts = [
+    ...(saved ? [{ video: { deviceId: { exact: saved }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }] : []),
+    { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false },
+    { video: { facingMode: 'environment' }, audio: false },
+    { video: true, audio: false },
+  ];
+  let lastError = null;
+  for (const constraints of attempts) {
+    try {
+      mediaStream = await navigator.mediaDevices.getUserMedia(constraints);
+      break;
+    } catch (e) {
+      lastError = e;
+      mediaStream = null;
+      if (e.name === 'NotAllowedError' || e.name === 'SecurityError') break; // Nutzer/Browser hat abgelehnt
+    }
   }
+  if (!mediaStream) {
+    const e = lastError || new Error('unbekannt');
+    if (e.name === 'NotAllowedError' || e.name === 'SecurityError') {
+      setMsg(inIOSApp
+        ? 'Kamera in dieser App nicht erlaubt. Für die Handy-Kamera die Seite in Safari öffnen.'
+        : 'Kamera-Zugriff wurde verweigert. iPhone: Einstellungen → Safari → Kamera → „Erlauben“ bzw. beim Aufruf „Erlauben“ tippen. '
+          + 'Android: Schloss-Symbol neben der Adresse → Berechtigungen → Kamera erlauben.', 'err');
+    } else if (e.name === 'NotFoundError' || e.name === 'OverconstrainedError') {
+      setMsg('Keine Kamera gefunden.', 'err');
+    } else if (e.name === 'NotReadableError') {
+      setMsg('Die Kamera wird gerade von einer anderen App benutzt. Andere Kamera-Apps schließen und erneut versuchen.', 'err');
+    } else {
+      setMsg('Handy-Kamera konnte nicht gestartet werden (' + e.name + ': ' + e.message + ')'
+        + (inIOSApp ? ' – bitte die Seite in Safari öffnen.' : '')
+        + (isIOS ? ' Testbetrieb am PC: Test-Zertifikat installieren und unter Einstellungen → Allgemein → Info → '
+          + 'Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten.' : ''), 'err');
+    }
+    return;
+  }
+  await attachStream(mediaStream);
+  source = 'phone';
+  camConnected = true;
+  sendHello();
+  setSteps();
+  setMsg('Kamera bereit – jetzt ausrichten und „Stream starten“.', 'ok');
+  await listCameras();
+  startPreview();
+}
+
+async function attachStream(stream) {
+  const v = $('video');
+  v.muted = true;
+  v.setAttribute('playsinline', '');
+  v.srcObject = stream;
+  v.classList.remove('hidden');           // iPhone liefert nur Bilder, wenn das Video im Bild ist
+  await v.play().catch(() => {});
+  const track = stream.getVideoTracks()[0];
+  $('camName').textContent = (track && track.label) ? track.label : 'Handy-Kamera';
+}
+
+// Alle Kameras auflisten (Rück-/Frontkamera, USB/UVC-Kameras)
+async function listCameras() {
+  if (!navigator.mediaDevices || !navigator.mediaDevices.enumerateDevices) return;
+  const cams = (await navigator.mediaDevices.enumerateDevices()).filter(d => d.kind === 'videoinput');
+  const track = mediaStream && mediaStream.getVideoTracks()[0];
+  const current = track ? track.getSettings().deviceId : '';
+  const sel = $('camSelect');
+  sel.replaceChildren();
+  cams.forEach((c, i) => {
+    const o = document.createElement('option');
+    o.value = c.deviceId;
+    o.textContent = c.label || ('Kamera ' + (i + 1));
+    sel.appendChild(o);
+  });
+  if (current) sel.value = current;
+}
+
+async function switchCamera(deviceId) {
+  if (source !== 'phone' || !deviceId) return;
+  const old = mediaStream;
+  try {
+    let stream;
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false });
+    } catch (e) {
+      if (old) old.getTracks().forEach(t => t.stop()); // manche Handys erlauben nur eine Kamera gleichzeitig
+      stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId } }, audio: false });
+    }
+    if (old) old.getTracks().forEach(t => t.stop());
+    mediaStream = stream;
+    await attachStream(stream);
+    try { localStorage.setItem(CAM_KEY, deviceId); } catch (e) { /* privat */ }
+    sendHello();
+    setMsg('Kamera gewechselt.', 'ok');
+  } catch (e) {
+    setMsg('Diese Kamera lässt sich nicht öffnen (' + e.name + ').', 'err');
+  }
+  await listCameras();
 }
 
 function startCapture() {
@@ -482,7 +611,7 @@ async function captureFrame() {
 
 async function onJpeg(raw) {
   let jpeg = raw;
-  if (source === 'ble' && (rotate || mirror)) { // Drehung gilt nur für die Helmkamera
+  if (rotate || mirror) {
     if (busy) return; // Handy kommt nicht hinterher: Bild auslassen statt Rückstau
     busy = true;
     try { jpeg = await rotateJpeg(raw, rotate, mirror, fit); } catch (e) { console.warn(e); return; } finally { busy = false; }
@@ -494,7 +623,7 @@ async function onJpeg(raw) {
   }
   sent = sent.filter(t => now - t < 5000);
   $('fps').textContent = (sent.length / 5).toFixed(1) + ' Bilder/s';
-  if (now - lastPreview > 200) { // Vorschau begrenzen, spart Akku
+  if (now - lastPreview > 150) { // Vorschau = gesendetes Bild (gedreht); begrenzt, spart Akku
     lastPreview = now;
     const img = $('img');
     const old = img.src;
@@ -505,7 +634,8 @@ async function onJpeg(raw) {
   }
 }
 
-async function startCameraStream() {
+// Vorschau läuft, sobald eine Kamera verbunden ist; gesendet wird erst nach „Stream starten“
+async function startPreview() {
   if (source === 'phone') {
     startCapture();
     return;
@@ -518,14 +648,12 @@ async function startLive() {
   wantLive = true;
   setSteps();
   await requestWakeLock();
-  if (camConnected) await startCameraStream();
+  if (camConnected && source === 'ble') await startPreview(); // Helmkamera evtl. neu verbunden
   setMsg(wsOk ? 'Stream läuft.' : 'Stream startet, sobald der Server verbunden ist.', 'ok');
 }
 
 function stopLive() {
-  wantLive = false;
-  if (source === 'phone') stopCapture();
-  else if (camConnected) camSend({ cmd: 'stream', on: false });
+  wantLive = false; // Vorschau läuft weiter, es wird nur nichts mehr gesendet
   releaseWakeLock();
   $('fps').textContent = '–';
   setSteps();
@@ -545,6 +673,17 @@ document.addEventListener('visibilitychange', () => {
 
 $('camBtn').onclick = () => disconnectCamera();
 $('phoneBtn').onclick = () => connectPhoneCamera();
+$('camSelect').onchange = () => switchCamera($('camSelect').value);
+if (navigator.mediaDevices && navigator.mediaDevices.addEventListener) {
+  navigator.mediaDevices.addEventListener('devicechange', () => { if (source === 'phone') listCameras(); });
+}
+for (const b of document.querySelectorAll('#alignCard [data-rot]')) {
+  b.onclick = () => {
+    const d = +b.dataset.rot;
+    setAlignment(d === 0 ? 0 : rotate + d, mirror);
+  };
+}
+$('mirrorBtn').onclick = () => setAlignment(rotate, !mirror);
 $('bleBtn').onclick = () => connectCamera();
 $('liveBtn').onclick = () => (wantLive ? stopLive() : startLive());
 $('res').onchange = () => {
