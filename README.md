@@ -127,8 +127,11 @@ Home-Bildschirm“). Aufbau wie ATAK:
   **Friendly / Hostile / Neutral / Unknown** (nach 2525-Zugehörigkeit), sonstige Punkte, Zeichnungen & Routen –
   jede Gruppe auf- und zuklappbar und mit 🗑 einzeln bereinigen. **Clear Content** räumt mehrere Gruppen auf
   einmal ab, dazu Overlays und Chat; auf Wunsch werden eigene Marker auch beim TAK-Server gelöscht.
-- **Links:** Kompass (antippen = Blickrichtung oben „HDG“, erneut = Nord oben „N“; ohne Sensor nach
-  GPS-Kurs), darunter „auf mich zoomen“.
+- **Links:** Kompass – die Nadel zeigt immer nach Norden. Antippen: von Hand gedrehte Karte wieder genordet;
+  ist sie genordet, Blickrichtung oben „HDG“ (ohne Sensor nach GPS-Kurs), erneut = Nord oben „N“.
+  Darunter „auf mich zoomen“.
+- **Gesten wie ATAK:** zwei Finger drehen = Karte drehen (erst ab ~12°, damit Zoomen nicht wackelt; am PC
+  Umschalt + Mausrad), zwei Finger gemeinsam nach oben/unten schieben = kippen – auch von der flachen Karte aus.
 - **Rechts:** Schieberegler zum Kippen (Doppeltippen = flach). Gekippt zeigt WebTAK eine **echte 3D-Karte** wie
   WinTAK (MapLibre GL): Gelände mit Höhen, Himmel und Horizont, Neigung bis **88°**, Symbole stehen aufrecht mit
   Namen, Routen/Flächen liegen auf dem Gelände, eigene Marker lassen sich auch in 3D verschieben und antippen.

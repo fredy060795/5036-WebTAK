@@ -92,6 +92,8 @@
           saveProfile();
         });
         ml.on('dragstart', () => { follow = false; $('btnLocate').classList.remove('active'); });
+        // von Hand gedreht (zwei Finger, rechte Maustaste): Blickrichtungs-Modus beenden
+        ml.on('rotatestart', e => { if (e.originalEvent && typeof manualRotate === 'function') manualRotate(); });
         ml.on('click', e => {
           if (Date.now() - clickedMarker < 400) return;
           if (tool) placeMarker(L.latLng(e.lngLat.lat, e.lngLat.lng)); // Symbol gewählt: Antippen setzt den Marker
