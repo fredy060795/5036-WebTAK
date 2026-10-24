@@ -2,7 +2,8 @@
 #
 # - prueft Node.js (bietet Installation per winget an), installiert Pakete beim ersten Start
 # - ermittelt die IP-Adresse des PCs im Netzwerk
-# - startet den Server auf Port 5036 und oeffnet das Admin-Fenster unter http://<PC-IP>:5036/admin/
+# - erzeugt eigene HTTPS-Zertifikate (Test-CA, wird in Windows eingetragen)
+# - startet den Server auf Port 5036 und oeffnet das Admin-Fenster unter https://<PC-IP>:5036/admin/
 # - schreibt alles zusaetzlich nach start.log
 # Laeuft mit Windows PowerShell 5.1 und PowerShell 7.
 
@@ -12,6 +13,14 @@ $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 $Port = 5036
 $LogFile = Join-Path $Root 'start.log'
+
+# Fehlerausgaben (stderr) von node/npm als normalen Text anzeigen
+function Clean($line) {
+    if ($line -is [System.Management.Automation.ErrorRecord]) { $line = $line.Exception.Message }
+    $line = [string]$line
+    if ($line -eq 'System.Management.Automation.RemoteException') { return '' }
+    return $line
+}
 
 function Say([string]$text, [string]$color = 'Gray') {
     Write-Host $text -ForegroundColor $color
@@ -65,14 +74,19 @@ if ([int]($nodeVersion.TrimStart('v').Split('.')[0]) -lt 18) {
     exit 1
 }
 
-# ---- Pakete ---------------------------------------------------------------
-if (-not (Test-Path (Join-Path $Root 'node_modules\ws\package.json'))) {
-    Say 'Pakete werden installiert (einmalig, braucht Internet) ...'
-    & npm ci --omit=dev --no-audit --no-fund 2>&1 | ForEach-Object { Say ([string]$_) }
+# ---- Pakete (neu installieren, wenn sich package-lock.json geaendert hat) ---
+$lockHash = (Get-FileHash (Join-Path $Root 'package-lock.json')).Hash
+$marker = Join-Path $Root 'node_modules\.helm-installed'
+$installed = ''
+if (Test-Path $marker) { $installed = (Get-Content $marker -Raw).Trim() }
+if ($installed -ne $lockHash) {
+    Say 'Pakete werden installiert (braucht Internet) ...'
+    & npm ci --omit=dev --no-audit --no-fund 2>&1 | ForEach-Object { Say (Clean $_) }
     if ($LASTEXITCODE -ne 0) {
         Say 'Installation fehlgeschlagen. Internetverbindung pruefen.' 'Red'
         exit 1
     }
+    Set-Content -Path $marker -Value $lockHash
 }
 
 # ---- ffmpeg (optional) ------------------------------------------------------
@@ -87,11 +101,62 @@ if (Get-Command ffmpeg -ErrorAction SilentlyContinue) {
     Say '         Fuer HLS/MPEG-TS: "winget install Gyan.FFmpeg" oder ffmpeg nach tools\ffmpeg\bin\ legen.' 'Yellow'
 }
 
-# ---- Adresse ------------------------------------------------------------------
+# ---- Alten Server auf dem Port beenden ----------------------------------------
+function Stop-OldServer {
+    try { $conns = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction Stop } catch { return }
+    foreach ($c in $conns) {
+        $proc = Get-CimInstance Win32_Process -Filter "ProcessId=$($c.OwningProcess)" -ErrorAction SilentlyContinue
+        if (-not $proc) { continue }
+        if ($proc.Name -eq 'node.exe' -and $proc.CommandLine -match 'server\.js') {
+            Say "Alter Server auf Port $Port (PID $($proc.ProcessId)) wird beendet." 'Yellow'
+            Stop-Process -Id $proc.ProcessId -Force -ErrorAction SilentlyContinue
+            Start-Sleep -Seconds 1
+        } else {
+            Say "Port $Port wird schon von '$($proc.Name)' (PID $($proc.ProcessId)) benutzt. Bitte dieses Programm beenden." 'Red'
+            exit 1
+        }
+    }
+}
+Stop-OldServer
+
+# ---- Adresse und eigene HTTPS-Zertifikate --------------------------------------
 $ip = Get-LanIp
-$base = "http://${ip}:$Port"
 $env:PORT = "$Port"
 $env:DATA_DIR = Join-Path $Root 'data'
+$certDir = Join-Path $env:DATA_DIR 'certs'
+$caFile = $null
+& node (Join-Path $Root 'tools\make-cert.js') $certDir $ip 2>&1 | ForEach-Object {
+    $line = Clean $_
+    if ($line -match 'ca\.crt$') { $caFile = $line } elseif ($line) { Say $line }
+}
+
+if ($caFile -and (Test-Path $caFile)) {
+    $base = "https://${ip}:$Port"
+    $env:TLS_CERT = Join-Path $certDir 'server.crt'
+    $env:TLS_KEY = Join-Path $certDir 'server.key'
+    $env:TEST_CA_FILE = $caFile
+
+    # Test-CA einmalig in Windows als vertrauenswuerdig eintragen (Chrome/Edge nutzen den Windows-Speicher)
+    if ($env:OS -eq 'Windows_NT') {
+        try {
+            $ca = New-Object System.Security.Cryptography.X509Certificates.X509Certificate2($caFile)
+            $store = New-Object System.Security.Cryptography.X509Certificates.X509Store('Root', 'CurrentUser')
+            $store.Open('ReadWrite')
+            $known = $store.Certificates | Where-Object { $_.Thumbprint -eq $ca.Thumbprint }
+            if (-not $known) {
+                Say 'Windows fragt gleich, ob das Test-Zertifikat installiert werden soll: bitte "Ja" waehlen.' 'Yellow'
+                $store.Add($ca)
+                Say 'Test-Zertifikat in Windows eingetragen. Falls der Browser noch warnt: Browser neu starten.' 'Green'
+            }
+            $store.Close()
+        } catch {
+            Say 'Test-Zertifikat wurde nicht eingetragen - der Browser zeigt dann eine Warnung ("Erweitert -> Weiter").' 'Yellow'
+        }
+    }
+} else {
+    Say 'Zertifikat konnte nicht erzeugt werden - Server laeuft ohne HTTPS (Bluetooth nur ueber localhost).' 'Yellow'
+    $base = "http://${ip}:$Port"
+}
 $env:PUBLIC_URL = $base
 
 Write-Host ''
@@ -100,11 +165,12 @@ Say "Daten:   $($env:DATA_DIR)"
 Write-Host ''
 Write-Host '  Handys im selben WLAN erreichen den Server unter dieser Adresse.'
 Write-Host '  Fragt Windows nach der Firewall, "Zugriff zulassen" waehlen (privates Netzwerk).'
-Write-Host ''
-Write-Host '  Bluetooth im Browser braucht HTTPS. Zum Testen ueber die PC-IP in Chrome einmalig'
-Write-Host "  chrome://flags/#unsafely-treat-insecure-origin-as-secure oeffnen, $base eintragen,"
-Write-Host '  auf "Enabled" stellen und Chrome neu starten (am PC und am Android-Handy).'
-Write-Host '  Am PC selbst geht es auch ohne Flag ueber http://localhost:5036.'
+if ($env:TEST_CA_FILE) {
+    Write-Host ''
+    Write-Host '  Handys einmalig: im Admin bei einem Stream "QR / Links" oeffnen und den QR-Code'
+    Write-Host '  "Zertifikat fuers Handy" scannen, Datei laden und als CA-Zertifikat installieren.'
+    Write-Host "  (Direkt: $base/ca.crt)"
+}
 Write-Host ''
 Write-Host '  Dieses Fenster offen lassen. Zum Beenden schliessen oder Strg+C.' -ForegroundColor Cyan
 Write-Host ''
@@ -114,5 +180,5 @@ if (-not $env:HELM_NO_BROWSER) {
     Start-Job -ScriptBlock { param($u) Start-Sleep -Seconds 2; Start-Process $u } -ArgumentList "$base/admin/" | Out-Null
 }
 
-& node server.js 2>&1 | ForEach-Object { Say ([string]$_) }
+& node (Join-Path $Root 'server.js') 2>&1 | ForEach-Object { Say (Clean $_) }
 Say "Server beendet (Code $LASTEXITCODE)." 'Yellow'

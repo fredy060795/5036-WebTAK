@@ -391,7 +391,7 @@ $('stopAllBtn').addEventListener('click', async () => {
 
 function openModal(title, ...content) {
   $('modalTitle').textContent = title;
-  $('modalBody').replaceChildren(...content);
+  $('modalBody').replaceChildren(...content.filter(Boolean));
   $('modal').classList.remove('hidden');
 }
 
@@ -423,10 +423,19 @@ function showQr(id) {
   const hint = el('p', { class: 'mut small', text: me.ffmpeg
     ? 'OpenTAKServer (MediaMTX) kann kein MJPEG abholen: Dort unter Videostreams „Add Video“ den HLS-Link als Quelle eintragen.'
     : 'Für OpenTAKServer (MediaMTX) wird der HLS-Link gebraucht – dafür ffmpeg auf dem Server installieren.' });
+  const caBox = me.testCa ? el('div', { class: 'card', style: 'margin-top:12px' },
+    el('b', { text: 'Testbetrieb: Zertifikat fürs Handy' }),
+    el('p', { class: 'mut small', text: 'Einmal pro Handy: QR-Code scannen, Datei laden. Android: Einstellungen → Sicherheit → '
+      + 'Verschlüsselung & Anmeldedaten → Zertifikat installieren → CA-Zertifikat → Datei wählen. '
+      + 'iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter '
+      + 'Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten. '
+      + 'Die Warnung beim ersten Öffnen mit „Erweitert → Weiter“ bestätigen.' }),
+    el('img', { class: 'qr', alt: 'QR-Code Zertifikat', src: '/api/admin/ca-qr.svg', style: 'max-width:200px' }),
+    el('a', { href: me.publicBase + '/ca.crt', text: me.publicBase + '/ca.crt' })) : null;
   const print = el('button', { text: 'QR-Code drucken', type: 'button', onclick: () => printQr(s, img.src) });
   openModal('QR-Code: ' + (s.label || s.user),
     el('p', { class: 'mut small', text: `Diesen QR-Code dem Benutzer „${s.user}“ geben. Er öffnet die Handy-App, verbindet die Helmkamera per Bluetooth und sendet die Bilder an diesen Stream.` }),
-    img, dl, hint, el('div', { class: 'row', style: 'margin-top:12px' }, print));
+    img, dl, hint, el('div', { class: 'row', style: 'margin-top:12px' }, print), caBox);
 }
 
 function printQr(s, src) {

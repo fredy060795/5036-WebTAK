@@ -80,17 +80,26 @@ nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste 
 1. Repository herunterladen (**Code → Download ZIP**) und entpacken.
 2. **start.bat** doppelklicken. Fehlt Node.js, bietet das Fenster die Installation an (winget); danach start.bat
    erneut starten. Beim ersten Start werden die Pakete installiert (braucht Internet).
-3. Das Admin-Fenster öffnet sich unter `http://<IP-des-PCs>:5036/admin/` (erster Login admin / admin123).
-   Handys im selben WLAN erreichen den Server unter derselben Adresse; fragt Windows nach der Firewall,
-   „Zugriff zulassen“ wählen.
-4. Stream anlegen → **QR / Links** → QR-Code mit dem Handy scannen (oder den Link am PC öffnen).
+3. Beim ersten Start erzeugt start.bat **eigene HTTPS-Zertifikate** (Test-CA in `data\certs`) und trägt die
+   Test-CA in Windows ein – Windows fragt dabei nach, **„Ja“** wählen. Chrome und Edge vertrauen der Seite dann ohne
+   Warnung (falls doch noch eine kommt: Browser neu starten).
+4. Das Admin-Fenster öffnet sich unter `https://<IP-des-PCs>:5036/admin/` (erster Login admin / admin123).
+   Fragt Windows nach der Firewall, „Zugriff zulassen“ wählen.
+5. Stream anlegen → **QR / Links**. Dort gibt es zusätzlich den QR-Code **„Zertifikat fürs Handy“**:
+   einmal pro Handy scannen, Datei laden und installieren
+   - Android: Einstellungen → Sicherheit → Verschlüsselung & Anmeldedaten → Zertifikat installieren →
+     CA-Zertifikat → Datei wählen
+   - iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter
+     Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten
+6. Danach den Stream-QR-Code scannen → Kamera verbinden → Stream starten.
 
-Bluetooth im Browser braucht eigentlich HTTPS. Zum Testen über die PC-IP in Chrome (PC und Android) einmalig
-`chrome://flags/#unsafely-treat-insecure-origin-as-secure` öffnen, `http://<IP-des-PCs>:5036` eintragen, auf
-„Enabled“ stellen und Chrome neu starten. Am PC selbst geht es auch ohne Flag über `http://localhost:5036`.
-
+Die Test-CA bleibt erhalten; ändert sich die IP des PCs, wird nur das Server-Zertifikat neu erzeugt (Handys müssen
+nichts neu installieren). Läuft noch ein alter Server auf Port 5036, beendet start.bat ihn automatisch.
 Für HLS/MPEG-TS am PC ffmpeg installieren (`winget install Gyan.FFmpeg`) oder nach `tools\ffmpeg\bin\` legen.
 Alle Meldungen stehen zusätzlich in `start.log`.
+
+Die Test-Zertifikate sind nur für den PC-Test gedacht. Auf dem Server im Internet ein echtes Zertifikat
+verwenden (Let's Encrypt, siehe unten).
 
 ## Installation auf dem Server
 
@@ -136,6 +145,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 | `DATA_DIR` | Datenordner (Admin, SMTP, Streams) | `./data` |
 | `FFMPEG_PATH` | Pfad zu ffmpeg | `ffmpeg` |
 | `TLS_CERT` / `TLS_KEY` | HTTPS direkt im Server statt Reverse-Proxy | – |
+| `TEST_CA_FILE` | nur Test: CA-Datei, die unter `/ca.crt` zum Download angeboten wird (setzt start.bat) | – |
 | `TRUST_PROXY` | `1` = X-Forwarded-Header vom Reverse-Proxy auswerten | `1`, mit `TLS_CERT` `0` |
 
 Alle Daten liegen in `DATA_DIR/db.json` (Passwort nur als scrypt-Hash).

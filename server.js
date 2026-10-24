@@ -32,6 +32,8 @@ const config = {
   ffmpeg: process.env.FFMPEG_PATH || 'ffmpeg',
   tlsCert: process.env.TLS_CERT || '',
   tlsKey: process.env.TLS_KEY || '',
+  // Nur zum Testen am PC (start.bat): eigene CA, die Handys unter /ca.crt herunterladen können
+  testCa: process.env.TEST_CA_FILE || '',
   // X-Forwarded-* nur auswerten, wenn ein Reverse-Proxy davor sitzt. Mit eigenem
   // Zertifikat (TLS_CERT) läuft der Server direkt im Netz, dann standardmäßig aus.
   trustProxy: process.env.TRUST_PROXY !== undefined ? process.env.TRUST_PROXY !== '0' : !process.env.TLS_CERT,
@@ -225,6 +227,7 @@ async function handleAdminApi(req, res, route) {
       mustChange: !!auth.admin.mustChange,
       ffmpeg: ffmpegOk,
       publicBase: publicBase(req),
+      testCa: !!config.testCa,
     });
   }
   if (route === 'credentials' && method === 'POST') {
@@ -241,6 +244,11 @@ async function handleAdminApi(req, res, route) {
 
   // Erst nach dem ersten Passwortwechsel ist der Rest erlaubt
   if (auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
+
+  if (route === 'ca-qr.svg' && method === 'GET' && config.testCa) {
+    const svg = await QRCode.toString(publicBase(req) + '/ca.crt', { type: 'svg', margin: 2 });
+    return send(res, 200, svg, 'image/svg+xml');
+  }
 
   if (route === 'smtp' && method === 'GET') {
     const s = store.data.smtp;
@@ -372,6 +380,10 @@ async function handle(req, res) {
 
   try {
     if (p === '/health') return send(res, 200, 'ok');
+    if (p === '/ca.crt' && config.testCa) {
+      return send(res, 200, fs.readFileSync(config.testCa), 'application/x-x509-ca-cert',
+        { 'Content-Disposition': 'attachment; filename="helm-camera-test-ca.crt"' });
+    }
     if (p === '/') {
       if (admin) return send(res, 302, '', 'text/plain', { Location: '/admin/' });
       return send(res, 200, 'Helm Camera Streams');
@@ -487,6 +499,16 @@ if (config.tlsCert && config.tlsKey) {
   }, 60 * 60 * 1000).unref();
 }
 server.keepAliveTimeout = 65000;
+
+server.on('error', e => {
+  if (e.code === 'EADDRINUSE') {
+    console.error(`\nPort ${config.port} ist schon belegt – läuft der Server schon in einem anderen Fenster?`);
+    console.error('Das andere Fenster schließen (oder im Task-Manager "Node.js" beenden) und neu starten.\n');
+  } else {
+    console.error('Server-Fehler:', e.message);
+  }
+  process.exit(1);
+});
 
 server.listen(config.port, config.bind, () => {
   log(`Helm Camera Streams läuft auf ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
