@@ -64,8 +64,11 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
-**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s, Bildgröße
-wählbar bis 1280x720. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
+**Bildgröße** legt der Admin fest – pro Stream in der Liste oder im Ansehen-Fenster, Standard für neue Streams unter
+Einstellungen (vorbelegt **160x120, sehr schnell**). Auswahl: 160x120, 320x240, 640x480, 1280x720 (nur Handy-Kamera
+sinnvoll). Änderungen gelten sofort am Handy, auch während des Streams; der Nutzer sieht die Bildgröße nur an.
+
+**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
 und angesteckte **USB/UVC-Kameras** (Windows/macOS/Linux, iPad mit USB-C, manche Android-Geräte; iPhone nicht).
 Das Handy merkt sich die Auswahl.
 
@@ -76,6 +79,10 @@ Admin sichtbar; der Admin kann sie dort jederzeit ändern.
 
 **Helmkamera (Bluetooth):** Android mit **Chrome** (nicht Samsung Internet/Firefox). Auf dem iPhone kann kein Browser
 Bluetooth – dort die kostenlose App **Bluefy** verwenden; die Seite zeigt den Weg („Link für Bluefy kopieren“).
+
+**Adresse des Servers** (im Admin oben): legt fest, welche Adresse in QR-Codes und allen Links steht, z. B.
+`https://tak.example.com:5036`. Leer bzw. „Automatisch“ = `PUBLIC_URL` oder die aufgerufene Adresse. Die Einstellung
+gilt vor `PUBLIC_URL` und bleibt nach einem Neustart erhalten.
 
 **Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
