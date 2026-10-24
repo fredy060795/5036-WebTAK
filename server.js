@@ -408,6 +408,25 @@ async function handleAdminApi(req, res, route) {
 // Stream-Ausgabe
 // ======================================================================
 
+const escapeHtml = t => String(t).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+// Vollbild-Ansicht für den Stream-Link im Browser (Tippen: ganzes Bild / füllen, Doppeltippen: Vollbild)
+function viewerPage(entry) {
+  const title = escapeHtml(entry.label || entry.user);
+  return `<!doctype html><html lang="de"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1"><title>${title}</title>
+<style>html,body{margin:0;height:100%;background:#000;overflow:hidden}
+img{display:block;width:100vw;height:100vh;object-fit:contain}body.fill img{object-fit:cover}
+#hint{position:fixed;left:10px;bottom:8px;color:#ccc;font:13px system-ui,sans-serif;text-shadow:0 1px 2px #000}</style>
+</head><body><img src="?raw=1" alt="${title}">
+<div id="hint">${title} · Tippen: füllen / ganzes Bild · Doppeltippen: Vollbild</div>
+<script>
+document.body.onclick=function(){document.body.classList.toggle('fill')};
+document.body.ondblclick=function(){var d=document.documentElement;if(document.fullscreenElement)document.exitFullscreen();else if(d.requestFullscreen)d.requestFullscreen()};
+setTimeout(function(){var h=document.getElementById('hint');if(h)h.remove()},5000);
+</script></body></html>`;
+}
+
 async function handleStream(req, res, user, streamId, rest) {
   const entry = hub.get(user, streamId);
   if (!entry) return send(res, 404, 'Stream nicht gefunden');
@@ -416,6 +435,9 @@ async function handleStream(req, res, user, streamId, rest) {
 
   if (rest === '' || rest === '/') {
     if (req.method === 'HEAD') return send(res, 200, '', 'multipart/x-mixed-replace');
+    // Browser bekommt eine Vollbild-Seite, Player (ATAK, VLC …) den MJPEG-Stream
+    const wantsHtml = /text\/html/.test(req.headers.accept || '') && !/[?&]raw\b/.test(req.url);
+    if (wantsHtml) return send(res, 200, viewerPage(entry), 'text/html; charset=utf-8');
     return hub.addMjpegViewer(id, res);
   }
   if (rest === '/snapshot.jpg') {
@@ -428,6 +450,7 @@ async function handleStream(req, res, user, streamId, rest) {
     if (!tc) return send(res, 503, 'HLS/MPEG-TS nicht verfügbar: ffmpeg ist auf dem Server nicht installiert.');
     if (rest === '/stream.ts') {
       res.writeHead(200, { 'Content-Type': 'video/mp2t', 'Cache-Control': 'no-store', 'Access-Control-Allow-Origin': '*', 'X-Accel-Buffering': 'no' });
+      res.flushHeaders();
       return tc.addTsClient(res);
     }
     tc.touch();

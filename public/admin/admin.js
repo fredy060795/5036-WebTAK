@@ -612,10 +612,11 @@ function openWindow(id) {
 
   const title = el('span', { class: 'win-title' });
   const btnAlign = el('button', { title: 'Bild ausrichten (drehen, spiegeln)', text: '∠ Ausrichten' });
+  const btnFull = el('button', { title: 'Vollbild am Bildschirm', text: '⛶' });
   const btnMin = el('button', { title: 'Minimieren', text: '–' });
   const btnMax = el('button', { title: 'Maximieren', text: '□' });
   const btnClose = el('button', { title: 'Schließen', text: '✕' });
-  const bar = el('div', { class: 'win-bar' }, title, btnAlign, btnMin, btnMax, btnClose);
+  const bar = el('div', { class: 'win-bar' }, title, btnAlign, btnFull, btnMin, btnMax, btnClose);
 
   // Ausrichten: Regler 0–359,5°, Feinschritte, Spiegeln, Füllen/Ganzes Bild
   const range = el('input', { type: 'range', min: '0', max: '359.5', step: '0.5', class: 'grow', 'aria-label': 'Drehung' });
@@ -653,6 +654,34 @@ function openWindow(id) {
   const info = el('div', { class: 'win-info' });
   const body = el('div', { class: 'win-body' }, img, off, info);
   const win = el('div', { class: 'win' }, bar, align, body);
+
+  // Fenster an das Seitenverhältnis des Bildes anpassen -> kein schwarzer Rand
+  let lastDims = '';
+  const fitAspect = () => {
+    const iw = img.naturalWidth, ih = img.naturalHeight;
+    if (!iw || !ih) return;
+    const dims = iw + 'x' + ih;
+    if (dims === lastDims) return;
+    lastDims = dims;
+    if (win.classList.contains('max') || win.classList.contains('min')) return;
+    const chrome = win.offsetHeight - body.offsetHeight; // Titelleiste + Ausrichten-Bereich
+    let width = win.offsetWidth;
+    let height = chrome + width * ih / iw;
+    const maxH = window.innerHeight - 16;
+    if (height > maxH) {
+      height = maxH;
+      width = Math.max(220, (maxH - chrome) * iw / ih);
+    }
+    win.style.width = Math.round(width) + 'px';
+    win.style.height = Math.round(height) + 'px';
+    const r = win.getBoundingClientRect();
+    if (r.bottom > window.innerHeight - 8) win.style.top = Math.max(8, window.innerHeight - 8 - r.height) + 'px';
+  };
+  img.addEventListener('load', fitAspect);
+  btnFull.addEventListener('click', () => {
+    if (document.fullscreenElement) document.exitFullscreen();
+    else if (body.requestFullscreen) body.requestFullscreen().catch(() => {});
+  });
 
   const vw = window.innerWidth, vh = window.innerHeight;
   const w = Math.min(480, vw - 16), h = Math.min(400, vh - 80);

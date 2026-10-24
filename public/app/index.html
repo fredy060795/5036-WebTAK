@@ -9,7 +9,7 @@
 <style>
 main { max-width: 560px; margin: 0 auto; padding: 16px 16px 40px; }
 header { display: flex; justify-content: space-between; align-items: center; gap: 8px; margin-bottom: 14px; }
-.view { position: relative; background: #000; border-radius: 10px; aspect-ratio: 4 / 3; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #98a0ac; }
+.view { position: relative; background: #000; border-radius: 10px; aspect-ratio: 4 / 3; max-height: 62vh; margin: 0 auto; overflow: hidden; display: flex; align-items: center; justify-content: center; color: #98a0ac; }
 .view img { width: 100%; height: 100%; object-fit: contain; }
 /* Kamera-Video bleibt im Bild (iPhone liefert sonst keine Bilder), die Vorschau zeigt das gesendete Bild */
 .view video.tiny { position: absolute; right: 0; bottom: 0; width: 2px; height: 2px; opacity: .01; pointer-events: none; }
@@ -619,6 +619,9 @@ async function onJpeg(raw) {
     const img = $('img');
     const old = img.src;
     img.src = URL.createObjectURL(new Blob([jpeg], { type: 'image/jpeg' }));
+    img.onload = () => { // Vorschau-Rahmen an das Bildformat anpassen (kein schwarzer Rand)
+      if (img.naturalWidth && img.naturalHeight) $('img').parentElement.style.aspectRatio = img.naturalWidth + ' / ' + img.naturalHeight;
+    };
     if (old) URL.revokeObjectURL(old);
     img.classList.remove('hidden');
     $('viewText').classList.add('hidden');

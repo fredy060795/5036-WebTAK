@@ -19,7 +19,7 @@ Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HT
 
 | Link | Format | Hinweis |
 |---|---|---|
-| `https://<domain>/<benutzer>/<streamId>` | MJPEG | Hauptlink, geringe Verzögerung, kein ffmpeg nötig |
+| `https://<domain>/<benutzer>/<streamId>` | MJPEG | Hauptlink, geringe Verzögerung, kein ffmpeg nötig. Im Browser geöffnet: Vollbild-Ansicht (Tippen: füllen/ganzes Bild) |
 | `https://<domain>/<benutzer>/<streamId>/index.m3u8` | HLS (H.264) | braucht ffmpeg auf dem Server, ca. 4–8 s Verzögerung; **für OpenTAKServer** |
 | `https://<domain>/<benutzer>/<streamId>/stream.ts` | MPEG-TS (H.264) | braucht ffmpeg, fortlaufender HTTP-Stream |
 | `https://<domain>/<benutzer>/<streamId>/snapshot.jpg` | JPEG | letztes Bild |

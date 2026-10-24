@@ -574,3 +574,26 @@ test('Bildgröße legt der Admin fest (Standard 160x120)', async () => {
   assert.equal((await find(b.s)).framesize, 5);
   await api('defaults', { method: 'POST', body: { framesize: 1 } });
 });
+
+test('Stream-Link: Browser bekommt Vollbild-Seite, Player den MJPEG-Stream', async () => {
+  const r = await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: '<b>Böse</b>' }) });
+  const reg = await r.json();
+  const url = `${base}/${reg.u}/${reg.s}`;
+  const get = (u, accept) => new Promise((resolve, reject) => {
+    const req = http.get(u, { headers: accept ? { Accept: accept } : {} }, res => {
+      const type = res.headers['content-type'];
+      if (/multipart/.test(type)) { req.destroy(); return resolve({ type, body: '' }); } // Stream: nur Kopf prüfen
+      let body = '';
+      res.on('data', d => { body += d; });
+      res.on('end', () => resolve({ type, body }));
+    });
+    req.on('error', e => { if (e.code !== 'ECONNRESET') reject(e); });
+  });
+  const html = await get(url, 'text/html,application/xhtml+xml,*/*;q=0.8');
+  assert.match(html.type, /text\/html/);
+  assert.match(html.body, /<img src="\?raw=1"/);
+  assert.ok(!html.body.includes('<b>Böse</b>'), 'Name wird maskiert');
+  assert.match((await get(url, '*/*')).type, /multipart\/x-mixed-replace/);
+  assert.match((await get(url)).type, /multipart\/x-mixed-replace/);
+  assert.match((await get(url + '?raw=1', 'text/html')).type, /multipart\/x-mixed-replace/);
+});
