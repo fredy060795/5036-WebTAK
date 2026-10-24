@@ -1,17 +1,19 @@
 // Service Worker: App, Bibliotheken und Kartenkacheln bleiben auf dem Gerät,
 // damit der EUD auch ohne Internet startet und die Karte zeigt.
 
-const SHELL_CACHE = 'eud-shell-v1';
+const SHELL_CACHE = 'eud-shell-v2';
 const TILE_CACHE = 'eud-tiles';
-const MAX_TILES = 6000;
+const MAX_TILES = 40000; // gespeicherte Bereiche + zuletzt angesehene Kacheln
 const SHELL = [
-  './', 'index.html', 'eud.css', 'eud.js', 'manifest.webmanifest',
+  './', 'index.html', 'eud.css', 'eud.js', 'video.js', 'data.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/milsymbol.js', 'vendor/jsQR.js',
   'vendor/images/layers.png', 'vendor/images/layers-2x.png',
   'vendor/images/marker-icon.png', 'vendor/images/marker-icon-2x.png', 'vendor/images/marker-shadow.png',
 ];
-const TILE_HOSTS = /(^|\.)tile\.openstreetmap\.org$|(^|\.)tile\.opentopomap\.org$|(^|\.)arcgisonline\.com$/;
+// Kacheln: eigener Server (/eud/tiles/…) und eigene Quellen (Bild-Anfragen mit z/x/y im Pfad)
+const isTile = (url, req) => url.pathname.includes('/eud/tiles/') && !url.pathname.endsWith('.json')
+  || (url.origin !== location.origin && req.destination === 'image' && /\/\d{1,2}\/\d+\/\d+/.test(url.pathname + url.search));
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(SHELL_CACHE).then(c => c.addAll(SHELL)).then(() => self.skipWaiting()));
@@ -67,7 +69,7 @@ self.addEventListener('fetch', e => {
   const req = e.request;
   if (req.method !== 'GET') return;
   const url = new URL(req.url);
-  if (TILE_HOSTS.test(url.hostname)) return e.respondWith(tile(req));
+  if (isTile(url, req)) return e.respondWith(tile(req));
   if (url.origin !== location.origin) return;
   const base = new URL('./', self.registration.scope).pathname; // z. B. /eud/
   if (req.mode === 'navigate' && url.pathname.startsWith(base)) return e.respondWith(networkFirst(req, new URL('index.html', self.registration.scope).href));
@@ -81,9 +83,17 @@ self.addEventListener('fetch', e => {
   }
 });
 
-// Karte vorladen: die Seite schickt eine Liste von Kachel-Adressen
+// Karte vorladen: die Seite schickt eine Liste von Kachel-Adressen; STOPP bricht ab, Löschen entfernt
+let stopFlag = false;
 self.addEventListener('message', e => {
-  if (!e.data || e.data.type !== 'prefetch') return;
+  if (!e.data) return;
+  if (e.data.type === 'prefetch-stop') { stopFlag = true; return; }
+  if (e.data.type === 'delete') {
+    e.waitUntil(caches.open(TILE_CACHE).then(c => Promise.all((e.data.urls || []).map(u => c.delete(u)))));
+    return;
+  }
+  if (e.data.type !== 'prefetch') return;
+  stopFlag = false;
   const urls = e.data.urls || [];
   const port = e.ports[0];
   e.waitUntil((async () => {
@@ -91,11 +101,13 @@ self.addEventListener('message', e => {
     let done = 0, failed = 0;
     const queue = urls.slice();
     const worker = async () => {
-      while (queue.length) {
+      while (queue.length && !stopFlag) {
         const u = queue.shift();
         try {
           if (!(await cache.match(u))) {
-            const res = await fetch(u, { mode: 'no-cors' });
+            const same = new URL(u).origin === location.origin;
+            const res = await fetch(u, same ? {} : { mode: 'no-cors' });
+            if (same && !res.ok) throw new Error(String(res.status));
             await cache.put(u, res);
           }
         } catch (err) { failed++; }
@@ -105,6 +117,6 @@ self.addEventListener('message', e => {
     };
     await Promise.all([worker(), worker(), worker(), worker()]);
     await trimTiles();
-    if (port) port.postMessage({ done, failed, total: urls.length, finished: true });
+    if (port) port.postMessage({ done, failed, total: urls.length, finished: true, stopped: stopFlag });
   })());
 });

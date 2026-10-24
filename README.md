@@ -103,39 +103,47 @@ sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anle
 
 ## TAK-EUD (Karte + Lagebild auf dem Handy)
 
-Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) – nur das
-Nötigste auf ATAK-CoT-Niveau, ohne Menüs und Sonderfunktionen. Läuft auf Android und iPhone
-(Safari → Teilen → „Zum Home-Bildschirm“).
+Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau.
+Läuft auf Android und iPhone (Safari → Teilen → „Zum Home-Bildschirm“). Bedienung wie die LPU5-EUD:
+Statusleiste oben (Uhr, Akku, Verbindung, Rufname, Chat, Video, Menü), Symbolleiste unten.
 
-**Ablauf:** QR-Code aus dem Admin (Karte „TAK-EUD“) scannen → App öffnet sich → Server verbinden:
+**Kernfunktionen**
 
-- **QR-Code scannen**: ATAK-Enrollment (`tak://com.atakmap.app/enroll?host=…&username=…&token=…`),
-  iTAK (`Name,Host,Port,ssl`), `host:port:ssl` oder eigener Link mit Vorgaben
-- **Datei laden**: Datenpaket vom TAK-Server (`.zip` mit `.pref` + Zertifikaten), Client-Zertifikat
-  (`.p12`) oder Truststore (`.p12`/`.pem`)
-- **Von Hand**: Server, Port, SSL / TCP / UDP, Benutzer + Passwort → „Zertifikat anfordern“
-  (wie ATAK: Port 8446, `/Marti/api/tls/signClient/v2`)
+1. **Marker setzen** – Symbol unten antippen (Feind, Freund, Neutral, Unbekannt, Punkt) → Fadenkreuz →
+   „PUNKT SETZEN“ (oder lange auf die Karte drücken). Geht an alle verbundenen Server.
+2. **Server verbinden** – Menü → Server. **Mehrere TAK-Server gleichzeitig**, alles auf einer Karte.
+   Je Server: QR-Code (ATAK-Enrollment `tak://…/enroll?…`, iTAK `Name,Host,Port,ssl`), Datenpaket (.zip),
+   Zertifikat (.p12), Truststore oder von Hand (Adresse, Port, SSL/TCP/UDP, Benutzer + Passwort →
+   „Zertifikat anfordern“, Port 8446). Unbekannte Server-Zertifikate erst nach Bestätigung des Fingerabdrucks.
+3. **Chat** – Chat „Alle“ (GeoChat), Hinweis bei neuen Nachrichten.
+4. **Videostream** – „Handy-Kamera“ oder „Helmkamera (Bluetooth, Android/Chrome)“ antippen: der Stream
+   startet sofort (auch wenn im Admin „Admin schaltet live“ eingestellt ist – der Admin bekommt einen
+   Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt.
+   **Streams ansehen:** alle Streams im Lagebild und die Feeds des TAK-Servers im Video-Fenster
+   (MJPEG/HLS im Browser; RTSP wird zum Öffnen in VLC kopiert).
 
-Unbekannte Server-Zertifikate werden erst nach Bestätigung des Fingerabdrucks benutzt; mit
-Truststore entfällt die Frage. Zugangsdaten gehen erst raus, wenn das Server-Zertifikat geprüft ist.
+**TAK-Daten** (Menü → TAK-Daten, über den API-Port 8443 mit dem Client-Zertifikat):
+Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren, Inhalte werden automatisch
+aktualisiert), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom Gerät; bleiben offline gespeichert).
 
-**Auf der Karte:** alles, was der TAK-Server schickt (Nutzer in Teamfarbe mit Richtung, Symbole
-nach MIL-STD-2525, Punkte, Linien, Flächen, Kreise, Routen, Video-Links), eigene Position (wird als
-CoT gesendet), Kontaktliste, Chat „Alle“, Marker setzen und löschen.
+**Karte** (Menü → Karte): Quelle wählen (OpenStreetMap, OpenTopoMap, Esri Satellit/Topo oder eigene
+URL mit `{z}/{x}/{y}`). Kacheln laufen über diesen Server und werden dort unter `DATA_DIR/tiles`
+zwischengespeichert. **Offline speichern:** sichtbaren Ausschnitt oder einen gezeichneten **Korridor**
+(Breite in m) mit Zoom von/bis; gespeicherte Bereiche lassen sich anzeigen und löschen. Bitte nur
+benötigte Bereiche laden – die freien Kartendienste erlauben kein Massen-Herunterladen.
 
-**Ohne Internet:** App, Karte (bereits angesehene oder unter ⚙ „Kartenausschnitt offline
-speichern“ gesicherte Kacheln) und das letzte Lagebild bleiben auf dem Gerät. GPS läuft weiter,
-neue Marker und Chats warten im Ausgang und gehen raus, sobald die Verbindung wieder steht;
-die App verbindet sich automatisch neu.
+**Ohne Internet:** App, gespeicherte Kacheln, Lagebild und Overlays bleiben auf dem Gerät. GPS läuft
+weiter, Marker und Chats warten im Ausgang und gehen raus, sobald die Verbindung wieder steht.
 
-**Sicherheit:** Dieser Server reicht die Daten nur durch (WebSocket `/ws/tak`). Zertifikate und
-Schlüssel liegen nur auf dem Handy und werden auf dem Server nicht gespeichert. Im Admin unter
-„Erlaubte TAK-Server“ sollte der eigene TAK-Server eingetragen werden, damit niemand den Server als
-offene Durchreiche benutzt. Ohne Eintrag sind alle Server erlaubt – außer dem Server-Rechner selbst
-(`localhost`) und Link-Local-Adressen; läuft der TAK-Server auf demselben Rechner, ihn also eintragen.
+**Grenzen einer Web-App:** Ein TAK-Server auf dem Handy selbst (z. B. in der Meshtastic-App,
+`127.0.0.1:8088`) ist für eine Web-App nicht erreichbar – Browser können keine TCP/TLS-Verbindungen
+öffnen. Dafür braucht es die EUD als installierte App. iOS pausiert Web-Apps im Hintergrund;
+Bluetooth gibt es in Safari nicht (Helmkamera am iPhone nur über die App „Bluefy“).
 
-Hinweis iPhone: iOS pausiert Web-Apps im Hintergrund – die Position wird nur gesendet, solange die
-App im Vordergrund ist („Bildschirm anlassen“ in ⚙ hilft).
+**Sicherheit:** Dieser Server reicht die Daten nur durch (`/ws/tak`, `/api/eud/marti`). Zertifikate und
+Schlüssel liegen nur auf dem Handy. Im Admin unter „Erlaubte TAK-Server“ den eigenen TAK-Server
+eintragen, damit niemand den Server als offene Durchreiche benutzt. Ohne Eintrag sind alle Server
+erlaubt – außer dem Server-Rechner selbst (`localhost`) und Link-Local-Adressen.
 
 ## Admin
 

@@ -2,9 +2,9 @@
 <html lang="de">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>TAK EUD</title>
-<meta name="theme-color" content="#101820">
+<meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
@@ -19,146 +19,302 @@
 <div id="map"></div>
 
 <!-- Statusleiste oben -->
-<div id="bar">
-  <button id="statusBtn" class="pill" type="button"><span id="dot" class="dot"></span><span id="statusText">Nicht verbunden</span></button>
-  <span id="meName" class="pill hidden"></span>
-</div>
-
-<!-- Knöpfe rechts -->
-<div id="fabs">
-  <button class="fab" id="btnCenter" type="button" title="Auf mich zentrieren" aria-label="Auf mich zentrieren">◎</button>
-  <button class="fab" id="btnMarker" type="button" title="Marker setzen" aria-label="Marker setzen">＋</button>
-  <button class="fab" id="btnList" type="button" title="Kontakte" aria-label="Kontakte">☰</button>
-  <button class="fab" id="btnChat" type="button" title="Chat" aria-label="Chat">✉<span id="chatBadge" class="badge hidden"></span></button>
-  <button class="fab" id="btnSettings" type="button" title="Einstellungen" aria-label="Einstellungen">⚙</button>
-</div>
-<div id="crosshair" class="hidden"></div>
-<div id="placeBar" class="hidden">
-  <button type="button" id="placeCancel">Abbrechen</button>
-  <button type="button" class="pri" id="placeOk">Hier setzen</button>
-</div>
-
-<!-- Einrichtung / Einstellungen -->
-<section class="sheet hidden" id="setup">
-  <div class="sheet-head"><h2>TAK-Server</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
-  <div class="sheet-body">
-    <div class="row">
-      <button type="button" class="pri grow" id="scanBtn">QR-Code scannen</button>
-      <label class="btn grow" for="fileIn">Datei laden</label>
-      <input type="file" id="fileIn" accept=".zip,.p12,.pfx,.pem,.crt,.cer,application/zip,application/x-pkcs12" hidden>
-    </div>
-    <p class="hint">QR-Code vom TAK-Server (ATAK/iTAK), Datenpaket (.zip), Zertifikat (.p12) oder Truststore laden – oder unten von Hand eintragen.</p>
-
-    <h3>Server</h3>
-    <label for="fHost">Adresse</label>
-    <input id="fHost" placeholder="tak.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
-    <div class="row">
-      <div class="grow"><label for="fPort">Port</label><input id="fPort" type="number" inputmode="numeric" min="1" max="65535" placeholder="8089"></div>
-      <div class="grow"><label for="fProto">Protokoll</label>
-        <select id="fProto"><option value="ssl">SSL (TLS)</option><option value="tcp">TCP</option><option value="udp">UDP (nur senden)</option></select></div>
-    </div>
-
-    <div id="sslBox">
-      <h3>Zertifikat</h3>
-      <div id="certState" class="state">Kein Zertifikat</div>
-      <label for="fUser">Benutzername</label>
-      <input id="fUser" autocomplete="username" autocapitalize="off" spellcheck="false">
-      <label for="fPass">Passwort</label>
-      <input id="fPass" type="password" autocomplete="current-password">
-      <div class="row">
-        <div class="grow"><label for="fEnroll">Port für Zertifikat</label><input id="fEnroll" type="number" inputmode="numeric" placeholder="8446"></div>
-        <div class="grow end"><button type="button" class="pri" id="enrollBtn">Zertifikat anfordern</button></div>
-      </div>
-    </div>
-
-    <h3>Ich</h3>
-    <label for="fCallsign">Rufname</label>
-    <input id="fCallsign" maxlength="40" autocomplete="off" placeholder="z. B. ALPHA-1">
-    <div class="row">
-      <div class="grow"><label for="fTeam">Team</label><select id="fTeam"></select></div>
-      <div class="grow"><label for="fRole">Rolle</label><select id="fRole"></select></div>
-    </div>
-
-    <p class="msg" id="setupMsg"></p>
-    <div class="row">
-      <button type="button" class="pri grow" id="connectBtn">Verbinden</button>
-      <button type="button" class="grow hidden" id="disconnectBtn">Trennen</button>
-    </div>
-
-    <h3>Karte</h3>
-    <div class="row">
-      <button type="button" class="grow" id="prefetchBtn">Kartenausschnitt offline speichern</button>
-    </div>
-    <p class="hint" id="prefetchMsg">Speichert den sichtbaren Ausschnitt (mehrere Zoomstufen) – die Karte geht dann auch ohne Internet.</p>
-    <label class="check"><input type="checkbox" id="fWake"> Bildschirm anlassen</label>
-
-    <details>
-      <summary>Mehr</summary>
-      <p class="hint">Gerätekennung: <span id="uidText"></span></p>
-      <div class="row">
-        <button type="button" class="grow" id="clearPicBtn">Lagebild leeren</button>
-        <button type="button" class="grow danger" id="resetBtn">Alles löschen</button>
-      </div>
-    </details>
+<header id="tsb">
+  <span id="clock">--:--</span>
+  <span class="sep"></span>
+  <span class="info" id="batt" title="Akku">
+    <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><rect x="2" y="7" width="17" height="10" rx="2"/><line x1="22" y1="11" x2="22" y2="13"/><rect id="battFill" x="4" y="9" width="13" height="6" fill="#2ecc71" stroke="none"/></svg>
+    <span id="battText"></span>
+  </span>
+  <span class="sep"></span>
+  <button type="button" class="info conn" id="connBtn" title="Server"><span id="dot" class="dot"></span><span id="statusText">OFFLINE</span></button>
+  <span class="sep"></span>
+  <div id="userBlock"><span id="meName">---</span><span id="meTeam"></span></div>
+  <div class="zoom">
+    <button type="button" class="zbtn" id="zoomOut" aria-label="Verkleinern">−</button>
+    <button type="button" class="zbtn" id="zoomIn" aria-label="Vergrößern">+</button>
   </div>
-</section>
+  <div class="acts">
+    <button type="button" class="tsb-btn" id="btnChat" title="Chat" aria-label="Chat">
+      <svg viewBox="0 0 24 24" fill="#2ecc71" stroke="#fff" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+      <span id="chatBadge" class="badge hidden"></span>
+    </button>
+    <button type="button" class="tsb-btn" id="btnVideo" title="Videostream" aria-label="Videostream">
+      <svg viewBox="0 0 24 24" fill="#007bff" stroke="#fff" stroke-width="1.5"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2" ry="2"/></svg>
+    </button>
+    <button type="button" class="tsb-btn" id="btnMenu" title="Menü" aria-label="Menü">
+      <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2"><line x1="3" y1="6" x2="21" y2="6"/><line x1="3" y1="12" x2="21" y2="12"/><line x1="3" y1="18" x2="21" y2="18"/></svg>
+    </button>
+  </div>
+</header>
 
-<!-- Kontakte -->
-<section class="sheet hidden" id="list">
-  <div class="sheet-head"><h2>Kontakte</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
-  <div class="sheet-body"><div id="listBody"></div></div>
+<!-- Marker setzen -->
+<div id="crosshair" class="hidden"></div>
+<div id="drawBar" class="hidden">
+  <div class="draw-hint" id="drawHint">Punkte der Strecke auf der Karte antippen</div>
+  <div class="draw-btns">
+    <button type="button" class="mbtn" id="drawUndo">ZURÜCK</button>
+    <button type="button" class="mbtn red" id="drawCancel">ABBRECHEN</button>
+    <button type="button" class="mbtn pri" id="drawDone">FERTIG</button>
+  </div>
+</div>
+<button type="button" id="setBtn" class="hidden">PUNKT SETZEN</button>
+<nav id="toolbar">
+  <button type="button" class="tool" id="btnCenter" title="Auf mich zentrieren" aria-label="Auf mich zentrieren">
+    <svg viewBox="0 0 32 32"><path d="M16 3 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"/></svg>
+  </button>
+  <span class="tsep"></span>
+  <button type="button" class="tool" data-tool="a-h-G" title="Feind" aria-label="Feind"></button>
+  <button type="button" class="tool" data-tool="a-f-G" title="Freund" aria-label="Freund"></button>
+  <button type="button" class="tool" data-tool="a-n-G" title="Neutral" aria-label="Neutral"></button>
+  <button type="button" class="tool" data-tool="a-u-G" title="Unbekannt" aria-label="Unbekannt"></button>
+  <button type="button" class="tool" data-tool="b-m-p-s-p-i" title="Punkt" aria-label="Punkt">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8" fill="#ff3030" stroke="#000" stroke-width="2"/></svg>
+  </button>
+</nav>
+
+<!-- Laufender Videostream: kleine Vorschau -->
+<div id="livePreview" class="hidden" title="Videostream">
+  <video id="camVideo" playsinline muted autoplay></video>
+  <img id="camImg" class="hidden" alt="Helmkamera">
+  <span class="live-tag" id="liveTag">BEREIT</span>
+</div>
+
+<!-- Stream ansehen -->
+<section id="viewer" class="hidden">
+  <div class="vw-head">
+    <span id="vwTitle"></span>
+    <button type="button" id="vwFull" aria-label="Vollbild">⛶</button>
+    <button type="button" id="vwClose" aria-label="Schließen">✕</button>
+  </div>
+  <div class="vw-body">
+    <img id="vwImg" class="hidden" alt="">
+    <video id="vwVideo" class="hidden" playsinline muted autoplay controls></video>
+    <p id="vwMsg"></p>
+  </div>
 </section>
 
 <!-- Chat -->
-<section class="sheet hidden" id="chat">
-  <div class="sheet-head"><h2>Chat <span class="hint">(Alle)</span></h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
-  <div class="sheet-body chat-body"><div id="chatLog"></div></div>
-  <form id="chatForm" class="chat-form"><input id="chatIn" autocomplete="off" placeholder="Nachricht an alle" maxlength="500"><button class="pri" type="submit">Senden</button></form>
-</section>
-
-<!-- Marker -->
-<section class="sheet hidden" id="markerSheet">
-  <div class="sheet-head"><h2>Marker</h2><button type="button" class="x" data-close aria-label="Schließen">✕</button></div>
-  <div class="sheet-body">
-    <label for="mName">Name</label>
-    <input id="mName" maxlength="40" autocomplete="off">
-    <label for="mType">Art</label>
-    <select id="mType">
-      <option value="b-m-p-s-p-i">Punkt (Spot)</option>
-      <option value="a-f-G">Freund</option>
-      <option value="a-h-G">Feind</option>
-      <option value="a-n-G">Neutral</option>
-      <option value="a-u-G">Unbekannt</option>
-    </select>
-    <label for="mRemarks">Bemerkung</label>
-    <input id="mRemarks" maxlength="200" autocomplete="off">
-    <div class="row"><button type="button" class="pri grow" id="mSave">Senden</button></div>
+<section id="chatWin" class="hidden">
+  <div class="chat-head">
+    <span><svg viewBox="0 0 24 24" fill="#2ecc71" stroke="#fff" stroke-width="1.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg> CHAT · ALLE</span>
+    <button type="button" class="chat-x" id="chatClose" aria-label="Schließen">✕</button>
   </div>
+  <div class="chat-msgs" id="chatLog"></div>
+  <form class="chat-foot" id="chatForm">
+    <input id="chatIn" autocomplete="off" placeholder="Nachricht …" maxlength="500">
+    <button type="submit" class="chat-send">SENDEN</button>
+  </form>
 </section>
 
-<!-- Server-Zertifikat bestätigen -->
-<section class="sheet hidden" id="trust">
-  <div class="sheet-head"><h2>Unbekanntes Server-Zertifikat</h2></div>
-  <div class="sheet-body">
-    <p>Der Server <b id="trustHost"></b> nutzt ein Zertifikat, das (noch) nicht geprüft werden kann. Vergleiche den Fingerabdruck mit dem, den dir der TAK-Admin gegeben hat:</p>
-    <p class="hint" id="trustSubject"></p>
-    <code id="trustFp"></code>
-    <p class="hint">Mit einem Truststore (CA) vom TAK-Server entfällt diese Frage.</p>
-    <div class="row">
-      <button type="button" class="grow" id="trustNo">Abbrechen</button>
-      <button type="button" class="pri grow" id="trustYes">Vertrauen</button>
+<!-- Menü (rechts) -->
+<div id="sidebar" class="hidden">
+  <div class="sb-overlay" data-sbclose></div>
+  <div class="sb-panel">
+    <div class="sb-head"><span>MENÜ</span><button type="button" class="sb-x" data-sbclose aria-label="Schließen">✕</button></div>
+    <div class="sb-grid">
+      <button type="button" class="tile" data-open="server">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="2" y="3" width="20" height="7" rx="1"/><rect x="2" y="14" width="20" height="7" rx="1"/><circle cx="6" cy="6.5" r="1" fill="#bbb"/><circle cx="6" cy="17.5" r="1" fill="#bbb"/></svg><span>Server</span></button>
+      <button type="button" class="tile" data-open="video">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M23 7l-7 5 7 5V7z"/><rect x="1" y="5" width="15" height="14" rx="2"/></svg><span>Video</span></button>
+      <button type="button" class="tile" data-open="chat">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg><span>Chat</span></button>
+      <button type="button" class="tile" data-open="contacts">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><circle cx="9" cy="8" r="4"/><path d="M1 21v-1a7 7 0 0 1 14 0v1"/><path d="M17 4a4 4 0 0 1 0 8M23 21v-1a7 7 0 0 0-4-6"/></svg><span>Kontakte</span></button>
+      <button type="button" class="tile" data-open="me">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="9" cy="11" r="2.5"/><path d="M5 17a4 4 0 0 1 8 0M15 10h3M15 14h3"/></svg><span>Rufname</span></button>
+      <button type="button" class="tile" data-open="data">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M12 3v12M7 10l5 5 5-5"/><path d="M3 17v3h18v-3"/></svg><span>TAK-Daten</span></button>
+      <button type="button" class="tile" data-open="map">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#bbb" stroke-width="2"><path d="M1 6v16l7-4 8 4 7-4V2l-7 4-8-4-7 4z"/><path d="M8 2v16M16 6v16"/></svg><span>Karte</span></button>
     </div>
   </div>
-</section>
+</div>
+
+<!-- Fenster für die Menüpunkte -->
+<div id="popup" class="modal hidden">
+  <div class="backdrop" data-pclose></div>
+  <div class="mbox">
+    <div class="mhead"><span id="popupTitle"></span><button type="button" data-pclose aria-label="Schließen">×</button></div>
+    <div class="mbody">
+
+      <!-- Server: Liste -->
+      <section data-sec="server">
+        <div id="srvList"></div>
+        <button type="button" class="mbtn pri" id="addSrvBtn">＋ SERVER HINZUFÜGEN</button>
+        <p class="hint">Mehrere Server gleichzeitig möglich. Alles landet auf einer Karte; was du sendest, geht an alle verbundenen Server.</p>
+      </section>
+
+      <!-- Server: Bearbeiten -->
+      <section data-sec="edit">
+        <div class="row2">
+          <button type="button" class="mbtn" id="scanBtn">QR SCANNEN</button>
+          <label class="mbtn" for="fileIn">DATEI LADEN</label>
+          <input type="file" id="fileIn" accept=".zip,.p12,.pfx,.pem,.crt,.cer,application/zip,application/x-pkcs12" hidden>
+        </div>
+        <p class="hint">QR-Code (ATAK/iTAK), Datenpaket (.zip), Zertifikat (.p12) oder Truststore – oder von Hand:</p>
+        <label for="fName">Name</label>
+        <input id="fName" class="in" placeholder="z. B. TAK-Server" autocomplete="off" maxlength="40">
+        <label for="fHost">Adresse</label>
+        <input id="fHost" class="in" placeholder="tak.example.com" autocomplete="off" autocapitalize="off" spellcheck="false">
+        <div class="row2">
+          <div><label for="fPort">Port</label><input id="fPort" class="in" type="number" inputmode="numeric" min="1" max="65535" placeholder="8089"></div>
+          <div><label for="fProto">Protokoll</label>
+            <select id="fProto" class="in"><option value="ssl">SSL</option><option value="tcp">TCP</option><option value="udp">UDP (nur senden)</option></select></div>
+        </div>
+        <div id="sslBox">
+          <div id="certState" class="state">Kein Zertifikat</div>
+          <label for="fUser">Benutzer</label>
+          <input id="fUser" class="in" autocomplete="username" autocapitalize="off" spellcheck="false">
+          <label for="fPass">Passwort</label>
+          <input id="fPass" class="in" type="password" autocomplete="current-password">
+          <div class="row2">
+            <div><label for="fEnroll">Port Zertifikat</label><input id="fEnroll" class="in" type="number" inputmode="numeric" placeholder="8446"></div>
+            <div><label for="fApi">Port Daten (API)</label><input id="fApi" class="in" type="number" inputmode="numeric" placeholder="8443"></div>
+          </div>
+          <button type="button" class="mbtn blue" id="enrollBtn">ZERTIFIKAT ANFORDERN</button>
+        </div>
+        <p class="msg" id="setupMsg"></p>
+        <div class="row2">
+          <button type="button" class="mbtn" id="editCancel">ZURÜCK</button>
+          <button type="button" class="mbtn pri" id="editSave">SPEICHERN &amp; VERBINDEN</button>
+        </div>
+      </section>
+
+      <!-- Rufname -->
+      <section data-sec="me">
+        <label for="fCallsign">Rufname</label>
+        <input id="fCallsign" class="in" maxlength="40" autocomplete="off" placeholder="z. B. ALPHA-1">
+        <div class="row2">
+          <div><label for="fTeam">Team</label><select id="fTeam" class="in"></select></div>
+          <div><label for="fRole">Rolle</label><select id="fRole" class="in"></select></div>
+        </div>
+        <button type="button" class="mbtn pri" id="meSave">ÜBERNEHMEN</button>
+        <p class="hint">Gerätekennung: <span id="uidText"></span></p>
+      </section>
+
+      <!-- Video -->
+      <section data-sec="video">
+        <div id="vidStart">
+          <button type="button" class="mbtn big" id="phoneBtn">📱 HANDY-KAMERA</button>
+          <button type="button" class="mbtn big" id="bleBtn">⛑ HELMKAMERA (BLUETOOTH)</button>
+          <p class="hint">Antippen – der Stream startet sofort und ist für alle im TAK sichtbar.</p>
+        </div>
+        <div id="vidRun" class="hidden">
+          <div class="nw-banner ok" id="vidBanner"><span class="dot ok"></span><span id="vidState">LIVE</span></div>
+          <div class="kv"><span>Kamera</span><b id="vidCam">–</b></div>
+          <div class="kv"><span>Bilder/s</span><b id="vidFps">–</b></div>
+          <div class="kv"><span>Zuschauer</span><b id="vidViewers">–</b></div>
+          <div class="kv" id="camPickRow"><span>Quelle</span><select id="camSelect" class="in"></select></div>
+          <button type="button" class="mbtn red big" id="vidStop">■ STREAM STOPPEN</button>
+        </div>
+        <p class="msg" id="vidMsg"></p>
+        <div class="subhead">STREAMS ANSEHEN</div>
+        <div id="streamList"></div>
+        <div class="subhead">FEEDS VOM TAK-SERVER</div>
+        <button type="button" class="mbtn blue" id="feedLoad">VIDEO-FEEDS ABRUFEN</button>
+        <div id="feedList"></div>
+      </section>
+
+      <!-- Daten vom TAK-Server -->
+      <section data-sec="data">
+        <div id="dataSrvRow"><label for="dataSrv">TAK-Server</label><select id="dataSrv" class="in"></select></div>
+        <div class="seg" id="dataTabs">
+          <button type="button" data-tab="packages" class="on">PAKETE</button>
+          <button type="button" data-tab="sync">DATA SYNC</button>
+          <button type="button" data-tab="overlays">OVERLAYS</button>
+        </div>
+        <div data-pane="packages">
+          <button type="button" class="mbtn blue" id="pkgLoad">DATENPAKETE ABRUFEN</button>
+          <div id="pkgList"></div>
+        </div>
+        <div data-pane="sync" class="hidden">
+          <button type="button" class="mbtn blue" id="misLoad">MISSIONEN ABRUFEN</button>
+          <div id="misList"></div>
+        </div>
+        <div data-pane="overlays" class="hidden">
+          <div id="ovList"></div>
+          <label class="mbtn" for="ovFile">KML / KMZ VOM GERÄT LADEN</label>
+          <input type="file" id="ovFile" accept=".kml,.kmz,.zip,application/vnd.google-earth.kml+xml,application/vnd.google-earth.kmz" hidden>
+          <p class="hint">Overlays aus Paketen und Missionen landen hier und bleiben offline auf dem Gerät.</p>
+        </div>
+        <p class="msg" id="dataMsg"></p>
+      </section>
+
+      <!-- Kontakte -->
+      <section data-sec="contacts"><div id="listBody"></div></section>
+
+      <!-- Karte -->
+      <section data-sec="map">
+        <label for="fTiles">Kartenquelle</label>
+        <select id="fTiles" class="in"></select>
+        <div id="customBox" class="hidden">
+          <label for="fCustom">Eigene Quelle (URL mit {z} {x} {y})</label>
+          <input id="fCustom" class="in" placeholder="https://…/{z}/{x}/{y}.png" autocomplete="off" autocapitalize="off" spellcheck="false">
+          <button type="button" class="mbtn blue" id="customSave">QUELLE ÜBERNEHMEN</button>
+        </div>
+
+        <div class="subhead">OFFLINE SPEICHERN</div>
+        <div class="seg" id="areaMode">
+          <button type="button" data-mode="view" class="on">AUSSCHNITT</button>
+          <button type="button" data-mode="corridor">KORRIDOR</button>
+        </div>
+        <div id="corridorBox" class="hidden">
+          <div class="row2">
+            <div><label for="fWidth">Breite links + rechts (m)</label><input id="fWidth" class="in" type="number" inputmode="numeric" min="50" max="20000" value="1000"></div>
+            <div class="end"><button type="button" class="mbtn blue" id="drawBtn">KORRIDOR ZEICHNEN</button></div>
+          </div>
+          <p class="hint" id="corridorInfo">Noch kein Korridor gezeichnet.</p>
+        </div>
+        <div class="row2">
+          <div><label for="fZmin">Zoom von</label><select id="fZmin" class="in"></select></div>
+          <div><label for="fZmax">Zoom bis</label><select id="fZmax" class="in"></select></div>
+        </div>
+        <p class="hint" id="estimate"></p>
+        <div class="row2">
+          <button type="button" class="mbtn pri" id="prefetchBtn">SPEICHERN</button>
+          <button type="button" class="mbtn red hidden" id="prefetchStop">STOPP</button>
+        </div>
+        <p class="msg ok" id="prefetchMsg"></p>
+        <div id="areaList"></div>
+
+        <div class="subhead">SONSTIGES</div>
+        <label class="check"><input type="checkbox" id="fWake"> Bildschirm anlassen</label>
+        <div class="row2">
+          <button type="button" class="mbtn" id="clearPicBtn">LAGEBILD LEEREN</button>
+          <button type="button" class="mbtn red" id="resetBtn">ALLES LÖSCHEN</button>
+        </div>
+      </section>
+    </div>
+  </div>
+</div>
+
+<!-- Server-Zertifikat bestätigen -->
+<div id="trust" class="modal hidden">
+  <div class="backdrop"></div>
+  <div class="mbox">
+    <div class="mhead"><span>UNBEKANNTES ZERTIFIKAT</span></div>
+    <div class="mbody">
+      <p>Der Server <b id="trustHost"></b> nutzt ein Zertifikat, das nicht geprüft werden kann. Fingerabdruck mit dem vom TAK-Admin vergleichen:</p>
+      <p class="hint" id="trustSubject"></p>
+      <code id="trustFp"></code>
+      <p class="hint">Mit Truststore (CA) vom TAK-Server entfällt diese Frage.</p>
+      <div class="row2">
+        <button type="button" class="mbtn" id="trustNo">ABBRECHEN</button>
+        <button type="button" class="mbtn pri" id="trustYes">VERTRAUEN</button>
+      </div>
+    </div>
+  </div>
+</div>
 
 <!-- QR-Scanner -->
 <div id="scanner" class="hidden">
   <video id="scanVideo" playsinline muted></video>
   <div class="scan-frame"></div>
   <div class="scan-bar">
-    <label class="btn" for="scanFile">Foto wählen</label>
+    <label class="mbtn" for="scanFile">FOTO WÄHLEN</label>
     <input type="file" id="scanFile" accept="image/*" hidden>
-    <button type="button" id="scanClose">Abbrechen</button>
+    <button type="button" class="mbtn" id="scanClose">ABBRECHEN</button>
   </div>
   <p id="scanMsg">QR-Code in den Rahmen halten</p>
 </div>
@@ -169,5 +325,7 @@
 <script src="vendor/milsymbol.js"></script>
 <script src="vendor/jsQR.js"></script>
 <script src="eud.js"></script>
+<script src="video.js"></script>
+<script src="data.js"></script>
 </body>
 </html>
