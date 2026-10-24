@@ -282,8 +282,23 @@ setInterval(() => {
 
 const accessLimits = new Map(); // ip -> [zeitpunkte] für Registrierungen
 function mailReady() { return smtpConfigured(store.data.smtp); }
+// Mail an einen Nutzer. Sicherheitsnetz: Links zum Admin-Bereich gehen nie an Nutzer.
 function mailUser(to, subject, text) {
   if (!mailReady() || !to) return Promise.resolve(false);
+  if (/\/admin\b/i.test(text)) {
+    log('E-Mail an', to, 'NICHT gesendet: enthält einen Link zum Admin-Bereich');
+    return Promise.resolve(false);
+  }
+  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
+}
+// Mail nur an die Admin-Adresse (Einstellungen → System), nie an die anfragende Person
+function mailAdmin(subject, text, notTo) {
+  const to = String(auth.admin.email || '').trim();
+  if (!mailReady() || !to) return Promise.resolve(false);
+  if (notTo && to.toLowerCase() === String(notTo).trim().toLowerCase()) {
+    log('Admin-Hinweis nicht gesendet: Admin-E-Mail ist gleich der E-Mail der Anfrage');
+    return Promise.resolve(false);
+  }
   return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
 }
 const accessLink = (req, u) => `${publicBase(req)}/access/#t=${u.token}`;
@@ -298,13 +313,13 @@ function requestMail(u, link) {
 }
 
 // Neue Anfrage: Hinweis im Admin-Fenster und Mail an die Admin-Adresse
-function newRequest(req, u, suffix) {
+function newRequest(u, suffix) {
   const text = `WebTAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}${suffix}`;
   hub.event('tak', 'takreg', text);
-  if (auth.admin.email) {
-    mailUser(auth.admin.email, 'WebTAK – neue Registrierungsanfrage',
-      `${text}\nE-Mail: ${u.email}\n${u.requestedCallsign ? `Gewünschter Rufname: ${u.requestedCallsign}\n` : ''}\nFreigeben im Admin: ${resetBase() || publicBase(req)}/admin/\n`);
-  }
+  // Ohne Link: die Adresse des Admin-Bereichs steht nie in einer Mail (und nie aus dem Host-Header der Anfrage)
+  mailAdmin('WebTAK – neue Registrierungsanfrage',
+    `${text}\nE-Mail: ${u.email}\n${u.requestedCallsign ? `Gewünschter Rufname: ${u.requestedCallsign}\n` : ''}\n`
+    + 'Bitte im WebTAK-Admin unter „Benutzer & Anfragen“ prüfen und freigeben oder ablehnen.\n', u.email);
 }
 
 async function handleAccessApi(req, res, route) {
@@ -332,7 +347,7 @@ async function handleAccessApi(req, res, route) {
         + `After that an administrator will review your request. You will get another e-mail as soon as your access is approved.\n\n`
         + `If you did not request access, simply ignore this e-mail.\n`);
     } else {
-      newRequest(req, u, '');
+      newRequest(u, '');
       mailed = await mailUser(u.email, 'WebTAK – registration request received', requestMail(u, link));
     }
     return json(res, 200, { status: u.status, token: u.token, mailed, email: maskEmail(u.email) });
@@ -341,7 +356,7 @@ async function handleAccessApi(req, res, route) {
     const body = await readJson(req);
     const u = takUsers.confirmEmail(String(body.code || ''));
     if (!u) return json(res, 400, { error: 'This confirmation link is invalid or was already used.' });
-    newRequest(req, u, ' (E-Mail bestätigt)');
+    newRequest(u, ' (E-Mail bestätigt)');
     return json(res, 200, { status: u.status });
   }
   // Status vergessen: Statuslink per E-Mail (immer gleiche Antwort, damit niemand Adressen ausprobieren kann)

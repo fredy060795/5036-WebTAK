@@ -767,6 +767,47 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
   }
 });
 
+test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis nur an die Admin-Adresse', async () => {
+  const sink = await smtpSink();
+  try {
+    await api('smtp', { method: 'POST', body: { host: '127.0.0.1', port: sink.port, secure: false, from: 'webtak@example.com' } });
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: true, codeword: '' } });
+    const pub = (p, body) => fetch(base + '/api/access/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, data: await r.json() }));
+    const flat = m => m.replace(/=\n/g, '').replace(/=3D/g, '=');
+    const waitMails = async n => { for (let i = 0; i < 100 && sink.mails.length < n; i++) await sleep(30); };
+    let r = await pub('register', { name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' });
+    assert.equal(r.data.status, 'unconfirmed');
+    await waitMails(1);
+    const confirm = flat(sink.mails[0]);
+    assert.match(confirm, /^To: mutti@example\.com/m);
+    const code = /&c=([a-f0-9]+)/.exec(confirm)[1];
+    assert.equal((await pub('confirm', { code })).status, 200);
+    await waitMails(2);
+    await sleep(200);
+    const toUser = sink.mails.map(flat).filter(m => /^To: mutti@example\.com/m.test(m));
+    const toAdmin = sink.mails.map(flat).filter(m => /^To: chef@example\.com/m.test(m));
+    assert.equal(toAdmin.length, 1, 'Admin bekommt genau einen Hinweis');
+    assert.match(toAdmin[0], /WebTAK-Zugang angefragt: Mail Test/);
+    assert.doesNotMatch(toAdmin[0], /https?:\/\//, 'kein Link im Admin-Hinweis');
+    for (const m of toUser) assert.doesNotMatch(m, /\/admin/i, 'kein Admin-Link an den Nutzer');
+    assert.ok(sink.mails.map(flat).every(m => !/^To: mutti@example\.com/m.test(m) || !/WebTAK-Zugang angefragt/.test(m)), 'Admin-Hinweis nie an den Nutzer');
+    // Admin-Adresse gleich der Adresse der Anfrage: kein Admin-Hinweis an diese Adresse
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: false, codeword: '' } });
+    const before = sink.mails.length;
+    r = await pub('register', { name: 'Gleiche Adresse', email: 'chef@example.com' });
+    assert.equal(r.data.status, 'pending');
+    await sleep(400);
+    const newMails = sink.mails.slice(before).map(flat);
+    assert.equal(newMails.filter(m => /WebTAK-Zugang angefragt/.test(m)).length, 0);
+    assert.equal(newMails.filter(m => /your registration request for WebTAK has been received/.test(m)).length, 1);
+    // aufräumen für die folgenden Tests
+    const st = await api('takusers/state');
+    for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
+  } finally {
+    sink.srv.close();
+  }
+});
+
 test('TAK-Zugang: Registrierung -> Freigabe mit Rufname -> Zugangsseite mit QR und Truststore -> Sperren', async () => {
   const { createMockOts } = require('./ots-mock');
   const mock = createMockOts();
