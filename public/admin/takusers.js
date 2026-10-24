@@ -127,7 +127,7 @@
     const run = async (path, opts, done) => {
       setMsg(out, 'Bitte warten …', true);
       try {
-        const r = await tapi(`user/${u.id}/${path}`, opts);
+        const r = await tapi(`user/${u.id}` + (path ? '/' + path : ''), opts);
         await load();
         if (done) done(r); else closeModal();
       } catch (e) { setMsg(out, e.message); }
