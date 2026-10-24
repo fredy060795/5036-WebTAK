@@ -97,7 +97,7 @@
       <div class="table-wrap">
         <table class="streams">
           <thead>
-            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Link</th><th></th></tr>
+            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Drehung</th><th>Link</th><th></th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
@@ -126,6 +126,17 @@
     <label>Neues Passwort (leer = unverändert)</label><input name="password" type="password" autocomplete="new-password" minlength="8">
     <label>Aktuelles Passwort (zur Bestätigung)</label><input name="current" type="password" autocomplete="current-password" required>
     <button class="pri" type="submit">Zugang speichern</button>
+    <p class="msg" data-msg></p>
+  </form>
+  <form id="defaultsForm">
+    <h3>Bild drehen (Standard für neue Streams)</h3>
+    <p class="mut small">Liegt die Kamera quer im Helm-Gehäuse, hier die Drehung einstellen. Das Handy dreht jedes Bild,
+      bevor es gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
+    <label>Drehung</label>
+    <select name="rotate"></select>
+    <label class="check"><input type="checkbox" name="mirror"> Spiegeln</label>
+    <label class="check"><input type="checkbox" name="applyAll"> Auch auf alle bestehenden Streams anwenden</label>
+    <button class="pri" type="submit">Speichern</button>
     <p class="msg" data-msg></p>
   </form>
   <form id="smtpForm">

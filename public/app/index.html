@@ -58,6 +58,7 @@ header { display: flex; justify-content: space-between; align-items: center; gap
         <dt>Kamera</dt><dd id="camName">nicht verbunden</dd>
         <dt>Bildrate</dt><dd id="fps">–</dd>
         <dt>Zuschauer</dt><dd id="viewers">–</dd>
+        <dt>Drehung</dt><dd id="rotation">–</dd>
       </dl>
       <label for="res">Bildgröße</label>
       <select id="res">
@@ -101,6 +102,30 @@ let device = null, cmdChr = null, camConnected = false;
 let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
 let writeChain = Promise.resolve();
 let lastPreview = 0;
+let rotate = 0, mirror = false;  // vom Admin pro Stream eingestellt
+let busy = false;                // gerade wird ein Bild gedreht
+
+// Dreht ein JPEG im Uhrzeigersinn (0/90/180/270), optional gespiegelt, und kodiert es neu.
+async function rotateJpeg(jpeg, deg, flip) {
+  const bmp = await createImageBitmap(new Blob([jpeg], { type: 'image/jpeg' }));
+  const side = deg % 180 !== 0;
+  const canvas = document.createElement('canvas');
+  canvas.width = side ? bmp.height : bmp.width;
+  canvas.height = side ? bmp.width : bmp.height;
+  const ctx = canvas.getContext('2d');
+  ctx.translate(canvas.width / 2, canvas.height / 2);
+  ctx.rotate(deg * Math.PI / 180);
+  if (flip) ctx.scale(-1, 1);
+  ctx.drawImage(bmp, -bmp.width / 2, -bmp.height / 2);
+  bmp.close();
+  const blob = await new Promise(r => canvas.toBlob(r, 'image/jpeg', 0.85));
+  return new Uint8Array(await blob.arrayBuffer());
+}
+window.rotateJpeg = rotateJpeg; // für Tests
+
+function showRotation() {
+  $('rotation').textContent = (rotate ? rotate + '° im Uhrzeigersinn' : 'keine') + (mirror ? ', gespiegelt' : '');
+}
 
 function setMsg(text, cls = '') { $('msg').textContent = text; $('msg').className = 'msg ' + cls; }
 
@@ -152,6 +177,11 @@ function connectServer() {
       } else if (wantLive && camConnected) {
         startCameraStream();
       }
+    } else if (msg.type === 'config') {
+      rotate = msg.rotate || 0;
+      mirror = !!msg.mirror;
+      if (msg.label !== undefined) $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + link.u + '/' + link.s;
+      showRotation();
     } else if (msg.type === 'stats') {
       $('viewers').textContent = msg.viewers;
     } else if (msg.type === 'stopped') {
@@ -274,7 +304,13 @@ function onImagePacket(ev) {
   }
 }
 
-function onJpeg(jpeg) {
+async function onJpeg(raw) {
+  let jpeg = raw;
+  if (rotate || mirror) {
+    if (busy) return; // Handy kommt nicht hinterher: Bild auslassen statt Rückstau
+    busy = true;
+    try { jpeg = await rotateJpeg(raw, rotate, mirror); } catch (e) { console.warn(e); return; } finally { busy = false; }
+  }
   const now = performance.now();
   if (ws && ws.readyState === 1 && wantLive && ws.bufferedAmount < 512 * 1024) {
     ws.send(jpeg);

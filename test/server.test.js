@@ -341,3 +341,79 @@ test('Passwort vergessen per SMTP: Mail mit Link, neues Passwort, Login', async 
     sink.srv.close();
   }
 });
+
+test('JPEG-Größe wird aus dem Kopf gelesen', () => {
+  const { jpegSize } = require('../lib/streams');
+  assert.equal(jpegSize(JPEG_A), '320x240');
+  assert.equal(jpegSize(fs.readFileSync(path.join(__dirname, 'fixtures', 'portrait.jpg'))), '240x320');
+  assert.equal(jpegSize(Buffer.from([0xff, 0xd8, 0x00])), null);
+});
+
+test('Drehung: Standard für neue Streams, Änderung geht sofort ans Handy', async () => {
+  assert.equal((await api('defaults', { method: 'POST', body: { rotate: 90, mirror: false } })).status, 200);
+  const created = await api('streams', { method: 'POST', body: { user: 'helm', label: 'quer' } });
+  const s = created.data.stream;
+  assert.equal(s.rotate, 90);
+
+  const p = publisher(s, keyOf(s));
+  await p.waitFor('welcome');
+  const cfg = await p.waitFor('config');
+  assert.equal(cfg.rotate, 90);
+
+  p.messages.length = 0;
+  assert.equal((await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { rotate: 270, mirror: true } })).status, 200);
+  const cfg2 = await p.waitFor('config');
+  assert.equal(cfg2.rotate, 270);
+  assert.equal(cfg2.mirror, true);
+  // ungültige Werte werden auf 0 gesetzt
+  await api(`streams/helm/${s.streamId}/options`, { method: 'POST', body: { rotate: 45 } });
+  let st = (await api('streams')).data.streams.find(x => x.streamId === s.streamId);
+  assert.equal(st.rotate, 0);
+
+  // auf alle bestehenden anwenden
+  await api('defaults', { method: 'POST', body: { rotate: 180, mirror: false, applyAll: true } });
+  const all = (await api('streams')).data.streams;
+  assert.ok(all.every(x => x.rotate === 180));
+  st = all.find(x => x.streamId === s.streamId);
+  assert.equal(st.mirror, false);
+  p.ws.close();
+});
+
+test('HLS läuft weiter, wenn das Bild von quer auf hoch wechselt', { skip: !HAS_FFMPEG && 'ffmpeg fehlt' }, async () => {
+  const PORTRAIT = fs.readFileSync(path.join(__dirname, 'fixtures', 'portrait.jpg'));
+  const s = (await api('streams', { method: 'POST', body: { user: 'helm', label: 'wechsel' } })).data.stream;
+  const p = publisher(s, keyOf(s));
+  await p.waitFor('welcome');
+  let current = JPEG_A;
+  const feeder = setInterval(() => p.ws.send(current), 100);
+  const waitSegments = async () => {
+    for (let i = 0; i < 30; i++) {
+      const r = await fetch(s.links.hls);
+      if (r.status === 200) {
+        const text = await r.text();
+        const segs = text.match(/seg\d+\.ts/g);
+        if (segs) return segs;
+      }
+      await sleep(400);
+    }
+    throw new Error('keine HLS-Segmente');
+  };
+  try {
+    await waitSegments();
+    current = PORTRAIT;
+    await sleep(800);
+    const segs = await waitSegments();
+    const seg = await fetch(`${s.links.stream}/${segs[segs.length - 1]}`);
+    assert.equal(seg.status, 200);
+    // ffprobe prüft, dass das neue Segment hochkant ist
+    const file = path.join(os.tmpdir(), 'helmcam-seg.ts');
+    fs.writeFileSync(file, Buffer.from(await seg.arrayBuffer()));
+    const probe = spawnSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'csv=p=0', file]);
+    assert.equal(probe.stdout.toString().trim().split('\n')[0], '240,320', 'ffprobe: ' + probe.stderr);
+    const st = (await api('streams')).data.streams.find(x => x.streamId === s.streamId);
+    assert.equal(st.resolution, '240x320');
+  } finally {
+    clearInterval(feeder);
+    p.ws.close();
+  }
+});

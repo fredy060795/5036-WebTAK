@@ -3,6 +3,14 @@
 
 const $ = id => document.getElementById(id);
 const POLL_MS = 2000;
+const ROTATIONS = [[0, 'keine'], [90, '90° rechts'], [180, '180°'], [270, '90° links']];
+
+function rotateSelect(value) {
+  const sel = el('select', { class: 'rot', title: 'Bild drehen' });
+  for (const [v, t] of ROTATIONS) sel.append(el('option', { value: String(v), text: t }));
+  sel.value = String(value || 0);
+  return sel;
+}
 
 let me = null;
 let lastLoginPassword = '';
@@ -234,6 +242,10 @@ function buildRow(s) {
   c.fps = td('Bilder/s', 'num');
   c.viewers = td('Zuschauer', 'num');
   c.last = td('Letztes Bild');
+  c.rotTd = td('Drehung');
+  c.rot = rotateSelect(s.rotate);
+  c.rot.addEventListener('change', () => setOptions(id, { rotate: +c.rot.value }));
+  c.rotTd.append(c.rot);
   c.link = td('Link');
   const f = copyField(s.links.stream);
   c.linkInput = f.input;
@@ -245,7 +257,7 @@ function buildRow(s) {
   c.revoke = el('button', { class: 'sm danger', text: 'Rauswerfen', onclick: () => revokeStream(id) });
   c.remove = el('button', { class: 'sm danger', text: 'Löschen', onclick: () => removeStream(id) });
   c.actions.append(el('div', { class: 'btns' }, c.view, c.qr, c.toggle, c.revoke, c.remove));
-  const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.link, c.actions);
+  const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.rotTd, c.link, c.actions);
   return { tr, c };
 }
 
@@ -259,6 +271,8 @@ function updateRow(r, s) {
   c.fps.textContent = s.receiving ? s.fps.toFixed(1) : '–';
   c.viewers.textContent = String(s.viewers);
   c.last.textContent = ago(s.lastFrameAt);
+  if (document.activeElement !== c.rot) c.rot.value = String(s.rotate || 0);
+  c.rotTd.title = s.mirror ? 'gespiegelt' : '';
   if (document.activeElement !== c.linkInput) c.linkInput.value = s.links.stream;
   c.toggle.textContent = s.enabled ? 'Stoppen' : 'Freigeben';
 }
@@ -303,6 +317,13 @@ $('createForm').addEventListener('submit', async e => {
 });
 
 const streamPath = id => 'streams/' + id.split('/').map(encodeURIComponent).join('/');
+
+async function setOptions(id, opts) {
+  try {
+    await api(streamPath(id) + '/options', { method: 'POST', body: opts });
+    await refresh();
+  } catch (e) { alert(e.message); }
+}
 
 async function toggleStream(id) {
   const s = streams.find(x => sid(x) === id);
@@ -369,15 +390,18 @@ function showQr(id) {
   };
   add('Stream-Link für ATAK/WinTAK (MJPEG)', s.links.stream);
   if (me.ffmpeg) {
-    add('Alternativ HLS', s.links.hls);
+    add('HLS – als „Quelle“ in OpenTAKServer/MediaMTX eintragen', s.links.hls);
     add('Alternativ MPEG-TS', s.links.ts);
   }
   add('Einzelbild', s.links.snapshot);
   add('Handy-App (enthält den Zugangsschlüssel – nur an den Benutzer geben)', s.links.app);
+  const hint = el('p', { class: 'mut small', text: me.ffmpeg
+    ? 'OpenTAKServer (MediaMTX) kann kein MJPEG abholen: Dort unter Videostreams „Add Video“ den HLS-Link als Quelle eintragen.'
+    : 'Für OpenTAKServer (MediaMTX) wird der HLS-Link gebraucht – dafür ffmpeg auf dem Server installieren.' });
   const print = el('button', { text: 'QR-Code drucken', type: 'button', onclick: () => printQr(s, img.src) });
   openModal('QR-Code: ' + (s.label || s.user),
     el('p', { class: 'mut small', text: `Diesen QR-Code dem Benutzer „${s.user}“ geben. Er öffnet die Handy-App, verbindet die Helmkamera per Bluetooth und sendet die Bilder an diesen Stream.` }),
-    img, dl, el('div', { class: 'row', style: 'margin-top:12px' }, print));
+    img, dl, hint, el('div', { class: 'row', style: 'margin-top:12px' }, print));
 }
 
 function printQr(s, src) {
@@ -399,9 +423,27 @@ $('settingsBtn').addEventListener('click', async () => {
   const frag = $('settingsTpl').content.cloneNode(true);
   const cred = frag.querySelector('#credForm');
   const smtp = frag.querySelector('#smtpForm');
+  const defs = frag.querySelector('#defaultsForm');
   cred.username.value = me.username;
   cred.email.value = me.email || '';
-  openModal('Einstellungen', cred, smtp);
+  for (const [v, t] of ROTATIONS) defs.rotate.append(el('option', { value: String(v), text: t }));
+  openModal('Einstellungen', defs, cred, smtp);
+
+  try {
+    const d = await api('defaults');
+    defs.rotate.value = String(d.rotate);
+    defs.mirror.checked = d.mirror;
+  } catch (e) { /* angezeigt durch api() */ }
+  defs.addEventListener('submit', async e => {
+    e.preventDefault();
+    const msg = defs.querySelector('[data-msg]');
+    try {
+      await api('defaults', { method: 'POST', body: { rotate: +defs.rotate.value, mirror: defs.mirror.checked, applyAll: defs.applyAll.checked } });
+      defs.applyAll.checked = false;
+      await refresh();
+      setMsg(msg, 'Gespeichert.', true);
+    } catch (err) { setMsg(msg, err.message); }
+  });
 
   cred.addEventListener('submit', async e => {
     e.preventDefault();
@@ -461,10 +503,13 @@ function openWindow(id) {
   if (!s) return;
 
   const title = el('span', { class: 'win-title' });
+  const btnLeft = el('button', { title: 'Bild 90° nach links drehen', text: '⟲' });
+  const btnRight = el('button', { title: 'Bild 90° nach rechts drehen', text: '⟳' });
+  const btnFlip = el('button', { title: 'Bild spiegeln', text: '⇋' });
   const btnMin = el('button', { title: 'Minimieren', text: '–' });
   const btnMax = el('button', { title: 'Maximieren', text: '□' });
   const btnClose = el('button', { title: 'Schließen', text: '✕' });
-  const bar = el('div', { class: 'win-bar' }, title, btnMin, btnMax, btnClose);
+  const bar = el('div', { class: 'win-bar' }, title, btnLeft, btnRight, btnFlip, btnMin, btnMax, btnClose);
   const img = el('img', { alt: 'Live-Bild' });
   const off = el('div', { class: 'win-off' });
   const info = el('div', { class: 'win-info' });
@@ -504,6 +549,10 @@ function openWindow(id) {
 
   win.addEventListener('pointerdown', () => api_.focus());
   btnClose.addEventListener('click', () => api_.close());
+  const cur = () => streams.find(x => sid(x) === id) || s;
+  btnLeft.addEventListener('click', () => setOptions(id, { rotate: ((cur().rotate || 0) + 270) % 360 }));
+  btnRight.addEventListener('click', () => setOptions(id, { rotate: ((cur().rotate || 0) + 90) % 360 }));
+  btnFlip.addEventListener('click', () => setOptions(id, { mirror: !cur().mirror }));
   btnMin.addEventListener('click', () => {
     win.classList.toggle('min');
     win.classList.remove('max');

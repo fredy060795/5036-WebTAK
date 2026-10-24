@@ -20,12 +20,34 @@ Helmkamera ──Bluetooth──▶ Handy (Browser, bleibt im Internet) ──HT
 | Link | Format | Hinweis |
 |---|---|---|
 | `https://<domain>/<benutzer>/<streamId>` | MJPEG | Hauptlink, geringe Verzögerung, kein ffmpeg nötig |
-| `https://<domain>/<benutzer>/<streamId>/index.m3u8` | HLS (H.264) | braucht ffmpeg auf dem Server, ca. 4–8 s Verzögerung |
+| `https://<domain>/<benutzer>/<streamId>/index.m3u8` | HLS (H.264) | braucht ffmpeg auf dem Server, ca. 4–8 s Verzögerung; **für OpenTAKServer** |
 | `https://<domain>/<benutzer>/<streamId>/stream.ts` | MPEG-TS (H.264) | braucht ffmpeg, fortlaufender HTTP-Stream |
 | `https://<domain>/<benutzer>/<streamId>/snapshot.jpg` | JPEG | letztes Bild |
 
 Welches Format dein ATAK/WinTAK am besten abspielt, am besten mit einem laufenden Stream ausprobieren – alle drei
 liefern dasselbe Bild. Die Bildrate kommt von der Kamera über Bluetooth (bei 320x240 etwa 2–5 Bilder/s).
+
+## In OpenTAKServer eintragen
+
+OpenTAKServer nutzt MediaMTX. MediaMTX kann eine fremde Quelle abholen, aber kein MJPEG – deshalb dort den
+**HLS-Link** verwenden (dafür muss ffmpeg auf dem Streams-Server installiert sein, im Docker-Image ist es dabei):
+
+1. OpenTAKServer → **Videostreams** → **Add Video**.
+2. Als Pfad einen Namen wählen (z. B. `helm_mueller`), als **Quelle** den Link
+   `https://<domain>/<benutzer>/<streamId>/index.m3u8` eintragen.
+3. Sobald das Handy sendet, steht der Stream bei OpenTAKServer auf „Bereit“ und ist in ATAK/WinTAK über die
+   üblichen OTS-Links (RTSP/WebRTC/HLS) verfügbar.
+
+## Bild drehen (Kamera liegt quer im Gehäuse)
+
+Die Drehung wird pro Stream im Admin-Fenster eingestellt: in der Liste unter **Drehung** oder im Ansehen-Fenster mit
+⟲ / ⟳ (90° links/rechts) und ⇋ (spiegeln). Unter **Einstellungen** gibt es eine Standard-Drehung für neue Streams
+(optional auf alle bestehenden anwenden).
+
+Das Handy dreht jedes Bild, bevor es gesendet wird. Dadurch liefern alle Links (MJPEG, HLS, MPEG-TS, Einzelbild)
+und damit auch OpenTAKServer/ATAK schon das richtige Bild – beim Import muss nichts mehr angepasst werden. Eine
+Änderung wirkt sofort, auch während der Stream läuft; HLS/MPEG-TS starten dabei kurz neu, wenn das Bild von quer
+auf hoch wechselt.
 
 ## Ablauf
 
@@ -92,9 +114,10 @@ Alle Daten liegen in `DATA_DIR/db.json` (Passwort nur als scrypt-Hash).
 ```sh
 npm install
 npm start      # http://localhost:8080/admin/
-npm test       # Ende-zu-Ende-Tests (Admin, Handy-WebSocket, MJPEG, HLS/TS, Stoppen/Rauswerfen, SMTP-Reset)
+npm test       # Ende-zu-Ende-Tests (Admin, Handy-WebSocket, MJPEG, HLS/TS, Drehung, Stoppen/Rauswerfen, SMTP-Reset)
 ```
 
 Handy → Server: WebSocket `wss://<domain>/ws/publish?u=<benutzer>&s=<streamId>&k=<schlüssel>`, jede Binärnachricht
-ist ein JPEG. Der Server antwortet mit JSON (`welcome`, `stats`, `stopped`, `revoked`, `removed`, `replaced`, `invalid`).
+ist ein JPEG. Der Server antwortet mit JSON (`welcome`, `config` mit Drehung, `stats`, `stopped`, `revoked`, `removed`,
+`replaced`, `invalid`).
 Kamera → Handy: Bluetooth-Protokoll siehe `PROTOCOL.md` im Repository ESP32-Flash.

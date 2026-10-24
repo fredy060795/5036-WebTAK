@@ -19,7 +19,7 @@ const QRCode = require('qrcode');
 
 const { Store } = require('./lib/store');
 const { Auth } = require('./lib/auth');
-const { StreamHub } = require('./lib/streams');
+const { StreamHub, normRotate } = require('./lib/streams');
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 
 const config = {
@@ -260,6 +260,20 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
+  if (route === 'defaults' && method === 'GET') {
+    const d = store.data.defaults || {};
+    return json(res, 200, { rotate: normRotate(d.rotate), mirror: !!d.mirror });
+  }
+  if (route === 'defaults' && method === 'POST') {
+    const body = await readJson(req);
+    store.data.defaults = { rotate: normRotate(body.rotate), mirror: !!body.mirror };
+    if (body.applyAll) {
+      for (const id of Object.keys(store.data.streams)) hub.setOptions(id, store.data.defaults);
+    }
+    store.save();
+    return json(res, 200, { ok: true });
+  }
+
   if (route === 'streams' && method === 'GET') {
     const list = hub.list().map(s => ({ ...s, links: links(req, store.data.streams[StreamHub.id(s.user, s.streamId)]) }));
     return json(res, 200, { streams: list, ffmpeg: ffmpegOk });
@@ -285,6 +299,11 @@ async function handleAdminApi(req, res, route) {
     if (action === 'qr.svg' && method === 'GET') {
       const svg = await QRCode.toString(links(req, entry).app, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
       return send(res, 200, svg, 'image/svg+xml');
+    }
+    if (method === 'POST' && action === 'options') {
+      const body = await readJson(req);
+      hub.setOptions(id, { rotate: body.rotate, mirror: body.mirror, label: body.label });
+      return json(res, 200, { ok: true });
     }
     if (method === 'POST' && action === 'stop') { hub.setEnabled(id, false); log('Stream gestoppt', id); return json(res, 200, { ok: true }); }
     if (method === 'POST' && action === 'start') { hub.setEnabled(id, true); log('Stream freigegeben', id); return json(res, 200, { ok: true }); }
@@ -400,6 +419,7 @@ function handleUpgrade(req, socket, head) {
       label: entry.label,
       stream: links(req, entry).stream,
     }));
+    ws.send(JSON.stringify(StreamHub.config(entry)));
 
     let alive = true;
     ws.on('pong', () => { alive = true; });
