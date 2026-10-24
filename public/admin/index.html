@@ -91,6 +91,7 @@
     <div class="side-h">TAK</div>
     <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
     <a href="#teams" data-nav="teams"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
+    <a href="#links" data-nav="links"><span class="ic">🔗</span>Links &amp; QR-Codes</a>
     <div class="side-h">TAK-Server</div>
     <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
     <a href="#otsgroups" data-nav="otsgroups"><span class="ic">◫</span>Gruppen</a>
@@ -98,7 +99,6 @@
     <a href="#mesh" data-nav="mesh"><span class="ic">⌁</span>Meshtastic</a>
     <div class="side-h">Video</div>
     <a href="#video" data-nav="video"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
-    <a href="#camera" data-nav="camera"><span class="ic">📷</span>Kamera-Anmeldung</a>
     <a href="#create" data-nav="create"><span class="ic">＋</span>Stream anlegen</a>
     <div class="side-h">Einstellungen</div>
     <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
@@ -190,16 +190,6 @@
           <label>Codewort (leer = keins)</label><input name="codeword" autocomplete="off">
           <div class="row" style="margin-top:10px"><button class="pri" type="submit">Speichern</button></div>
         </form>
-        <h3>Link zur Registrierung</h3>
-        <div class="appqr">
-          <img id="joinQr" class="qr-small" alt="QR-Code zur Registrierung" style="cursor:pointer">
-          <div class="grow">
-            <p class="mut small">Neue Nutzer registrieren sich hier. Jede Anfrage muss im Reiter „Benutzer“ freigegeben werden –
-              erst dann wird ein OTS-Konto angelegt und der Nutzer bekommt Zugangsdaten, QR-Codes und Anleitung.</p>
-            <div class="link"><input id="joinUrl" readonly><button class="sm" id="joinCopy" type="button">Kopieren</button></div>
-          </div>
-        </div>
-      </div>
     </section>
 
     <section class="card" data-view="video">
@@ -211,6 +201,12 @@
           <button class="danger pri" id="stopAllBtn">Alle Streams sperren</button>
         </div>
       </div>
+      <div class="takvideo">
+        <label class="check"><input type="checkbox" id="regToggle"> Video aus WebTAK/Kamera-App erlaubt</label>
+        <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
+        <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
+      </div>
+      <p class="msg" id="liveMsg"></p>
       <div class="takvideo">
         <label class="check"><input type="checkbox" id="tvAuto"> Neue Streams automatisch in den TAK-Server</label>
         <label class="check">Eintragen <select id="tvWhen" class="sm-select">
@@ -233,34 +229,45 @@
       <p class="mut" id="empty">Noch keine Streams. Nutzer melden sich über den QR-Code unter „Kamera-Anmeldung“ an.</p>
     </section>
 
-    <section class="card" data-view="camera">
-      <div class="row between">
-        <h2>Kamera-Anmeldung <span class="mut small">(QR-Code für alle)</span></h2>
-        <div class="row">
-          <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
-          <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
-          <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
+
+    <section class="card" data-view="links">
+      <h2>Links &amp; QR-Codes</h2>
+      <form id="baseForm">
+        <label for="baseUrl">Adresse dieses Servers – gilt für <b>alle</b> Links und QR-Codes unten (und für die Video-Feeds, die OTS abholt)</label>
+        <div class="link">
+          <input id="baseUrl" placeholder="automatisch" autocomplete="off">
+          <button class="sm pri" type="submit">Speichern</button>
+          <button class="sm" type="button" id="baseAuto">Automatisch</button>
+        </div>
+      </form>
+      <p class="msg" id="regMsg"></p>
+      <div class="linkgrid">
+        <div class="lcard">
+          <h3>Registrierung <span class="mut small">– neue Nutzer</span></h3>
+          <img id="joinQr" class="qr-mid" alt="QR-Code zur Registrierung" style="cursor:pointer" title="Groß anzeigen / Drucken">
+          <p class="mut small">Nutzer stellen hier eine Anfrage; du gibst sie unter „Benutzer &amp; Anfragen“ frei. Danach bekommen sie
+            Zugangsdaten, QR-Codes und Anleitung.</p>
+          <div class="link"><input id="joinUrl" readonly><button class="sm" id="joinCopy" type="button">Kopieren</button></div>
+        </div>
+        <div class="lcard">
+          <h3>WebTAK-App <span class="mut small">– Karte, Chat, Video im Browser</span></h3>
+          <img id="eudQr" class="qr-mid" alt="QR-Code zu WebTAK" style="cursor:pointer" title="Groß anzeigen / Drucken">
+          <p class="mut small">Für Nutzer mit Zugang. Video (Handy-/Helmkamera) startet direkt in WebTAK und landet automatisch als Feed im TAK-Server.</p>
+          <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Kopieren</button></div>
         </div>
       </div>
-      <div class="appqr">
-        <img id="appQr" class="qr-small" alt="QR-Code zur Handy-Seite">
-        <div class="grow">
-          <p class="mut small">Nutzer scannen diesen Code, geben <b>Name</b> und <b>Einheit</b> ein, verbinden die Kamera und
-            starten den Stream. Jeder bekommt automatisch einen eigenen Stream – er erscheint unten in der Liste.
-            Einzelne QR-Codes pro Nutzer sind nicht nötig.</p>
-          <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
-          <form id="baseForm">
-            <label for="baseUrl">Adresse des Servers (für QR-Codes und alle Links)</label>
-            <div class="link">
-              <input id="baseUrl" placeholder="automatisch" autocomplete="off">
-              <button class="sm pri" type="submit">Speichern</button>
-              <button class="sm" type="button" id="baseAuto">Automatisch</button>
-            </div>
-          </form>
-          <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
-          <p class="msg" id="regMsg"></p>
+      <details class="fold" style="margin-top:14px">
+        <summary>Kamera-App ohne WebTAK (nur Helmkamera, alt)</summary>
+        <div class="appqr">
+          <img id="appQr" class="qr-small" alt="QR-Code zur Kamera-App">
+          <div class="grow">
+            <p class="mut small">Nur noch nötig für reine Kameras ohne TAK-Zugang: scannen, Name und Einheit eingeben, Kamera verbinden, Stream starten.
+              Normalerweise startet man Video direkt in WebTAK.</p>
+            <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
+            <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
+          </div>
         </div>
-      </div>
+      </details>
     </section>
 
     <section class="card" data-view="create">
@@ -275,14 +282,11 @@
     </section>
 
     <section class="card" data-view="webtak">
-      <h2>WebTAK-App <span class="mut small">(TAK im Browser, als App auf dem Handy)</span></h2>
-      <div class="appqr">
-        <img id="eudQr" class="qr-small" alt="QR-Code zu WebTAK">
+      <h2>WebTAK-App <span class="mut small">(Einstellungen – Link und QR-Code unter „Links &amp; QR-Codes“)</span></h2>
+      <div>
         <div class="grow">
-          <p class="mut small">Nutzer scannen diesen Code und verbinden sich mit ihren eigenen TAK-Zugangsdaten
-            (Zertifikat anfordern, .p12 / Datenpaket laden oder QR-Code vom TAK-Server). Dieser Server reicht die
-            Daten nur durch – Zertifikate bleiben auf dem Handy und werden hier nicht gespeichert.</p>
-          <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Kopieren</button></div>
+          <p class="mut small">Nutzer verbinden sich mit ihren eigenen TAK-Zugangsdaten (Zertifikat anfordern, .p12 / Datenpaket oder QR-Code vom
+            TAK-Server). Dieser Server reicht die Daten nur durch – Zertifikate bleiben auf dem Handy und werden hier nicht gespeichert.</p>
           <form id="takForm">
             <label>TAK-Server vorgeben (optional – steckt dann im QR-Code)</label>
             <div class="row">
@@ -295,7 +299,6 @@
             <input name="allowedHosts" placeholder="tak.example.com, 10.0.0.5" autocomplete="off">
             <div class="row" style="margin-top:8px">
               <button class="sm pri" type="submit">Speichern</button>
-              <button class="sm" type="button" id="eudQrBig">QR-Code groß anzeigen / Drucken</button>
             </div>
           </form>
           <p class="msg" id="eudMsg"></p>

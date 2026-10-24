@@ -155,3 +155,8 @@ input.filter { width: 220px; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #23303d; border: 1px solid #2c4256; white-space: nowrap; }
 .tag.off { opacity: .5; }
 .secret { font-family: ui-monospace, monospace; }
+/* Links & QR-Codes */
+.linkgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 12px; }
+.lcard { border: 1px solid var(--bd); border-radius: 4px; padding: 14px; background: #191d23; }
+.lcard h3 { margin: 0 0 10px; }
+.qr-mid { width: 180px; height: 180px; background: #fff; border-radius: 4px; display: block; margin: 0 auto 10px; padding: 4px; }

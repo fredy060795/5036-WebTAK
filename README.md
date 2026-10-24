@@ -36,7 +36,7 @@ Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts 
 - Neue Streams (Selbst-Anmeldung, EUD, manuell angelegt) bekommen einen Pfad aus dem Namen, z. B. `cam/alpha-10`.
 - OTS/MediaMTX holt das Bild bei Bedarf selbst über den **HLS-Link** (`…/index.m3u8`, `sourceOnDemand`) –
   dafür braucht der Streams-Server ffmpeg (im Docker-Image dabei) und eine öffentliche Adresse
-  (Admin → Kamera-Anmeldung → „Adresse des Servers“ oder `PUBLIC_URL`).
+  (Admin → Links & QR-Codes → Adresse dieses Servers, oder `PUBLIC_URL`).
 - In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
 - Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
 
@@ -278,9 +278,11 @@ verschwinden nicht mehr aus der Liste.
 ## Admin
 
 **WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste – oben das Tagesgeschäft, unten die einmaligen Einstellungen:
-- **TAK:** *Benutzer & Anfragen* (Zahl offener Anfragen, Knopf „Registrierungs-QR“), *Teams & Sichtbarkeit*
+- **TAK:** *Benutzer & Anfragen* (Zahl offener Anfragen, Knopf „Registrierungs-QR“), *Teams & Sichtbarkeit*,
+  *Links & QR-Codes* – **eine** Server-Adresse für alle Links und QR-Codes (Registrierung, WebTAK-App, alte
+  Kamera-App eingeklappt); Änderung wirkt sofort überall, auch für die Video-Feeds, die OTS abholt
 - **TAK-Server:** *OTS-Benutzer*, *Gruppen*, *Missionen*, *Meshtastic*
-- **Video:** *Video-Feeds* (WebTAK-Kameras und alle OTS-Feeds), *Kamera-Anmeldung*, *Stream anlegen*
+- **Video:** *Video-Feeds* (WebTAK-Kameras und alle OTS-Feeds; Schalter „Video erlaubt“, „Admin schaltet live“), *Stream anlegen*
 - **Einstellungen:** *OpenTAKServer & Registrierung* (Verbindung, Passwörter, Registrierung – einmal einrichten),
   *WebTAK-App*, *System* (Admin-Zugang, SMTP, Standard für neue Streams)
 

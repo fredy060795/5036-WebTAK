@@ -220,6 +220,7 @@ const VIEW_TITLES = { users: 'Benutzer & Anfragen', teams: 'Teams & Sichtbarkeit
 const TAK_TAB = { users: 'users', teams: 'teams', ots: 'settings' };
 function showView(view) {
   if (view === 'feeds') view = 'video'; // früherer eigener Bereich, jetzt zusammengelegt
+  if (view === 'camera') view = 'links';
   if (!document.querySelector(`[data-nav="${view}"]`)) view = 'users';
   for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('on', a.dataset.nav === view);
   for (const sec of document.querySelectorAll('[data-view]')) sec.classList.toggle('hidden', !sec.dataset.view.split(' ').includes(view));
@@ -276,8 +277,8 @@ $('userStartToggle').addEventListener('change', async () => {
   const on = $('userStartToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { userCanStart: on } });
-    setMsg($('regMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
-  } catch (e) { setMsg($('regMsg'), e.message); }
+    setMsg($('liveMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 
 // ======================================================================
@@ -344,28 +345,30 @@ $('liveToggle').addEventListener('change', async () => {
   const admin = $('liveToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { mode: admin ? 'admin' : 'user' } });
-    setMsg($('regMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
+    setMsg($('liveMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
     await loadRegistration();
     await refresh();
-  } catch (e) { setMsg($('regMsg'), e.message); }
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 
 $('regToggle').addEventListener('change', async () => {
   const enabled = $('regToggle').checked;
   try {
     await api('registration', { method: 'POST', body: { enabled } });
-    setMsg($('regMsg'), enabled ? 'Selbst-Anmeldung erlaubt.' : 'Selbst-Anmeldung gesperrt – neue Nutzer können sich nicht mehr anmelden.', enabled);
+    setMsg($('liveMsg'), enabled ? 'Video aus WebTAK/Kamera-App erlaubt.' : 'Gesperrt – in WebTAK und der Kamera-App kann niemand mehr ein neues Video starten.', enabled);
     loadRegistration();
-  } catch (e) { setMsg($('regMsg'), e.message); }
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 $('appUrlCopy').addEventListener('click', () => copy($('appUrl').value, $('appUrlCopy')));
 
 async function saveBase(url) {
   try {
     const r = await api('public-url', { method: 'POST', body: { url } });
-    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – QR-Code und Links sind angepasst.'
-      : 'Adresse wieder automatisch.', true);
+    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – alle Links und QR-Codes sind angepasst.'
+      : 'Adresse wieder automatisch – alle Links und QR-Codes sind angepasst.', true);
     await loadRegistration();
+    await loadTak();
+    if (window.loadTakUsers) window.loadTakUsers();
     await refresh();
     me = await api('me');
   } catch (e) { setMsg($('regMsg'), e.message); }
@@ -1072,7 +1075,7 @@ function showEudQr() {
   } });
   openModal('QR-Code WebTAK', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
 }
-$('eudQrBig').addEventListener('click', showEudQr);
+$('eudQr').addEventListener('click', showEudQr);
 $('eudQr').addEventListener('click', showEudQr);
 $('eudQr').style.cursor = 'pointer';
 $('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));
