@@ -644,3 +644,37 @@ test('Admin schaltet live: Bereit, Live, Live aus', async () => {
   assert.equal((await api('registration')).data.liveMode, 'user');
   p.ws.close();
 });
+
+test('Nutzer startet selbst (wenn erlaubt) und Admin bekommt Hinweise', async () => {
+  const seq0 = (await api('streams')).data.eventSeq;
+  await api('live-mode', { method: 'POST', body: { mode: 'admin', userCanStart: true } });
+  const reg = await (await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Selbststarter', unit: 'Zug 3' }) })).json();
+  const id = reg.u + '/' + reg.s;
+  const p = publisher({ user: reg.u, streamId: reg.s }, reg.k);
+  const live0 = await p.waitFor('live');
+  assert.equal(live0.userCanStart, true);
+  p.ws.send(JSON.stringify({ type: 'state', ready: true }));
+  await sleep(100);
+
+  p.messages.length = 0;
+  p.ws.send(JSON.stringify({ type: 'golive', on: true }));
+  assert.equal((await p.waitFor('live')).on, true);
+  const st = (await api('streams')).data.streams.find(x => x.streamId === reg.s);
+  assert.equal(st.onAir, true);
+
+  const ev = (await api('streams?since=' + seq0)).data.events.filter(e => e.id === id);
+  assert.deepEqual(ev.map(e => e.kind), ['register', 'camera', 'live']);
+  assert.match(ev[1].text, /Selbststarter – Zug 3 hat die Kamera aktiviert/);
+
+  // Erlaubnis entzogen: Start vom Handy wird ignoriert
+  await api(`streams/${reg.u}/${reg.s}/live`, { method: 'POST', body: { on: false } });
+  await api('live-mode', { method: 'POST', body: { userCanStart: false } });
+  p.messages.length = 0;
+  p.ws.send(JSON.stringify({ type: 'golive', on: true }));
+  const answer = await p.waitFor('live');
+  assert.equal(answer.on, false);
+  assert.equal(answer.userCanStart, false);
+  assert.equal((await api('streams')).data.streams.find(x => x.streamId === reg.s).onAir, false);
+  p.ws.close();
+  await api('live-mode', { method: 'POST', body: { mode: 'user' } });
+});

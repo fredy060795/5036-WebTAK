@@ -202,6 +202,7 @@ async function handleRegister(req, res) {
   list.push(now);
   registrations.set(ip, list);
   log('Selbst-Anmeldung', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
+  hub.event(StreamHub.id(entry.user, entry.streamId), 'register', `${entry.label} hat sich angemeldet`);
   return json(res, 200, { u: entry.user, s: entry.streamId, k: entry.key, label: entry.label });
 }
 
@@ -293,6 +294,7 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, {
       enabled: registrationEnabled(),
       liveMode: hub.liveMode(),
+      userCanStart: hub.userCanStart(),
       appUrl: publicBase(req) + '/app/',
       publicUrl: (store.data.settings || {}).publicUrl || '',           // im Admin eingestellt
       autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
@@ -368,7 +370,10 @@ async function handleAdminApi(req, res, route) {
 
   if (route === 'streams' && method === 'GET') {
     const list = hub.list().map(s => ({ ...s, links: links(req, store.data.streams[StreamHub.id(s.user, s.streamId)]) }));
-    return json(res, 200, { streams: list, ffmpeg: ffmpegOk });
+    // Hinweise seit der letzten Abfrage; ohne "since" nur die aktuelle Nummer (alte nicht erneut zeigen)
+    const since = Number(new URL(req.url, 'http://x').searchParams.get('since'));
+    const events = Number.isFinite(since) && since >= 0 ? hub.eventsSince(since) : [];
+    return json(res, 200, { streams: list, ffmpeg: ffmpegOk, events, eventSeq: hub.eventSeq });
   }
   if (route === 'streams' && method === 'POST') {
     const body = await readJson(req);
@@ -378,11 +383,13 @@ async function handleAdminApi(req, res, route) {
   }
   if (route === 'live-mode' && method === 'POST') {
     const body = await readJson(req);
-    store.data.settings = { ...(store.data.settings || {}), liveMode: body.mode === 'user' ? 'user' : 'admin' };
+    store.data.settings = { ...(store.data.settings || {}) };
+    if (body.mode !== undefined) store.data.settings.liveMode = body.mode === 'user' ? 'user' : 'admin';
+    if (body.userCanStart !== undefined) store.data.settings.userCanStart = !!body.userCanStart;
     store.save();
     hub.broadcastLive();
     log('Live-Modus', hub.liveMode() === 'admin' ? 'Admin schaltet live' : 'Nutzer startet selbst');
-    return json(res, 200, { ok: true, mode: hub.liveMode() });
+    return json(res, 200, { ok: true, mode: hub.liveMode(), userCanStart: hub.userCanStart() });
   }
   if (route === 'streams/live-off-all' && method === 'POST') {
     for (const id of Object.keys(store.data.streams)) hub.setOnAir(id, false);
@@ -586,7 +593,24 @@ function handleUpgrade(req, socket, head) {
           if (msg.phone !== undefined) live.phone = String(msg.phone).slice(0, 120);
           if (msg.resolution !== undefined) live.resolution = String(msg.resolution).slice(0, 20);
         } else if (msg.type === 'state') {
+          const was = live.ready;
           live.ready = !!msg.ready; // Kamera am Handy verbunden
+          if (!was && live.ready) hub.event(id, 'camera', `${hub.labelOf(id)} hat die Kamera aktiviert`);
+        } else if (msg.type === 'golive') {
+          // Nutzer drückt "Stream starten"/"Stream stoppen"
+          if (hub.liveMode() === 'admin') {
+            if (hub.userCanStart()) {
+              if (!!msg.on !== live.onAir) {
+                hub.setOnAir(id, !!msg.on);
+                hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} hat den Stream ${msg.on ? 'gestartet' : 'beendet'}`);
+                log(msg.on ? 'Nutzer startet' : 'Nutzer beendet', id);
+              }
+            } else {
+              hub.sendLive(id); // nicht erlaubt: Handy bleibt beim aktuellen Zustand
+            }
+          } else {
+            hub.event(id, msg.on ? 'live' : 'stop', `${hub.labelOf(id)} hat den Stream ${msg.on ? 'gestartet' : 'beendet'}`);
+          }
         } else if (msg.type === 'options') {
           // Nutzer richtet am Handy selbst aus (Drehung/Spiegeln); Admin sieht und kann es ändern
           hub.setOptions(id, { rotate: msg.rotate, mirror: msg.mirror });

@@ -151,7 +151,7 @@ function readLink() {
 let link = readLink();
 let ws = null, wsOk = false, wsRetry = 0, wsTimer = null, blockedState = null;
 let device = null, cmdChr = null, camConnected = false;
-let liveMode = 'admin', onAir = false; // Admin schaltet live (Standard) bzw. Nutzer startet selbst
+let liveMode = 'admin', onAir = false, userCanStart = false; // Admin schaltet live (Standard) bzw. Nutzer startet selbst
 let wantLive = false, resumeLive = false, frame = null, sent = [], wakeLock = null;
 let writeChain = Promise.resolve();
 let lastPreview = 0;
@@ -233,8 +233,9 @@ function setSteps() {
   $(isIOS ? 'iosHelp' : 'noBle').classList.toggle('hidden', !noBt || camConnected);
   $('camBtn').classList.toggle('hidden', !camConnected);
   const adminMode = liveMode === 'admin';
-  $('liveBtn').textContent = wantLive ? 'Stream stoppen' : 'Stream starten';
-  $('liveBtn').className = 'big ' + (wantLive ? 'danger' : 'pri') + (camConnected && !adminMode ? '' : ' hidden');
+  const running = adminMode ? onAir : wantLive;
+  $('liveBtn').textContent = running ? 'Stream stoppen' : 'Stream starten';
+  $('liveBtn').className = 'big ' + (running ? 'danger' : 'pri') + (camConnected && (!adminMode || userCanStart) ? '' : ' hidden');
   // Admin-Modus: statt Knopf eine Anzeige, ob live gesendet wird
   const ls = $('liveState');
   ls.classList.toggle('hidden', !adminMode || !wsOk);
@@ -244,7 +245,7 @@ function setSteps() {
   } else if (onAir) {
     ls.innerHTML = 'LIVE – wird gesendet<small>Seite geöffnet lassen</small>';
   } else {
-    ls.innerHTML = 'Bereit<small>Der Admin schaltet den Stream live, wenn er gebraucht wird.'
+    ls.innerHTML = 'Bereit<small>' + (userCanStart ? 'Selbst starten oder warten, bis der Admin live schaltet.' : 'Der Admin schaltet den Stream live, wenn er gebraucht wird.')
       + (isIOS ? '' : ' Tipp: ATAK und diese Seite im geteilten Bildschirm nutzen.') + '</small>';
   }
   $('liveDot').classList.toggle('hidden', !(wantLive && camConnected && wsOk));
@@ -285,6 +286,7 @@ function connectServer() {
       }
     } else if (msg.type === 'live') {
       liveMode = msg.mode === 'user' ? 'user' : 'admin';
+      userCanStart = !!msg.userCanStart;
       const was = onAir;
       onAir = !!msg.on;
       if (liveMode === 'admin') {
@@ -719,7 +721,14 @@ for (const b of document.querySelectorAll('#alignCard [data-rot]')) {
 }
 $('mirrorBtn').onclick = () => setAlignment(rotate, !mirror);
 $('bleBtn').onclick = () => connectCamera();
-$('liveBtn').onclick = () => (wantLive ? stopLive() : startLive());
+$('liveBtn').onclick = () => {
+  const send = on => { if (ws && ws.readyState === 1) ws.send(JSON.stringify({ type: 'golive', on })); };
+  if (liveMode === 'admin') {
+    send(!onAir); // Server schaltet live und meldet es dem Admin
+    return;
+  }
+  if (wantLive) { stopLive(); send(false); } else { startLive(); send(true); }
+};
 
 
 function showRegister(text) {

@@ -70,6 +70,7 @@
     <h1>Helm Camera Streams</h1>
     <div class="row">
       <span class="mut small" id="summary"></span>
+      <button id="notifyBtn" title="Desktop-Benachrichtigungen, wenn jemand die Kamera aktiviert">🔔 Hinweise</button>
       <button id="settingsBtn">Einstellungen</button>
       <button id="logoutBtn">Abmelden</button>
     </div>
@@ -81,6 +82,7 @@
         <h2>QR-Code für alle Nutzer</h2>
         <div class="row">
           <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
+          <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
           <label class="check"><input type="checkbox" id="regToggle"> Selbst-Anmeldung erlaubt</label>
         </div>
       </div>
@@ -148,6 +150,9 @@
 
 <!-- Fenster zum Ansehen -->
 <div id="windows"></div>
+
+<!-- Hinweise (Popups), z. B. "Jan hat die Kamera aktiviert" -->
+<div id="toasts" aria-live="polite"></div>
 
 <template id="settingsTpl">
   <form id="credForm">

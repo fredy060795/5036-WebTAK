@@ -90,6 +90,13 @@ gilt vor `PUBLIC_URL` und bleibt nach einem Neustart erhalten.
 Nutzer starten den Stream selbst mit „Stream starten“. Die Seite muss geöffnet bleiben – Browser stoppen Kamera und
 Bluetooth, wenn die Seite in den Hintergrund geht. Auf Android ATAK und die Seite im **geteilten Bildschirm** nutzen.
 
+**Nutzer dürfen selbst starten** (nur bei „Admin schaltet live“): Nutzer sehen zusätzlich „Stream starten“. Der Admin
+kann jederzeit „■ Live aus“ drücken.
+
+**Hinweise:** Meldet sich jemand an, aktiviert die Kamera oder startet selbst, erscheint im Admin ein Popup mit Ton
+(„Ansehen“, „▶ Live“). Mit **🔔 Hinweise** zusätzlich Desktop-Benachrichtigungen erlauben – die kommen auch, wenn das
+Admin-Fenster im Hintergrund ist.
+
 **Selbst-Anmeldung erlaubt** (Schalter oben im Admin) sperrt bei Bedarf neue Anmeldungen; laufende Streams bleiben.
 Wer gelöscht wird, kann sich mit dem allgemeinen QR-Code neu anmelden – soll das nicht gehen, die Selbst-Anmeldung
 sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anlegen.
