@@ -25,9 +25,32 @@
     renderUsers();
     if (!$('takTeams').dataset.dirty) { teamsDraft = state.teams.map(t => ({ ...t })); blocksDraft = state.blocks.map(b => [...b]); renderTeams(); }
     fillSettings();
-    if (!state.otsReady) msg('OpenTAKServer ist noch nicht verbunden – unter „OpenTAKServer & Registrierung“ eintragen. Ohne OTS können Anfragen nicht freigegeben werden.');
+    if (!state.otsReady) msg('OpenTAKServer ist noch nicht verbunden – unter „Einstellungen → OpenTAKServer & Registrierung“ eintragen. Ohne OTS können Anfragen nicht freigegeben werden.');
   }
   window.loadTakUsers = load;
+
+  // Registrierungs-QR für den Alltag direkt bei den Benutzern (Einstellungen dazu unter „Einstellungen“)
+  $('takJoinBtn').addEventListener('click', () => {
+    const url = (state && state.joinUrl) || location.origin + '/join/';
+    const img = el('img', { class: 'qr', alt: 'QR-Code zur Registrierung', src: '/api/admin/takusers/join-qr.svg?t=' + Date.now() });
+    const print = el('button', { type: 'button', text: 'Drucken', onclick: () => {
+      const w = window.open('', '_blank', 'width=420,height=560');
+      if (!w) return;
+      const d = w.document;
+      d.title = 'WebTAK Access';
+      d.body.style.cssText = 'font-family:system-ui,sans-serif;text-align:center';
+      const h = d.createElement('h1'); h.textContent = 'WebTAK Access';
+      const i = d.createElement('img'); i.src = img.src; i.style.width = '320px';
+      const t = d.createElement('p'); t.textContent = 'Scan to request your WebTAK access – ' + url;
+      d.body.append(h, i, t);
+      i.onload = () => w.print();
+    } });
+    const reg = state && state.registration;
+    openModal('Registrierung',
+      el('p', { class: 'mut small', text: reg && !reg.open ? 'Achtung: Die Registrierung ist gerade geschlossen (Einstellungen → OpenTAKServer & Registrierung).'
+        : 'Neue Nutzer scannen diesen Code und stellen eine Anfrage – du gibst sie unter „Benutzer & Anfragen“ frei.' }),
+      img, el('div', { class: 'link' }, ...Object.values(copyField(url))), el('div', { class: 'row', style: 'margin-top:10px' }, print));
+  });
 
   // ---------------- Tabs ----------------
   for (const b of document.querySelectorAll('[data-takt]')) {
@@ -137,7 +160,7 @@
       more.append(el('button', { class: 'sm', type: 'button', text: 'Neuer ATAK-QR', onclick: () => run('qr', { method: 'POST', body: {} }, () => setMsg(out, 'Neuer QR-Code erzeugt.', true)) }));
     }
     more.append(el('button', { class: 'sm', type: 'button', text: 'Zugangslink kopieren', onclick: async ev => { const r = await tapi(`user/${u.id}/link`); copy(r.link, ev.target); } }));
-    more.append(el('button', { class: 'sm', type: 'button', text: 'Löschen', onclick: () => {
+    more.append(el('button', { class: 'sm admin-only', type: 'button', text: 'Löschen', onclick: () => {
       if (confirm(`${u.callsign} löschen?${u.username ? ' Das OTS-Konto wird ebenfalls gelöscht.' : ''}`)) run('', { method: 'DELETE' });
     } }));
     f.append(btns, more, out);

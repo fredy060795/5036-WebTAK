@@ -296,9 +296,19 @@
     if (!profile.callsign) { openPopup('me'); toast('Please enter a callsign first.'); return; }
     msg('');
     previewHidden = false;
-    $('phoneBtn').disabled = $('bleBtn').disabled = true;
+    $('phoneBtn').disabled = $('bleBtn').disabled = $('screenBtn').disabled = true;
     try {
-      if (kind === 'phone') {
+      if (kind === 'screen') {
+        // Bildschirm teilen (nur Desktop-Browser; Handy-Browser erlauben das nicht)
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
+        source = 'screen';
+        await attach(stream);
+        $('vidCam').textContent = 'Screen';
+        const track = stream.getVideoTracks()[0];
+        if (track) track.addEventListener('ended', () => { if (running) stop(); }); // im Browser „Freigabe beenden“
+        clearInterval(captureTimer);
+        captureTimer = setInterval(captureFrame, 1000 / PHONE_FPS);
+      } else if (kind === 'phone') {
         let saved = '';
         try { saved = localStorage.getItem('eud.camera') || ''; } catch (e) { /* privat */ }
         let stream;
@@ -328,7 +338,7 @@
       if (!(e.name === 'NotFoundError' && /cancel/i.test(e.message))) msg(e.message);
       stop(true);
     } finally {
-      $('phoneBtn').disabled = false;
+      $('phoneBtn').disabled = $('screenBtn').disabled = false;
       render();
     }
   }
@@ -406,9 +416,10 @@
       vid.classList.add('hidden');
       say(text);
       const alt = $('vwAlt');
-      alt.textContent = isHttp ? 'Open in new tab' : 'Copy address (VLC)';
+      const tab = isHttp && !/\.m3u8(\?|$)/i.test(url); // eine .m3u8 im Tab spielt der Browser meist nicht ab
+      alt.textContent = tab ? 'Open in new tab' : 'Copy address (VLC)';
       alt.onclick = () => {
-        if (isHttp) window.open(url, '_blank', 'noopener');
+        if (tab) window.open(url, '_blank', 'noopener');
         else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { alt.textContent = 'Copied'; }, () => prompt('Stream address:', url));
         else prompt('Stream address:', url);
       };
@@ -426,16 +437,24 @@
       img.classList.add('hidden');
       vid.classList.remove('hidden');
       const via = mediaProxy(src); // gleiche Herkunft: kein Mixed Content, kein CORS
-      if (vid.canPlayType('application/vnd.apple.mpegurl')) { // Safari/iPhone: eingebaut
+      // Woran es liegt (Antwort des Video-Servers über die Durchreiche) – statt nur „nicht erreichbar“
+      const why = async fallback => {
+        const r = await fetch(via, { cache: 'no-store' }).catch(() => null);
+        const t = r && !r.ok ? (await r.text().catch(() => '')).slice(0, 160) : '';
+        giveUp(t ? `${fallback} (${t})` : fallback);
+      };
+      let Hls = null;
+      try { Hls = await loadHlsLib(); } catch (e) { /* dann eingebaut */ }
+      // hls.js bevorzugt; den eingebauten Player (Safari/iPhone, neuere Chrome/Edge) nur, wenn hls.js nicht geht –
+      // der eingebaute in Chrome/Edge spielt die MediaMTX-Streams des TAK-Servers oft nicht ab
+      if (!Hls || !Hls.isSupported()) {
+        if (!vid.canPlayType('application/vnd.apple.mpegurl')) return giveUp('This browser cannot play HLS video.');
         vid.onloadeddata = () => say('');
-        vid.onerror = () => giveUp('Stream not reachable (HLS). ATAK/iTAK may still play it via RTSP.');
+        vid.onerror = () => why('Stream not reachable (HLS). ATAK/iTAK may still play it via RTSP.');
         vid.src = via;
         vid.play().catch(() => {});
         return;
       }
-      let Hls;
-      try { Hls = await loadHlsLib(); } catch (e) { return giveUp('HLS player could not be loaded.'); }
-      if (!Hls || !Hls.isSupported()) return giveUp('This browser cannot play HLS video.');
       const h = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 2, manifestLoadingMaxRetry: 2 });
       hls = h;
       h.on(Hls.Events.MANIFEST_PARSED, () => { say(''); vid.play().catch(() => {}); });
@@ -443,9 +462,8 @@
         if (!data.fatal || hls !== h) return;
         h.destroy();
         hls = null;
-        giveUp(data.type === Hls.ErrorTypes.NETWORK_ERROR
-          ? 'Stream not reachable via HLS (is the camera live?). ATAK/iTAK may still play it via RTSP.'
-          : 'Stream format cannot be played in the browser.');
+        if (data.type === Hls.ErrorTypes.NETWORK_ERROR) why('Stream not reachable via HLS (is the camera live?). ATAK/iTAK may still play it via RTSP.');
+        else giveUp('Stream format cannot be played in the browser.');
       });
       h.loadSource(via);
       h.attachMedia(vid);
@@ -518,6 +536,53 @@
 
   $('phoneBtn').addEventListener('click', () => start('phone'));
   $('bleBtn').addEventListener('click', () => start('ble'));
+  $('screenBtn').addEventListener('click', () => start('screen'));
+  // Bildschirm teilen nur, wo der Browser es kann (PC); auf dem Handy bleibt der Knopf weg
+  const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && window.isSecureContext && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+  $('screenBtn').classList.toggle('hidden', !canShare);
+
+  // Drohne / externe Kamera: RTMP-Adresse mit dem TAK-Login (MediaMTX im TAK-Server legt den Feed selbst an)
+  function fillDroneServers() {
+    const list = window.eud.getServers().filter(x => x.host);
+    $('droneSrv').replaceChildren(...list.map(x => new Option(x.name || x.host, x.id)));
+    $('droneSrvRow').classList.toggle('hidden', list.length < 2);
+    $('droneBox').classList.toggle('hidden', !list.length);
+  }
+  const droneUrl = (host, user, pw) => {
+    const slug = String(profile.callsign || user).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
+    const path = 'drone-' + slug;
+    $('droneUrl').value = `rtmp://${host}:1935/${path}?user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pw)}`;
+    $('dronePath').textContent = path;
+    $('droneOut').classList.remove('hidden');
+  };
+  // Über die Zugangsseite angemeldet: Zugangsdaten kennt dieser Server schon – kein Passwort eintippen
+  async function droneFromAccess() {
+    let token = '';
+    try { token = localStorage.getItem('tak.access') || ''; } catch (e) { /* privat */ }
+    if (!token) return false;
+    const me = await fetch('/api/access/me', { headers: { 'X-Access-Token': token } }).then(r => r.ok ? r.json() : null).catch(() => null);
+    if (!me || me.status !== 'active' || !me.password || !me.host) return false;
+    droneUrl(me.host, me.username, me.password);
+    $('droneAsk').classList.add('hidden');
+    $('droneBox').classList.remove('hidden');
+    return true;
+  }
+  $('droneBox').addEventListener('toggle', () => { fillDroneServers(); if ($('droneBox').open) droneFromAccess(); });
+  document.addEventListener('eud-popup', e => { if (e.detail === 'video') { fillDroneServers(); droneFromAccess(); } });
+  $('droneMake').addEventListener('click', () => {
+    const srv = window.eud.getServers().find(x => x.id === $('droneSrv').value) || window.eud.getServers().find(x => x.host);
+    if (!srv) return toast('Add a TAK server first.');
+    const user = srv.username || (srv.certInfo && srv.certInfo.cn) || '';
+    const pw = $('dronePw').value;
+    if (!user || !pw) return toast('TAK user and password are needed (user from the server settings).');
+    droneUrl(srv.host, user, pw);
+    $('dronePw').value = '';
+  });
+  $('droneCopy').addEventListener('click', () => {
+    const v = $('droneUrl').value;
+    if (navigator.clipboard) navigator.clipboard.writeText(v).then(() => toast('Address copied.'), () => $('droneUrl').select());
+    else $('droneUrl').select();
+  });
   $('vidStop').addEventListener('click', () => stop());
   $('btnVideo').addEventListener('click', () => openPopup('video'));
   $('livePreview').addEventListener('click', e => { if (!e.target.closest('button')) openPopup('video'); });

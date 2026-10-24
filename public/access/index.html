@@ -116,6 +116,28 @@
 
     </section>
 
+    <section class="card" id="droneCard">
+      <h2>Drone / external camera → TAK video</h2>
+      <p class="mut small">Send a live picture from a DJI drone, an action camera or another app directly into TAK. It appears for everyone
+        under <b>Video</b> as <b id="droneName"></b> (ATAK, iTAK, WinTAK and WebTAK). This address contains your login – keep it private.</p>
+      <label class="mut small">RTMP address (DJI, OBS, Larix …)</label>
+      <div class="row"><input id="droneRtmp" readonly class="grow" style="font-family:ui-monospace,monospace;font-size:13px"><button type="button" id="droneCopy">Copy</button></div>
+      <details style="margin-top:10px"><summary class="small">Other protocols (RTSP, SRT)</summary>
+        <p class="small mut">RTSP: <span class="secret" id="droneRtsp"></span><br>SRT: <span class="secret" id="droneSrt"></span></p></details>
+      <h3>DJI drones</h3>
+      <ol class="steps small">
+        <li><b>DJI Fly</b> (Mini, Air, Mavic): during the flight tap <span class="path">⋯</span> → <span class="path">Transmission</span> →
+          <span class="path">Live Streaming Platforms</span> → <span class="path">RTMP</span>, paste the address above, start.</li>
+        <li><b>DJI Pilot 2</b> (Enterprise, Matrice): <span class="path">⋯</span> → <span class="path">Live Stream</span> → <span class="path">RTMP</span>
+          (custom), paste the address, start.</li>
+        <li>Not every model/app version offers live streaming. Then use screen streaming (below) on the remote controller or phone.</li>
+      </ol>
+      <h3>Phone or controller screen</h3>
+      <p class="small mut">Browsers cannot capture a phone screen. Use an app such as <b>Larix Screencaster</b> (Android) or
+        <b>Larix Broadcaster</b>, add a connection with the RTMP address above and start. On a PC you can share the screen directly in WebTAK
+        (Video → Share screen).</p>
+    </section>
+
     <section class="card">
       <h2>What you can do with TAK</h2>
       <div class="features">
@@ -229,6 +251,18 @@ async function load() {
     fetch('/api/access/atak-link', { headers: { 'X-Access-Token': token } }).then(r => r.json()).then(d => { if (d.link) $('atakDirect').href = d.link; }).catch(() => {});
   } else $('atakDirectBox').classList.add('hidden');
   const p = new URLSearchParams({ host: me.host, port: me.streamPort, proto: 'ssl', enroll: me.enrollPort, username: me.username, password: me.password, callsign: me.callsign });
+  // Drohne/externe Kamera: MediaMTX im TAK-Server nimmt Streams mit dem TAK-Login an und legt den Feed selbst an
+  const slug = String(me.callsign || me.username).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
+  const path = 'drone-' + slug;
+  if (me.password && me.host) {
+    const u = encodeURIComponent(me.username), pw = encodeURIComponent(me.password);
+    $('droneName').textContent = path;
+    $('droneRtmp').value = `rtmp://${me.host}:1935/${path}?user=${u}&pass=${pw}`;
+    $('droneRtsp').textContent = `rtsp://${u}:${pw}@${me.host}:8554/${path}`;
+    $('droneSrt').textContent = `srt://${me.host}:8890?streamid=publish:${path}:${u}:${pw}`;
+    $('droneCopy').onclick = () => navigator.clipboard.writeText($('droneRtmp').value).then(() => { $('droneCopy').textContent = 'Copied'; }, () => $('droneRtmp').select());
+  } else $('droneCard').classList.add('hidden');
+  p.set('t', token); // WebTAK merkt sich den Zugang (z. B. für die Drohnen-Adresse ohne Passwort-Eingabe)
   $('eudLink').href = '/eud/#' + p;
 
 }

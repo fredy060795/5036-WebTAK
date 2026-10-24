@@ -26,6 +26,17 @@ after(() => {
   fs.rmSync(dir, { recursive: true, force: true });
 });
 
+test('Altes Standard-Passwort "atakatak" wird beim Start auf zufällig umgestellt (einmalig)', () => {
+  const d = fs.mkdtempSync(path.join(os.tmpdir(), 'tu-pw-'));
+  const st = new Store(d);
+  st.data.tak = { ots: { url: '', userPassword: 'atakatak' } };
+  assert.equal(new TakUsers(st).t.ots.userPassword, '');
+  // danach bewusst gesetzt: bleibt
+  st.data.tak.ots.userPassword = 'atakatak';
+  assert.equal(new TakUsers(st).t.ots.userPassword, 'atakatak');
+  fs.rmSync(d, { recursive: true, force: true });
+});
+
 test('OTS-Client: Anmeldung mit falschem und richtigem Passwort', async () => {
   await assert.rejects(new Ots({ url, username: 'otsadmin', password: 'falsch' }).test(), /login failed/);
   const r = await new Ots({ url, username: 'otsadmin', password: 'otspass' }).test();
@@ -62,7 +73,8 @@ test('Freigabe nur mit OTS; legt Konto, Gruppen und QR an; Rufname überschreibe
   assert.equal(u.status, 'active');
   assert.equal(u.callsign, 'Alpha 10');
   assert.equal(u.username, 'alpha_10');
-  assert.equal(u.password, 'atakatak', 'Standard-Passwort für neue Konten');
+  assert.match(u.password, /^[A-Za-z0-9]{14}$/, 'neue Konten: zufälliges Passwort');
+  assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.match(u.atakQr, /^tak:\/\/com\.atakmap\.app\/enroll\?host=tak\.example\.com:8089&username=alpha_10&token=/);
   // Ohne Sperren: keine Gruppe – wie von Hand angelegte OTS-Benutzer (OTS nimmt dann __ANON__)
@@ -137,11 +149,14 @@ test('Sperren, Entsperren, neues Passwort, Löschen', async () => {
   // Passwort-Einstellung leer = zufällig; ungültige Werte abgelehnt
   assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'kurz' }), /8–64/);
   assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'a&b<c>defgh' }), /OTS/);
+  // festes Passwort bleibt als Option möglich
+  tu.setOts({ ...tu.t.ots, userPassword: 'feldtest1' });
+  await tu.newPassword(horst.id);
+  assert.equal(horst.password, 'feldtest1');
   tu.setOts({ ...tu.t.ots, userPassword: '' });
   await tu.newPassword(horst.id);
   assert.match(horst.password, /^[A-Za-z0-9]{14}$/);
   assert.equal(mock.state.users.alpha_10.password, horst.password);
-  tu.setOts({ ...tu.t.ots, userPassword: 'atakatak' });
   await tu.remove(horst.id);
   assert.equal(mock.state.users.alpha_10, undefined);
   assert.equal(tu.list().some(u => u.username === 'alpha_10'), false);

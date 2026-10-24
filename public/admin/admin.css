@@ -155,3 +155,35 @@ input.filter { width: 220px; }
 .tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #23303d; border: 1px solid #2c4256; white-space: nowrap; }
 .tag.off { opacity: .5; }
 .secret { font-family: ui-monospace, monospace; }
+/* Links & QR-Codes */
+.linkgrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 14px; margin-top: 12px; }
+.lcard { border: 1px solid var(--bd); border-radius: 4px; padding: 14px; background: #191d23; }
+.lcard h3 { margin: 0 0 10px; }
+.qr-mid { width: 180px; height: 180px; background: #fff; border-radius: 4px; display: block; margin: 0 auto 10px; padding: 4px; }
+/* Helfer: nur Freigaben und Nutzer anlegen */
+body.helper .admin-only { display: none !important; }
+body:not(.helper) .helper-only { display: none !important; }
+.side a .admin-only, .side a .helper-only { display: inline; }
+/* Hinweise (🔔) */
+.bell { position: relative; font-size: 17px; padding: 6px 12px; }
+.nbadge { position: absolute; top: -4px; right: -4px; min-width: 18px; height: 18px; padding: 0 5px; border-radius: 9px; background: #e53935; color: #fff; font-size: 11px; font-weight: 700; line-height: 18px; }
+#notePanel { position: fixed; top: 58px; right: 12px; z-index: 2100; width: min(420px, calc(100vw - 24px)); max-height: calc(100vh - 80px); display: flex; flex-direction: column;
+  background: var(--card); border: 1px solid var(--bd); border-top: 3px solid var(--acc); border-radius: 4px; box-shadow: var(--shadow); }
+.np-head { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--bd); }
+.np-head b { flex: 1; font-size: 15px; }
+#noteList { overflow-y: auto; flex: 1; }
+.note { display: flex; gap: 10px; padding: 10px 12px; border-bottom: 1px solid var(--bd); }
+.note.unread { background: #1d2a36; }
+.note-ic { font-size: 18px; width: 24px; text-align: center; }
+.note-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 14px; }
+.np-foot { padding: 8px 12px; border-top: 1px solid var(--bd); display: grid; gap: 2px; }
+.np-foot .check { font-size: 13px; margin: 2px 0; }
+
+/* Sende-Adressen (Drohne/OBS) */
+table.kv { border-collapse: collapse; margin: 8px 0; width: 100%; }
+table.kv th { text-align: left; font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; vertical-align: top; }
+table.kv td { padding: 4px 0; word-break: break-all; }
+
+/* Hinweis-Popups nur zur Info: kompakt, verschwinden von selbst */
+.toast.info { cursor: pointer; padding: 8px 12px; transition: opacity .3s, transform .3s; }
+.toast.info.gone { opacity: 0; transform: translateX(20px); }

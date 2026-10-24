@@ -63,7 +63,8 @@ const view = store.get('eud.view', [51.1, 10.4, 6]);
 // Drehbare Karte (leaflet-rotate): Kompass schaltet zwischen Nord oben und Blickrichtung oben
 const map = L.map('map', {
   zoomControl: false, attributionControl: true, worldCopyJump: true,
-  rotate: true, bearing: 0, touchRotate: false, shiftKeyRotate: false, rotateControl: false, compassBearing: false,
+  // Drehen mit zwei Fingern (wie ATAK), am PC mit Umschalt + Mausrad
+  rotate: true, bearing: 0, touchRotate: true, shiftKeyRotate: true, rotateControl: false, compassBearing: false,
 }).setView([view[0], view[1]], view[2]);
 map.attributionControl.setPosition('bottomleft');
 // Kartenquellen: über den eigenen Server (gleiche Herkunft, dort zwischengespeichert) oder eigene URL
@@ -1953,8 +1954,12 @@ function stopHeading() {
   window.removeEventListener('deviceorientation', onOrientation);
 }
 
+// Kompass antippen: von Hand gedrehte Karte wieder nach Norden; ist sie schon genordet, Blickrichtung oben (HDG)
 $('compass').addEventListener('click', () => {
-  if (compassMode === 'north') {
+  const turned = Math.abs(((northAngle() + 180) % 360) - 180) > 0.5;
+  if (compassMode === 'north' && turned) {
+    resetNorth();
+  } else if (compassMode === 'north') {
     compassMode = 'heading';
     startHeading();
     if (heading != null) headingUp(heading);
@@ -1963,10 +1968,41 @@ $('compass').addEventListener('click', () => {
   } else {
     compassMode = 'north';
     stopHeading();
-    map.setBearing(0);
+    resetNorth();
   }
   updateCompass();
 });
+function resetNorth() {
+  map.setBearing(0);
+  if (window.view3d && view3d.active) view3d.map().easeTo({ bearing: 0, duration: 300 });
+}
+// Von Hand gedreht (zwei Finger / Umschalt+Mausrad): Blickrichtungs-Modus beenden, sonst dreht der Kompass zurück
+function manualRotate() {
+  if (compassMode !== 'heading') return;
+  compassMode = 'north';
+  stopHeading();
+  updateCompass();
+}
+// Zwei Finger: erst ab ~12° bewusster Drehung drehen, damit die Karte beim Zoomen nicht wackelt
+(() => {
+  const orig = map.setBearing.bind(map);
+  let gesture = null;
+  const box = map.getContainer();
+  box.addEventListener('touchstart', e => { if (e.touches.length === 2) gesture = { start: map.getBearing(), latched: false }; }, { passive: true });
+  box.addEventListener('touchend', e => { if (e.touches.length < 2) gesture = null; }, { passive: true });
+  box.addEventListener('touchcancel', () => { gesture = null; }, { passive: true });
+  map.setBearing = function (deg) {
+    if (gesture && !gesture.latched) {
+      const diff = Math.abs((((deg - gesture.start) % 360) + 540) % 360 - 180);
+      if (diff < 12) return this;
+      gesture.latched = true;
+    }
+    return orig(deg);
+  };
+})();
+map.getContainer().addEventListener('touchmove', e => { if (e.touches.length === 2) manualRotate.pending = true; }, { passive: true });
+map.getContainer().addEventListener('wheel', e => { if (e.shiftKey) manualRotate(); }, { passive: true });
+map.on('rotate', () => { if (manualRotate.pending) { manualRotate.pending = false; manualRotate(); } });
 // Ohne Kompass-Sensor: beim Gehen/Fahren nach GPS-Kurs drehen
 setInterval(() => {
   if (compassMode === 'heading' && heading == null && me && Number.isFinite(me.course) && me.speed > 0.5) headingUp(me.course);
@@ -2014,6 +2050,7 @@ function setPitch(p, fromView) {
       map.invalidateSize({ pan: true, animate: false });
     }
     el.style.transform = p ? `rotateX(${p}deg)` : '';
+    el.style.setProperty('--tilt', p + 'deg'); // Symbole stehen dagegen aufrecht (CSS)
   }
   if (p > 0) { profile.pitch = p; saveProfile(); }
   pitchUi(p);
@@ -2033,6 +2070,32 @@ function setPitch(p, fromView) {
   box.addEventListener('dblclick', () => setPitch(0));
 })();
 setPitch(0);
+
+// Kippen mit zwei Fingern auch auf der flachen Karte (wie ATAK): beide Finger gemeinsam nach oben schieben =
+// kippen (wechselt in die 3D-Karte, dort übernimmt MapLibre), nach unten = flacher. Fingerabstand bleibt dabei
+// gleich – so kommt es nicht mit dem Zoomen (Finger auseinander/zusammen) durcheinander.
+(() => {
+  let g = null;
+  const box = map.getContainer();
+  const mid = t => (t[0].clientY + t[1].clientY) / 2;
+  const dist = t => Math.hypot(t[0].clientX - t[1].clientX, t[0].clientY - t[1].clientY);
+  box.addEventListener('touchstart', e => {
+    g = e.touches.length === 2 ? { y: mid(e.touches), d: dist(e.touches), start: pitch, active: false } : null;
+  }, { passive: true });
+  document.addEventListener('touchmove', e => {
+    if (!g || e.touches.length !== 2) return;
+    const dy = g.y - mid(e.touches);
+    if (!g.active) {
+      const sideBySide = Math.abs(e.touches[0].clientY - e.touches[1].clientY) < 90;
+      if (Math.abs(dy) > 24 && Math.abs(dist(e.touches) - g.d) < 30 && sideBySide) g.active = true;
+      else return;
+    }
+    setPitch(g.start + dy * 0.35);
+  }, { passive: true });
+  document.addEventListener('touchend', e => { if (e.touches.length < 2) g = null; }, { passive: true });
+  document.addEventListener('touchcancel', () => { g = null; }, { passive: true });
+})();
+
 // 3D als Standard: mit der zuletzt benutzten Neigung starten
 if (use3d() && profile.start3d !== false) setTimeout(() => setPitch(Math.max(45, profile.pitch || 60)), 300);
 
@@ -2162,6 +2225,8 @@ updateStatus();
   let handled = false;
   if (hash && new URLSearchParams(hash).has('host')) {
     history.replaceState(null, '', location.pathname);
+    const t = new URLSearchParams(hash).get('t');
+    if (t) try { localStorage.setItem('tak.access', t); } catch (e) { /* privat */ }
     try {
       const cfg = parseQr(location.origin + location.pathname + '#' + hash);
       if (!servers.some(s => s.host === cfg.host)) { await applyConfig(cfg, true); handled = true; }

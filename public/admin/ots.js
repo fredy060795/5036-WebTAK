@@ -58,8 +58,13 @@
       const devs = u.euds.length ? el('div', { class: 'small' }, ...u.euds.map(e => el('div', { text: `${e.callsign || e.uid}${e.lastStatus ? ' · ' + e.lastStatus : ''}` }))) : el('span', { class: 'mut small', text: '–' });
       const managed = u.managed
         ? el('span', { class: 'badge live', text: u.managed.callsign })
-        : btn('Übernehmen …', '', () => importUser(u));
-      const actions = el('div', { class: 'btns' },
+        : (typeof isHelper === 'function' && isHelper() ? el('span', { class: 'mut small', text: '–' }) : btn('Übernehmen …', '', () => importUser(u)));
+      const helperView = typeof isHelper === 'function' && isHelper();
+      if (helperView) { // Helfer sehen die Konten, ändern aber nichts daran
+        role.disabled = true;
+        active.disabled = true;
+      }
+      const actions = helperView ? el('span') : el('div', { class: 'btns' },
         btn('Gruppen …', '', () => editGroups(u)),
         btn('Passwort …', '', () => setPassword(u)),
         admin ? null : btn('Löschen', 'danger', async () => {
@@ -94,19 +99,19 @@
     const f = form([
       ['callsign', 'Rufname *', { required: '', maxlength: '30', placeholder: 'z. B. ALPHA 10' }],
       ['username', 'Benutzername (leer = aus dem Rufnamen)', { maxlength: '40' }],
-      ['password', 'Passwort (leer = laut Einstellung, Standard atakatak)', { maxlength: '64' }],
+      ['password', 'Passwort (leer = zufällig erzeugt)', { maxlength: '64' }],
       ['name', 'Name', { maxlength: '60' }],
       ['email', 'E-Mail (optional, für den Zugangslink)', { type: 'email', maxlength: '120' }],
       ['team', 'Team', { options: (t.teams || []).map(x => [x.id, `${x.name} (${x.color})`]) }],
       ['role', 'Rolle in ATAK', { options: (t.roles || ['Team Member']).map(r => [r, r]) }],
-      ['admin', 'OTS-Administrator (darf den Server verwalten)', { type: 'checkbox' }],
+      ...(typeof isHelper === 'function' && isHelper() ? [] : [['admin', 'OTS-Administrator (darf den Server verwalten)', { type: 'checkbox' }]]),
     ]);
     const m = el('p', { class: 'msg' });
     f.append(el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'pri', type: 'submit', text: 'Anlegen' })), m);
     f.onsubmit = async e => {
       e.preventDefault();
       const body = Object.fromEntries(new FormData(f));
-      body.admin = f.admin.checked;
+      body.admin = !!(f.admin && f.admin.checked);
       const r = await guard(m, () => oapi('users', { method: 'POST', body }));
       if (!r) return;
       openModal('Benutzer angelegt',
@@ -127,7 +132,7 @@
       ['role', 'Rolle in ATAK', { options: (t.roles || ['Team Member']).map(r => [r, r]) }],
       ['email', 'E-Mail (optional)', { type: 'email' }],
       ['newPassword', 'Neues Passwort setzen (sonst kennt WebTAK es nicht und die Zugangsseite zeigt keins)', { type: 'checkbox' }],
-      ['password', 'Neues Passwort (leer = laut Einstellung)', { maxlength: '64' }],
+      ['password', 'Neues Passwort (leer = zufällig erzeugt)', { maxlength: '64' }],
       ['syncGroups', 'Gruppen nach WebTAK-Teams setzen (sonst bleiben die OTS-Gruppen wie sie sind)', { type: 'checkbox' }],
     ]);
     const m = el('p', { class: 'msg' });
@@ -148,7 +153,7 @@
   }
 
   function setPassword(u) {
-    const f = form([['password', 'Neues Passwort (leer = laut Einstellung, Standard atakatak)', { maxlength: '64' }]]);
+    const f = form([['password', 'Neues Passwort (leer = zufällig erzeugt)', { maxlength: '64' }]]);
     const m = el('p', { class: 'msg' });
     f.append(el('div', { class: 'row', style: 'margin-top:12px' }, el('button', { class: 'pri', type: 'submit', text: 'Setzen' })), m);
     f.onsubmit = async e => {
@@ -262,6 +267,11 @@
     const tb = $('ofTable').querySelector('tbody');
     tb.replaceChildren();
     if (!r.feeds.length) empty(tb, 5, 'Keine Feeds.');
+    // Vorlagen zum Selbst-Senden (MediaMTX im OTS prüft TAK-Benutzer/Passwort und legt den Feed an)
+    const h = r.rtspHost || '<TAK-Server>';
+    $('ofRtmp').textContent = `rtmp://${h}:1935/<pfad>?user=<benutzer>&pass=<passwort>`;
+    $('ofRtspPush').textContent = `rtsp://<benutzer>:<passwort>@${h}:8554/<pfad>`;
+    $('ofSrt').textContent = `srt://${h}:8890?streamid=publish:<pfad>:<benutzer>:<passwort>`;
     // Feeds der WebTAK-Kameras erkennen (Pfad aus der Spalte „TAK-Pfad“ oben)
     const cams = new Map((window.streams || (typeof streams !== 'undefined' ? streams : [])).filter(x => x.tak && x.tak.pushed).map(x => [x.tak.pushed, x]));
     r.feeds.sort((a, b) => (cams.has(b.path) - cams.has(a.path)) || a.path.localeCompare(b.path));

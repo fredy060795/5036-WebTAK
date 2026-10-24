@@ -767,6 +767,78 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
   }
 });
 
+test('Helfer: dürfen freigeben und Nutzer anlegen, aber keine Einstellungen ändern', async () => {
+  const { createMockOts } = require('./ots-mock');
+  const mock = createMockOts();
+  const otsUrl = await mock.listen();
+  // eigene Sitzung für den Helfer (eigenes Cookie)
+  let hcookie = '';
+  const hapi = async (p, { method = 'GET', body } = {}) => {
+    const res = await fetch(base + '/api/admin/' + p, { method, headers: { 'X-Requested-With': 'helm', ...(body ? { 'Content-Type': 'application/json' } : {}), cookie: hcookie }, body: body ? JSON.stringify(body) : undefined });
+    const set = res.headers.get('set-cookie');
+    if (set) hcookie = set.split(';')[0];
+    let data; const text = await res.text(); try { data = JSON.parse(text); } catch (e) { data = text; }
+    return { status: res.status, data };
+  };
+  try {
+    await api('takusers/ots', { method: 'POST', body: { url: otsUrl, username: 'otsadmin', password: 'otspass', host: 'tak.example.com' } });
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: false, codeword: '' } });
+    assert.equal((await api('helpers', { method: 'POST', body: { username: 'helfer1', password: 'kurz' } })).status, 400);
+    const h = await api('helpers', { method: 'POST', body: { username: 'helfer1', password: 'helfer-pass-1', name: 'Hans' } });
+    assert.equal(h.status, 200);
+    assert.equal((await api('helpers', { method: 'POST', body: { username: 'HELFER1', password: 'helfer-pass-1' } })).status, 400, 'doppelt');
+    // Anmeldung als Helfer
+    let r = await hapi('login', { method: 'POST', body: { username: 'helfer1', password: 'helfer-pass-1' } });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.role, 'helper');
+    r = await hapi('me');
+    assert.equal(r.data.role, 'helper');
+    assert.equal(r.data.username, 'helfer1');
+    // Anfrage kommt rein -> Helfer gibt frei
+    const reg = await fetch(base + '/api/access/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Helfer Test', email: 'ht@example.com', callsign: 'HT' }) }).then(x => x.json());
+    r = await hapi('takusers/state');
+    assert.equal(r.status, 200);
+    assert.equal(r.data.ots.url, undefined, 'keine OTS-Zugangsdaten für Helfer');
+    const id = r.data.users.find(u => u.email === 'ht@example.com').id;
+    assert.ok(reg.token);
+    r = await hapi(`takusers/user/${id}/approve`, { method: 'POST', body: { callsign: 'HT 1' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.ok(mock.state.users.ht_1);
+    // Nutzer direkt anlegen – nie als OTS-Admin
+    r = await hapi('ots/users', { method: 'POST', body: { callsign: 'Helfer Neu', admin: true } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.deepEqual(mock.state.users.helfer_neu.roles, ['user']);
+    assert.equal((await hapi('ots/users')).status, 200);
+    // verboten: Einstellungen, Löschen, Rollen, Helfer, Admin-Zugang, Streams-Details
+    for (const [p, method, body] of [
+      ['takusers/ots', 'POST', { url: 'http://evil' }], ['takusers/registration', 'POST', { open: false }], ['takusers/teams', 'POST', { teams: [] }],
+      ['takusers/user/' + id, 'DELETE'], ['smtp', 'POST', {}], ['public-url', 'POST', { url: 'https://evil' }], ['tak', 'POST', {}],
+      ['ots/users/ht_1/role', 'POST', { admin: true }], ['ots/users/ht_1', 'DELETE'], ['ots/groups', 'POST', { name: 'X' }], ['ots/missions', 'GET'],
+      ['ots/feeds', 'POST', { path: 'x' }], ['ots/mesh', 'GET'], ['helpers', 'GET'], ['helpers', 'POST', { username: 'x2', password: 'abcdefgh1' }],
+      ['credentials', 'POST', { current: 'helfer-pass-1', username: 'boss', password: 'neu-12345678' }], ['streams', 'POST', { user: 'x' }],
+      ['defaults', 'POST', {}], ['live-mode', 'POST', { mode: 'user' }],
+    ]) {
+      const x = await hapi(p, { method, body });
+      assert.ok(x.status === 403 || x.status === 400, `${method} ${p} -> ${x.status}`);
+    }
+    assert.equal(mock.state.users.ht_1.roles[0], 'user');
+    r = await hapi('streams?since=0');
+    assert.deepEqual(r.data.streams, [], 'keine Stream-Schlüssel/Links für Helfer');
+    // eigenes Passwort ändern
+    assert.equal((await hapi('own-password', { method: 'POST', body: { current: 'falsch', password: 'neues-pass-2' } })).status, 400);
+    assert.equal((await hapi('own-password', { method: 'POST', body: { current: 'helfer-pass-1', password: 'neues-pass-2' } })).status, 200);
+    // Admin löscht den Helfer -> Sitzung ungültig
+    const list = await api('helpers');
+    await api('helpers/' + list.data.helpers[0].id, { method: 'DELETE' });
+    const after = await hapi('me');
+    assert.equal(after.status, 401, JSON.stringify(after.data) + ' helpers=' + JSON.stringify(list.data));
+    const st = await api('takusers/state');
+    for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
+  } finally {
+    mock.close();
+  }
+});
+
 test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Gruppen, Missionen, Feeds, Meshtastic', async () => {
   const { createMockOts } = require('./ots-mock');
   const mock = createMockOts();
@@ -786,8 +858,8 @@ test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Grup
     r = await api('ots/users', { method: 'POST', body: { callsign: 'Bravo 2', password: '' } });
     assert.equal(r.status, 200, JSON.stringify(r.data));
     assert.equal(r.data.user.username, 'bravo_2');
-    assert.equal(r.data.password, 'atakatak');
-    assert.equal(mock.state.users.bravo_2.password, 'atakatak');
+    assert.match(r.data.password, /^[A-Za-z0-9]{14}$/, 'zufälliges Passwort');
+    assert.equal(mock.state.users.bravo_2.password, r.data.password);
     assert.match(r.data.link, /\/access\/#t=/);
     assert.equal((await api('ots/users', { method: 'POST', body: { callsign: 'X', username: 'user1' } })).status, 400, 'gibt es in OTS schon');
     // übernehmen mit neuem Passwort
@@ -803,7 +875,7 @@ test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Grup
     assert.equal(mock.state.users.user1.active, false);
     await api('ots/users/user1/active', { method: 'POST', body: { on: true } });
     r = await api('ots/users/user1/password', { method: 'POST', body: { password: '' } });
-    assert.equal(r.data.password, 'atakatak');
+    assert.match(r.data.password, /^[A-Za-z0-9]{14}$/);
     assert.equal((await api('ots/users/user1/password', { method: 'POST', body: { password: 'kurz' } })).status, 400);
     await api('ots/users/user1/groups', { method: 'POST', body: { group: 'ZUG_1', direction: 'IN' } });
     assert.deepEqual(mock.groupsOf('user1'), ['ZUG_1.IN']);
@@ -896,7 +968,9 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     const pub = (p, body) => fetch(base + '/api/access/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, data: await r.json() }));
     const flat = m => m.replace(/=\n/g, '').replace(/=3D/g, '=');
     const waitMails = async n => { for (let i = 0; i < 100 && sink.mails.length < n; i++) await sleep(30); };
-    let r = await pub('register', { name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' });
+    await api('public-url', { method: 'POST', body: { url: 'https://webtak.example.com' } });
+    let r = await fetch(base + '/api/access/register', { method: 'POST', headers: { 'Content-Type': 'application/json', Host: 'evil.example', 'X-Forwarded-Host': 'evil.example' },
+      body: JSON.stringify({ name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' }) }).then(async x => ({ status: x.status, data: await x.json() }));
     assert.equal(r.data.status, 'unconfirmed');
     await waitMails(1);
     const confirm = flat(sink.mails[0]);
@@ -909,7 +983,8 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     const toAdmin = sink.mails.map(flat).filter(m => /^To: chef@example\.com/m.test(m));
     assert.equal(toAdmin.length, 1, 'Admin bekommt genau einen Hinweis');
     assert.match(toAdmin[0], /WebTAK-Zugang angefragt: Mail Test/);
-    assert.doesNotMatch(toAdmin[0], /https?:\/\//, 'kein Link im Admin-Hinweis');
+    assert.match(toAdmin[0], /^https:\/\/admin\.test:5036\/admin\/#users$/m, 'Admin-Hinweis mit Link zum Admin-Bereich (eingestellte Adresse, Admin-Domain)');
+    assert.doesNotMatch(toAdmin[0], /evil\.example/, 'nie aus dem Host-Header der Anfrage');
     for (const m of toUser) assert.doesNotMatch(m, /\/admin/i, 'kein Admin-Link an den Nutzer');
     assert.ok(sink.mails.map(flat).every(m => !/^To: mutti@example\.com/m.test(m) || !/WebTAK-Zugang angefragt/.test(m)), 'Admin-Hinweis nie an den Nutzer');
     // Admin-Adresse gleich der Adresse der Anfrage: kein Admin-Hinweis an diese Adresse
@@ -922,6 +997,7 @@ test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis n
     assert.equal(newMails.filter(m => /WebTAK-Zugang angefragt/.test(m)).length, 0);
     assert.equal(newMails.filter(m => /your registration request for WebTAK has been received/.test(m)).length, 1);
     // aufräumen für die folgenden Tests
+    await api('public-url', { method: 'POST', body: { url: '' } });
     const st = await api('takusers/state');
     for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
   } finally {

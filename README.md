@@ -36,7 +36,7 @@ Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts 
 - Neue Streams (Selbst-Anmeldung, EUD, manuell angelegt) bekommen einen Pfad aus dem Namen, z. B. `cam/alpha-10`.
 - OTS/MediaMTX holt das Bild bei Bedarf selbst über den **HLS-Link** (`…/index.m3u8`, `sourceOnDemand`) –
   dafür braucht der Streams-Server ffmpeg (im Docker-Image dabei) und eine öffentliche Adresse
-  (Admin → Kamera-Anmeldung → „Adresse des Servers“ oder `PUBLIC_URL`).
+  (Admin → Links & QR-Codes → Adresse dieses Servers, oder `PUBLIC_URL`).
 - In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
 - Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
 
@@ -51,6 +51,29 @@ den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim 
 
 Wer OTS nicht verbindet, kann den HLS-Link (Knopf „QR / Links“) weiterhin von Hand in OTS unter
 **Videostreams → Add Video** als Quelle eintragen.
+
+## Drohne (DJI), Bildschirm und externe Kameras
+
+Alles landet als Feed im TAK-Server (ATAK/iTAK/WinTAK unter „Video“) – kein Anlegen nötig. MediaMTX im
+OpenTAKServer prüft den **TAK-Benutzer und das Passwort** und legt den Feed beim ersten Senden selbst an.
+
+| Quelle | Weg |
+|---|---|
+| **DJI-Drohne** (DJI Fly / DJI Pilot 2) | ⋯ → Übertragung/Livestream → **RTMP** → Adresse von der Zugangsseite einfügen |
+| **OBS, Larix Broadcaster** | RTMP, RTSP oder SRT (Adressen siehe unten) |
+| **Handy-Bildschirm** | App „Larix Screencaster“ (Android) mit der RTMP-Adresse – Handy-Browser können den Bildschirm nicht teilen |
+| **PC-Bildschirm** | WebTAK → Video → **🖥 Share screen** (nur Desktop-Browser) |
+| **Helmkamera / Handy als Kamera ohne TAK-Zugang** | Kamera-App `/app/` (QR unter „Links & QR-Codes“) |
+
+Adressen (fertig ausgefüllt auf der Zugangsseite `/access/` und in WebTAK unter Video – ohne Passwort-Eingabe, wenn WebTAK über die Zugangsseite geöffnet wurde – sowie als Vorlage im Admin unter Video-Feeds):
+
+```
+rtmp://<TAK-Server>:1935/drone-<rufname>?user=<benutzer>&pass=<passwort>
+rtsp://<benutzer>:<passwort>@<TAK-Server>:8554/drone-<rufname>
+srt://<TAK-Server>:8890?streamid=publish:drone-<rufname>:<benutzer>:<passwort>
+```
+
+Ports 1935 (RTMP), 8554 (RTSP) und 8890/udp (SRT) müssen am TAK-Server erreichbar sein.
 
 ## Bild ausrichten (jeder Helm ist anders montiert)
 
@@ -127,8 +150,11 @@ Home-Bildschirm“). Aufbau wie ATAK:
   **Friendly / Hostile / Neutral / Unknown** (nach 2525-Zugehörigkeit), sonstige Punkte, Zeichnungen & Routen –
   jede Gruppe auf- und zuklappbar und mit 🗑 einzeln bereinigen. **Clear Content** räumt mehrere Gruppen auf
   einmal ab, dazu Overlays und Chat; auf Wunsch werden eigene Marker auch beim TAK-Server gelöscht.
-- **Links:** Kompass (antippen = Blickrichtung oben „HDG“, erneut = Nord oben „N“; ohne Sensor nach
-  GPS-Kurs), darunter „auf mich zoomen“.
+- **Links:** Kompass – die Nadel zeigt immer nach Norden. Antippen: von Hand gedrehte Karte wieder genordet;
+  ist sie genordet, Blickrichtung oben „HDG“ (ohne Sensor nach GPS-Kurs), erneut = Nord oben „N“.
+  Darunter „auf mich zoomen“.
+- **Gesten wie ATAK:** zwei Finger drehen = Karte drehen (erst ab ~12°, damit Zoomen nicht wackelt; am PC
+  Umschalt + Mausrad), zwei Finger gemeinsam nach oben/unten schieben = kippen – auch von der flachen Karte aus.
 - **Rechts:** Schieberegler zum Kippen (Doppeltippen = flach). Gekippt zeigt WebTAK eine **echte 3D-Karte** wie
   WinTAK (MapLibre GL): Gelände mit Höhen, Himmel und Horizont, Neigung bis **88°**, Symbole stehen aufrecht mit
   Namen, Routen/Flächen liegen auf dem Gelände, eigene Marker lassen sich auch in 3D verschieben und antippen.
@@ -160,7 +186,7 @@ Home-Bildschirm“). Aufbau wie ATAK:
    Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
    angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
    Video und Chat stapeln sich, statt sich zu überdecken.
-   **Feeds anderer Systeme:** HLS (`.m3u8`) spielt WebTAK auch in Chrome/Edge (hls.js). RTSP-Feeds von
+   **Feeds anderer Systeme:** HLS (`.m3u8`) spielt WebTAK in allen Browsern mit hls.js (auch OpenTAKServer-Feeds mit `?jwt=…` – der Schlüssel geht an alle Teile des Streams); klappt es nicht, steht die Antwort des Video-Servers in der Meldung. RTSP-Feeds von
    OpenTAKServer/MediaMTX (`rtsp://host:8554/pfad`, wie sie ATAK/iTAK abspielen) holt WebTAK automatisch über den
    HLS-Ausgang von MediaMTX (`http://host:8888/pfad/index.m3u8`). Das läuft über den eigenen Server
    (`/api/eud/media`: nur Video-Dateien, Ziel wie bei der TAK-Durchreiche geprüft) – kein Mixed Content, kein CORS.
@@ -202,17 +228,16 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
 
 **Ablauf**
 
-1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter „OpenTAKServer & Registrierung“), liest
+1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin: „Benutzer & Anfragen“ → „Registrierungs-QR“), liest
    kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
    optional E-Mail-Bestätigung über SMTP). Er bekommt sofort eine Eingangsbestätigung per E-Mail
    („WebTAK – registration request received“, mit seinem persönlichen Statuslink) und sieht nach dem Absenden,
    wie es weitergeht. Die **Statusseite** zeigt eine Zeitleiste (Anfrage → ggf. E-Mail bestätigt → Freigabe →
-   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Link verloren?
-   „Check my status“ auf `/join/` schickt ihn erneut. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
+   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
-3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, Passwort laut Einstellung –
-   Standard `atakatak`, leer = zufällig je Nutzer; danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
+3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, zufälliges Passwort je Nutzer
+   (optional fest einstellbar); danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
    Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
    bzw. der Admin gibt ihm den angezeigten Link.
 4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
@@ -277,10 +302,22 @@ verschwinden nicht mehr aus der Liste.
 
 ## Admin
 
-**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste: *Benutzer & Anfragen* (Zahl offener Anfragen),
-*Teams & Sichtbarkeit*, *OpenTAKServer & Registrierung*, *Video-Streams* (mit TAK-Pfad), *Kamera-Anmeldung*,
-*Stream anlegen*, *WebTAK-App* und *System* (Admin-Zugang, SMTP, Standard für neue Streams).
+**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste – oben das Tagesgeschäft, unten die einmaligen Einstellungen:
+- **TAK:** *Benutzer & Anfragen* (Zahl offener Anfragen, Knopf „Registrierungs-QR“), *Teams & Sichtbarkeit*,
+  *Links & QR-Codes* – **eine** Server-Adresse für alle Links und QR-Codes (Registrierung, WebTAK-App, alte
+  Kamera-App eingeklappt); Änderung wirkt sofort überall, auch für die Video-Feeds, die OTS abholt
+- **TAK-Server:** *OTS-Benutzer*, *Gruppen*, *Missionen*, *Meshtastic*
+- **Video:** *Video-Feeds* (WebTAK-Kameras und alle OTS-Feeds; Schalter „Video erlaubt“, „Admin schaltet live“), *Stream anlegen*
+- **Einstellungen:** *OpenTAKServer & Registrierung* (Verbindung, Passwörter, Registrierung – einmal einrichten),
+  *WebTAK-App*, *System* (Admin-Zugang, SMTP, Standard für neue Streams)
 
+- **Helfer** (System → Helfer): eigene Admin-Anmeldungen, die nur Anfragen freigeben/ablehnen, Nutzer bearbeiten
+  (Rufname, Team, Rolle, sperren, neues Passwort/QR), neue TAK-Nutzer anlegen und Links/QR-Codes zeigen dürfen –
+  keine Einstellungen, keine Löschungen, keine OTS-Administratoren, keine Stream-Schlüssel. Der Server prüft das
+  bei jeder Anfrage; Helfer ändern unter „Mein Passwort“ nur ihr eigenes Passwort.
+- **🔔 Hinweise** (Kopfzeile): Liste der letzten Ereignisse (neue Registrierungsanfragen, Kameras angemeldet/aktiv,
+  Live gestartet/beendet) mit Zähler für Ungelesenes und direkten Knöpfen („Anfragen öffnen“, „Ansehen“, „▶ Live“);
+  Ton, Popup und Desktop-Benachrichtigung dort einzeln schaltbar. Popups sind nur zur Info: höchstens 3 gleichzeitig, sie verschwinden nach 6 s von selbst (Klick öffnet die Liste mit den Aktionen).
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
 - **System:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. SSL/TLS wird bei den Ports 465

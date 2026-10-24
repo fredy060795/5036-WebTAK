@@ -218,8 +218,12 @@ $('logoutBtn').addEventListener('click', async () => {
 // ---- Seitenleiste (wie das ATAK-Menü): immer nur ein Bereich sichtbar ----
 const VIEW_TITLES = { users: 'Benutzer & Anfragen', teams: 'Teams & Sichtbarkeit', ots: 'OpenTAKServer & Registrierung' };
 const TAK_TAB = { users: 'users', teams: 'teams', ots: 'settings' };
+const HELPER_VIEWS = ['users', 'links', 'otsusers', 'system'];
+const isHelper = () => !!(me && me.role === 'helper');
 function showView(view) {
   if (view === 'feeds') view = 'video'; // früherer eigener Bereich, jetzt zusammengelegt
+  if (isHelper() && !HELPER_VIEWS.includes(view)) view = 'users';
+  if (view === 'camera') view = 'links';
   if (!document.querySelector(`[data-nav="${view}"]`)) view = 'users';
   for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('on', a.dataset.nav === view);
   for (const sec of document.querySelectorAll('[data-view]')) sec.classList.toggle('hidden', !sec.dataset.view.split(' ').includes(view));
@@ -244,11 +248,12 @@ function showApp() {
   $('appView').classList.remove('hidden');
   let view = location.hash.slice(1);
   if (!view || view.startsWith('reset=')) { try { view = localStorage.getItem('webtak.adminView') || 'users'; } catch (e) { view = 'users'; } }
+  document.body.classList.toggle('helper', isHelper());
   showView(view);
   $('noFfmpeg').classList.toggle('hidden', !!me.ffmpeg);
   loadRegistration();
   loadTak();
-  loadEudLinks();
+  if (!isHelper()) loadEudLinks();
   if (window.loadTakUsers) window.loadTakUsers();
   refresh();
   startPolling();
@@ -276,8 +281,8 @@ $('userStartToggle').addEventListener('change', async () => {
   const on = $('userStartToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { userCanStart: on } });
-    setMsg($('regMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
-  } catch (e) { setMsg($('regMsg'), e.message); }
+    setMsg($('liveMsg'), on ? 'Nutzer können selbst starten – du bekommst einen Hinweis.' : 'Nur der Admin schaltet live.', true);
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 
 // ======================================================================
@@ -299,73 +304,148 @@ function beep() {
   } catch (e) { /* kein Ton möglich */ }
 }
 
-function showToast(ev) {
+// Einstellungen pro Browser (Ton, Desktop, Popup)
+const notePref = (k, d) => { try { const v = localStorage.getItem('webtak.note.' + k); return v == null ? d : v === '1'; } catch (e) { return d; } };
+const setNotePref = (k, on) => { try { localStorage.setItem('webtak.note.' + k, on ? '1' : '0'); } catch (e) { /* privat */ } };
+const notes = []; // { ev, read }
+const NOTE_ICON = { takreg: '👤', register: '📱', camera: '🎥', live: '🔴', stop: '⏹' };
+
+// Knöpfe zu einem Hinweis (in Popup und Liste gleich)
+function noteActions(ev, done) {
   const s = streams.find(x => sid(x) === ev.id);
-  const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-  const close = () => t.remove();
-  const btns = el('div', { class: 'row' });
+  const btns = [];
   if (ev.kind === 'takreg') {
-    btns.append(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { showView('users'); if (window.loadTakUsers) window.loadTakUsers(); close(); } }));
-    if (window.loadTakUsers) window.loadTakUsers();
+    btns.push(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { showView('users'); if (window.loadTakUsers) window.loadTakUsers(); done(); } }));
   }
   if (s) {
-    btns.append(el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => { openWindow(ev.id); close(); } }));
-    if (liveMode === 'admin' && !s.onAir && ev.kind !== 'stop') {
-      btns.append(el('button', { class: 'sm golive', text: '▶ Live', onclick: () => { setLive(ev.id, true); close(); } }));
+    btns.push(el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => { openWindow(ev.id); done(); } }));
+    if (liveMode === 'admin' && !s.onAir && ev.kind !== 'stop' && s.enabled) {
+      btns.push(el('button', { class: 'sm golive', text: '▶ Live', onclick: () => { setLive(ev.id, true); done(); } }));
     }
   }
-  btns.append(el('button', { class: 'sm', text: 'OK', onclick: close }));
-  const t = el('div', { class: 'toast ' + ev.kind },
-    el('div', { class: 'toast-head' }, el('b', { text: ev.text }), el('span', { class: 'mut small', text: time })),
-    btns);
-  $('toasts').prepend(t);
-  setTimeout(close, 30000);
-  if (ev.kind !== 'stop') beep();
-  if (document.hidden && 'Notification' in window && Notification.permission === 'granted') {
-    try { new Notification('WebTAK', { body: ev.text, tag: ev.id }); } catch (e) { /* nicht unterstützt */ }
+  return btns;
+}
+
+function noteTime(at) {
+  const d = new Date(at);
+  const today = new Date().toDateString() === d.toDateString();
+  return d.toLocaleString('de-DE', today ? { hour: '2-digit', minute: '2-digit' } : { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+}
+
+function renderNotes() {
+  const unread = notes.filter(n => !n.read).length;
+  $('notifyCount').textContent = unread > 99 ? '99+' : String(unread);
+  $('notifyCount').classList.toggle('hidden', !unread);
+  if ($('notePanel').classList.contains('hidden')) return;
+  const list = $('noteList');
+  list.replaceChildren(...(notes.length ? notes.map(n => el('div', { class: 'note ' + n.ev.kind + (n.read ? '' : ' unread') },
+    el('span', { class: 'note-ic', text: NOTE_ICON[n.ev.kind] || '•' }),
+    el('div', { class: 'grow' },
+      el('div', { class: 'note-head' }, el('span', { text: n.ev.text }), el('span', { class: 'mut small', text: noteTime(n.ev.at) })),
+      el('div', { class: 'row' }, ...noteActions(n.ev, () => closeNotes()))))) : [el('p', { class: 'mut small', style: 'padding:12px', text: 'Noch keine Hinweise. Hier erscheinen neue Anfragen, angemeldete Kameras und Live-Starts.' })]));
+}
+
+function addNote(ev, read) {
+  if (notes.some(n => n.ev.seq === ev.seq)) return;
+  notes.unshift({ ev, read });
+  notes.sort((a, b) => b.ev.seq - a.ev.seq);
+  notes.length = Math.min(notes.length, 60);
+  renderNotes();
+}
+
+function openNotes() {
+  $('notePanel').classList.remove('hidden');
+  renderNotes();
+  for (const n of notes) n.read = true; // geöffnet = gelesen (Markierung bleibt bis zum Schließen sichtbar)
+  $('notifyCount').classList.add('hidden');
+}
+function closeNotes() {
+  $('notePanel').classList.add('hidden');
+  renderNotes();
+}
+$('notifyBtn').addEventListener('click', e => {
+  e.stopPropagation();
+  unlockAudio();
+  if ($('notePanel').classList.contains('hidden')) openNotes(); else closeNotes();
+});
+$('noteClose').addEventListener('click', closeNotes);
+$('noteRead').addEventListener('click', () => { for (const n of notes) n.read = true; renderNotes(); });
+document.addEventListener('click', e => { if (!$('notePanel').classList.contains('hidden') && !e.target.closest('#notePanel') && !e.target.closest('#notifyBtn')) closeNotes(); });
+
+function showToast(ev) {
+  addNote(ev, false);
+  if (notePref('popup', true)) {
+    // Nur zur Info: verschwindet von selbst, keine Bestätigung nötig (Aktionen stehen in der Hinweisliste)
+    const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+    const t = el('div', { class: 'toast info ' + ev.kind, title: 'Klicken für alle Hinweise' },
+      el('div', { class: 'toast-head' }, el('span', { text: (NOTE_ICON[ev.kind] || '•') + ' ' + ev.text }), el('span', { class: 'mut small', text: time })));
+    const close = () => { t.classList.add('gone'); setTimeout(() => t.remove(), 300); };
+    t.addEventListener('click', e => { e.stopPropagation(); close(); openNotes(); });
+    $('toasts').prepend(t);
+    for (const old of [...$('toasts').children].slice(3)) old.remove(); // bei vielen Streams höchstens 3 gleichzeitig
+    setTimeout(close, 6000);
+  }
+  if (ev.kind === 'takreg' && window.loadTakUsers) window.loadTakUsers();
+  if (ev.kind !== 'stop' && notePref('sound', true)) beep();
+  if (document.hidden && notePref('desk', false) && 'Notification' in window && Notification.permission === 'granted') {
+    try { new Notification('WebTAK', { body: ev.text, tag: String(ev.seq), icon: '/assets/brand/favicon-32.png' }); } catch (e) { /* nicht unterstützt */ }
   }
 }
 
-function updateNotifyBtn() {
-  const b = $('notifyBtn');
-  if (!('Notification' in window) || !window.isSecureContext) { b.classList.add('hidden'); return; }
-  b.textContent = Notification.permission === 'granted' ? '🔔 Hinweise an' : '🔔 Hinweise';
-  b.title = Notification.permission === 'granted' ? 'Desktop-Benachrichtigungen sind erlaubt'
-    : 'Desktop-Benachrichtigungen erlauben (auch wenn dieses Fenster im Hintergrund ist)';
+// Browser spielen Ton erst nach einer Bedienung ab: beim ersten Klick freischalten
+function unlockAudio() {
+  try {
+    const ctx = beep.ctx || (beep.ctx = new (window.AudioContext || window.webkitAudioContext)());
+    if (ctx.state === 'suspended') ctx.resume();
+  } catch (e) { /* kein Ton */ }
 }
-$('notifyBtn').addEventListener('click', async () => {
-  beep(); // Ton einmal freischalten (Browser erlauben Ton erst nach einem Klick)
-  if ('Notification' in window && Notification.permission !== 'granted') await Notification.requestPermission();
-  updateNotifyBtn();
+document.addEventListener('pointerdown', unlockAudio, { once: true });
+
+function initNotePrefs() {
+  $('noteSound').checked = notePref('sound', true);
+  $('notePopup').checked = notePref('popup', true);
+  const deskOk = 'Notification' in window && window.isSecureContext;
+  $('noteDeskWrap').classList.toggle('hidden', !deskOk);
+  $('noteDesk').checked = deskOk && notePref('desk', false) && Notification.permission === 'granted';
+}
+$('noteSound').addEventListener('change', () => { setNotePref('sound', $('noteSound').checked); if ($('noteSound').checked) beep(); });
+$('notePopup').addEventListener('change', () => setNotePref('popup', $('notePopup').checked));
+$('noteDesk').addEventListener('change', async () => {
+  let on = $('noteDesk').checked;
+  if (on && Notification.permission !== 'granted') on = (await Notification.requestPermission()) === 'granted';
+  $('noteDesk').checked = on;
+  setNotePref('desk', on);
 });
-updateNotifyBtn();
+initNotePrefs();
 
 $('liveToggle').addEventListener('change', async () => {
   const admin = $('liveToggle').checked;
   try {
     await api('live-mode', { method: 'POST', body: { mode: admin ? 'admin' : 'user' } });
-    setMsg($('regMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
+    setMsg($('liveMsg'), admin ? 'Admin schaltet live: Nutzer warten auf „▶ Live“.' : 'Nutzer starten den Stream selbst.', true);
     await loadRegistration();
     await refresh();
-  } catch (e) { setMsg($('regMsg'), e.message); }
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 
 $('regToggle').addEventListener('change', async () => {
   const enabled = $('regToggle').checked;
   try {
     await api('registration', { method: 'POST', body: { enabled } });
-    setMsg($('regMsg'), enabled ? 'Selbst-Anmeldung erlaubt.' : 'Selbst-Anmeldung gesperrt – neue Nutzer können sich nicht mehr anmelden.', enabled);
+    setMsg($('liveMsg'), enabled ? 'Video aus WebTAK/Kamera-App erlaubt.' : 'Gesperrt – in WebTAK und der Kamera-App kann niemand mehr ein neues Video starten.', enabled);
     loadRegistration();
-  } catch (e) { setMsg($('regMsg'), e.message); }
+  } catch (e) { setMsg($('liveMsg'), e.message); }
 });
 $('appUrlCopy').addEventListener('click', () => copy($('appUrl').value, $('appUrlCopy')));
 
 async function saveBase(url) {
   try {
     const r = await api('public-url', { method: 'POST', body: { url } });
-    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – QR-Code und Links sind angepasst.'
-      : 'Adresse wieder automatisch.', true);
+    setMsg($('regMsg'), r.publicUrl ? 'Adresse gespeichert: ' + r.publicUrl + ' – alle Links und QR-Codes sind angepasst.'
+      : 'Adresse wieder automatisch – alle Links und QR-Codes sind angepasst.', true);
     await loadRegistration();
+    await loadTak();
+    if (window.loadTakUsers) window.loadTakUsers();
     await refresh();
     me = await api('me');
   } catch (e) { setMsg($('regMsg'), e.message); }
@@ -405,7 +485,8 @@ let eventSeq = -1; // letzte gesehene Hinweis-Nummer (-1 = noch keine Abfrage)
 
 async function refresh() {
   try {
-    const data = await api('streams' + (eventSeq >= 0 ? '?since=' + eventSeq : ''));
+    const data = await api('streams' + (eventSeq >= 0 ? '?since=' + eventSeq : '?history=1'));
+    for (const ev of data.history || []) addNote(ev, true); // ältere Hinweise in die Liste, ohne Popup/Ton
     streams = data.streams;
     if (data.takVideo) { takVideo = data.takVideo; renderTakVideo(); }
     render();
@@ -427,7 +508,7 @@ function renderTakVideo() {
   if (document.activeElement !== $('tvPrefix')) $('tvPrefix').value = takVideo.prefix || '';
   const inTak = streams.filter(s => s.tak && s.tak.inTak).length;
   const errs = streams.filter(s => s.tak && s.tak.error).length;
-  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „OpenTAKServer & Registrierung“ eintragen.'
+  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „Einstellungen → OpenTAKServer & Registrierung“ eintragen.'
     : `${inTak} von ${streams.length} Stream${streams.length === 1 ? '' : 's'} im TAK-Server` + (errs ? ` · ${errs} Fehler (Punkt antippen)` : '');
   $('tvStatus').className = 'small ' + (!takVideo.ready || errs ? 'warn' : 'mut');
 }
@@ -550,7 +631,7 @@ function updateRow(r, s) {
   c.takOn.disabled = !takVideo.ready;
   if (document.activeElement !== c.takPath) { c.takPath.value = t.path || ''; c.takPathOld = t.path || ''; }
   c.takPath.disabled = !takVideo.ready;
-  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Menü: OpenTAKServer & Registrierung)']
+  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Einstellungen → OpenTAKServer & Registrierung)']
     : t.error ? ['err', 'Fehler: ' + t.error]
       : t.inTak ? ['ok', 'Im TAK-Server: ' + (t.rtsp || t.path)]
         : t.enabled ? ['wait', takVideo.when === 'live' ? 'Wird eingetragen, sobald die Kamera sendet' : 'Wird eingetragen …'] : ['off', 'Nicht im TAK-Server'];
@@ -724,7 +805,75 @@ function printQr(s, src) {
 }
 
 // System: Standard für neue Streams, Admin-Zugang, SMTP
+// Helfer: nur das eigene Passwort
+function renderOwnPassword() {
+  const f = el('form', {},
+    el('p', { class: 'mut small', text: `Angemeldet als Helfer „${me.username}“. Du kannst Anfragen freigeben/ablehnen, Nutzer bearbeiten und neue TAK-Nutzer anlegen. Einstellungen ändert der Admin.` }),
+    el('label', { text: 'Aktuelles Passwort' }), el('input', { name: 'current', type: 'password', autocomplete: 'current-password', required: '' }),
+    el('label', { text: 'Neues Passwort (mind. 8 Zeichen)' }), el('input', { name: 'password', type: 'password', autocomplete: 'new-password', minlength: '8', required: '' }),
+    el('div', { class: 'row', style: 'margin-top:10px' }, el('button', { class: 'pri', type: 'submit', text: 'Passwort ändern' })),
+    el('p', { class: 'msg', 'data-msg': '' }));
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await api('own-password', { method: 'POST', body: { current: f.current.value, password: f.password.value } });
+      f.reset();
+      setMsg(f.querySelector('[data-msg]'), 'Passwort geändert.', true);
+    } catch (err) { setMsg(f.querySelector('[data-msg]'), err.message); }
+  });
+  $('systemCard').replaceChildren(el('h2', { text: 'Mein Passwort' }), f);
+}
+
+// Haupt-Admin: Helfer anlegen, Passwort setzen, löschen
+async function helpersCard() {
+  const box = el('div');
+  const m = el('p', { class: 'msg' });
+  const list = el('div', { class: 'table-wrap' });
+  const load = async () => {
+    let r;
+    try { r = await api('helpers'); } catch (e) { setMsg(m, e.message); return; }
+    const rows = r.helpers.map(h => el('tr', {},
+      el('td', {}, el('b', { text: h.username }), h.name ? el('div', { class: 'mut small', text: h.name }) : null),
+      el('td', { class: 'small', text: h.email || '–' }),
+      el('td', { class: 'small', text: h.lastLogin ? new Date(h.lastLogin).toLocaleString('de-DE', { dateStyle: 'short', timeStyle: 'short' }) : 'noch nie' }),
+      el('td', {}, el('div', { class: 'btns' },
+        el('button', { class: 'sm', type: 'button', text: 'Passwort …', onclick: async () => {
+          const pw = prompt(`Neues Passwort für „${h.username}“ (mind. 8 Zeichen):`);
+          if (!pw) return;
+          try { await api(`helpers/${h.id}/password`, { method: 'POST', body: { password: pw } }); setMsg(m, 'Passwort gesetzt – der Helfer ist abgemeldet.', true); } catch (e) { setMsg(m, e.message); }
+        } }),
+        el('button', { class: 'sm danger', type: 'button', text: 'Löschen', onclick: async () => {
+          if (!confirm(`Helfer „${h.username}“ löschen?`)) return;
+          try { await api(`helpers/${h.id}`, { method: 'DELETE' }); load(); } catch (e) { setMsg(m, e.message); }
+        } })))));
+    list.replaceChildren(el('table', { class: 'streams' },
+      el('thead', {}, el('tr', {}, el('th', { text: 'Helfer' }), el('th', { text: 'E-Mail' }), el('th', { text: 'Letzte Anmeldung' }), el('th'))),
+      el('tbody', {}, ...(rows.length ? rows : [el('tr', {}, el('td', { colspan: '4', class: 'mut', text: 'Noch keine Helfer.' }))]))));
+  };
+  const f = el('form', { class: 'row' },
+    el('div', { class: 'grow' }, el('label', { text: 'Benutzername' }), el('input', { name: 'username', required: '', autocomplete: 'off' })),
+    el('div', { class: 'grow' }, el('label', { text: 'Passwort (mind. 8)' }), el('input', { name: 'password', type: 'password', required: '', minlength: '8', autocomplete: 'new-password' })),
+    el('div', { class: 'grow' }, el('label', { text: 'Name (optional)' }), el('input', { name: 'name' })),
+    el('div', { class: 'grow' }, el('label', { text: 'E-Mail (optional)' }), el('input', { name: 'email', type: 'email' })),
+    el('div', { class: 'actions-end' }, el('button', { class: 'pri', type: 'submit', text: '+ Helfer' })));
+  f.addEventListener('submit', async e => {
+    e.preventDefault();
+    try {
+      await api('helpers', { method: 'POST', body: Object.fromEntries(new FormData(f)) });
+      f.reset();
+      setMsg(m, 'Helfer angelegt – Anmeldung hier im Admin mit Benutzername und Passwort.', true);
+      load();
+    } catch (err) { setMsg(m, err.message); }
+  });
+  box.append(el('h3', { text: 'Helfer' }),
+    el('p', { class: 'mut small', text: 'Helfer melden sich hier im Admin an und dürfen nur: Anfragen freigeben/ablehnen, Nutzer bearbeiten (Rufname, Team, Rolle, sperren, neues Passwort/QR), neue TAK-Nutzer anlegen und Links/QR-Codes zeigen. Keine Einstellungen, keine Löschungen, kein OTS-Admin.' }),
+    f, m, list);
+  load();
+  return box;
+}
+
 async function renderSystem() {
+  if (isHelper()) return renderOwnPassword();
   const frag = $('settingsTpl').content.cloneNode(true);
   const cred = frag.querySelector('#credForm');
   const smtp = frag.querySelector('#smtpForm');
@@ -736,7 +885,7 @@ async function renderSystem() {
   defs.querySelector('[data-fit]').replaceWith(defFit);
   const defSize = sizeSelect(1);
   defs.querySelector('[data-size]').replaceWith(defSize);
-  $('systemCard').replaceChildren(el('h2', { text: 'System' }), defs, cred, smtp);
+  $('systemCard').replaceChildren(el('h2', { text: 'System' }), await helpersCard(), defs, cred, smtp);
 
   try {
     const d = await api('defaults');
@@ -1072,7 +1221,7 @@ function showEudQr() {
   } });
   openModal('QR-Code WebTAK', img, el('p', { class: 'mut small', text: $('eudUrl').value }), el('div', { class: 'row' }, print));
 }
-$('eudQrBig').addEventListener('click', showEudQr);
+$('eudQr').addEventListener('click', showEudQr);
 $('eudQr').addEventListener('click', showEudQr);
 $('eudQr').style.cursor = 'pointer';
 $('eudUrlCopy').addEventListener('click', () => copy($('eudUrl').value, $('eudUrlCopy')));

@@ -266,8 +266,25 @@
         <div id="vidStart">
           <button type="button" class="mbtn big" id="phoneBtn">📱 PHONE CAMERA</button>
           <button type="button" class="mbtn big" id="bleBtn">⛑ HELMET CAMERA (BLUETOOTH)</button>
+          <button type="button" class="mbtn big hidden" id="screenBtn">🖥 SHARE SCREEN</button>
           <p class="hint">Tap – the stream starts right away and is visible to everyone on TAK.</p>
         </div>
+        <details class="drone" id="droneBox">
+          <summary>🚁 DRONE / EXTERNAL CAMERA (DJI, OBS, screen apps)</summary>
+          <p class="hint">DJI Fly / DJI Pilot 2, OBS or a screen app (e.g. Larix Screencaster) send directly to the TAK server – the feed
+            appears for everyone under Video.</p>
+          <div id="droneAsk">
+            <p class="hint">Enter your TAK password once to get your address (it is not stored).</p>
+            <div id="droneSrvRow"><label for="droneSrv">TAK server</label><select id="droneSrv" class="in"></select></div>
+            <label for="dronePw">TAK password</label><input id="dronePw" class="in" type="password" autocomplete="current-password">
+            <button type="button" class="mbtn blue" id="droneMake">SHOW RTMP ADDRESS</button>
+          </div>
+          <div id="droneOut" class="hidden">
+            <input id="droneUrl" class="in" readonly>
+            <button type="button" class="mbtn" id="droneCopy">COPY</button>
+            <p class="hint">DJI Fly: ⋯ → Transmission → Live Streaming → RTMP. DJI Pilot 2: ⋯ → Live Stream → RTMP. Feed name: <b id="dronePath"></b></p>
+          </div>
+        </details>
         <div id="vidRun" class="hidden">
           <div class="nw-banner ok" id="vidBanner"><span class="dot ok"></span><span id="vidState">LIVE</span></div>
           <div class="kv"><span>Camera</span><b id="vidCam">–</b></div>
