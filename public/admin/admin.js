@@ -664,7 +664,29 @@ function openWindow(id) {
   if (vw < 600) win.classList.add('max');
   $('windows').append(win);
 
-  img.src = s.links.stream + '?v=' + Date.now();
+  // Bild direkt vom Admin-Server holen (relativer Pfad): unabhängig von der eingestellten
+  // öffentlichen Adresse und ohne Dauerverbindung (Browser erlauben nur ~6 pro Server)
+  const snapUrl = '/' + encodeURIComponent(s.user) + '/' + encodeURIComponent(s.streamId) + '/snapshot.jpg';
+  let alive = true, shownUrl = null, lastFrameAt = null;
+  (async function pull() {
+    while (alive) {
+      const st = streams.find(x => sid(x) === id);
+      // nur ein neues Bild holen, wenn es eins gibt
+      if (!shownUrl || (st && st.lastFrameAt !== lastFrameAt) || (st && st.receiving)) {
+        try {
+          const r = await fetch(snapUrl + '?t=' + Date.now(), { cache: 'no-store', credentials: 'same-origin' });
+          if (r.ok && alive) {
+            const url = URL.createObjectURL(await r.blob());
+            img.src = url;
+            if (shownUrl) URL.revokeObjectURL(shownUrl);
+            shownUrl = url;
+            lastFrameAt = st ? st.lastFrameAt : null;
+          }
+        } catch (e) { /* Server kurz weg: weiter versuchen */ }
+      }
+      await new Promise(r => setTimeout(r, 250));
+    }
+  })();
 
   const api_ = {
     focus() { win.style.zIndex = ++zTop; },
@@ -686,7 +708,9 @@ function openWindow(id) {
       btnAlign.textContent = '∠ ' + (st.rotate ? fmtDeg(st.rotate) : 'Ausrichten');
     },
     close() {
-      img.src = ''; // Verbindung zum Stream beenden
+      alive = false; // Bildabfrage beenden
+      if (shownUrl) URL.revokeObjectURL(shownUrl);
+      img.removeAttribute('src');
       win.remove();
       windows.delete(id);
     },
