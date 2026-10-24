@@ -444,7 +444,7 @@ async function handleTakAdmin(req, res, route) {
   if (action === 'approve') {
     u = await takUsers.approve(id, body);
     const sent = await mailUser(u.email, 'WebTAK – your access is ready',
-      `Hello ${u.name},\n\nyour WebTAK access has been approved.\n\nCallsign: ${u.callsign}\n\nOpen this page for your login details, QR codes and the step-by-step guide:\n\n${accessLink(req, u)}\n\nKeep this link private.\n`);
+      `Hello ${u.name},\n\nyour WebTAK access has been approved.\n\nCallsign: ${u.callsign}\n\nOpen this page for your login details, QR codes and the step-by-step guide.\nRecommended: start WebTAK right from that page – it runs in the browser on any phone, nothing to install:\n\n${accessLink(req, u)}\n\nKeep this link private.\n`);
     return json(res, 200, { ok: true, user: takUsers.adminView(u), mailed: sent, link: accessLink(req, u) });
   }
   if (action === 'update') u = await takUsers.update(id, body);

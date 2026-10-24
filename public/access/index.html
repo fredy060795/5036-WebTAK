@@ -47,13 +47,36 @@
 
     <section class="card">
       <h2>Set up your app</h2>
+      <p class="mut small"><b class="rec">★ Recommended: WebTAK</b> – works right away in the browser on any phone, tablet or PC.
+        Nothing to install from an app store, your server and login are filled in automatically. ATAK and iTAK are optional.</p>
       <div class="tabs" id="tabs">
-        <button type="button" data-tab="atak" class="on">ATAK (Android)</button>
-        <button type="button" data-tab="itak">iTAK (iPhone)</button>
-        <button type="button" data-tab="eud">WebTAK (any phone)</button>
+        <button type="button" data-tab="eud" class="on">★ WebTAK<small>recommended</small></button>
+        <button type="button" data-tab="atak">ATAK<small style="color:var(--mut)">Android</small></button>
+        <button type="button" data-tab="itak">iTAK<small style="color:var(--mut)">iPhone</small></button>
       </div>
 
-      <div data-pane="atak">
+      <div data-pane="eud">
+        <div class="qrbox">
+          <img class="qr" id="qrEud" alt="WebTAK QR code">
+          <div class="grow">
+            <ol class="steps">
+              <li>Scan this code with the phone camera – or on the phone tap <a class="btn blue" id="eudLink" href="#" style="min-height:34px;padding:4px 10px">Open WebTAK</a></li>
+              <li>The app opens with your server already set and requests its certificate automatically.
+                If asked about an unknown server certificate, tap <b>TRUST</b> (or load the truststore first).</li>
+              <li>Add it to your home screen: Android Chrome <span class="path">⋮ → Add to Home screen</span>,
+                iPhone Safari <span class="path">Share → Add to Home Screen</span>.</li>
+              <li>Green square bottom right = connected. Tap the marker icon at the top to place markers, the menu icon for everything else.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="shots">
+          <figure><img src="img/eud-1-start.png" alt="" loading="lazy"><figcaption>1 · Server set, certificate requested</figcaption></figure>
+          <figure><img src="img/eud-2-map.png" alt="" loading="lazy"><figcaption>2 · Connected – your team on the map</figcaption></figure>
+          <figure><img src="img/eud-3-markers.png" alt="" loading="lazy"><figcaption>3 · Place markers (MIL-STD symbols)</figcaption></figure>
+          <figure><img src="img/eud-4-tools.png" alt="" loading="lazy"><figcaption>4 · Tools: chat, video, data packages, maps</figcaption></figure>
+        </div>
+      </div>
+      <div data-pane="atak" class="hidden">
         <div class="qrbox">
           <img class="qr" id="qrAtak" alt="ATAK QR code">
           <div class="grow">
@@ -88,27 +111,6 @@
         </div>
       </div>
 
-      <div data-pane="eud" class="hidden">
-        <div class="qrbox">
-          <img class="qr" id="qrEud" alt="WebTAK QR code">
-          <div class="grow">
-            <ol class="steps">
-              <li>Scan this code with the phone camera – or on the phone tap <a class="btn blue" id="eudLink" href="#" style="min-height:34px;padding:4px 10px">Open WebTAK</a></li>
-              <li>The app opens with your server already set and requests its certificate automatically.
-                If asked about an unknown server certificate, tap <b>TRUST</b> (or load the truststore first).</li>
-              <li>Add it to your home screen: Android Chrome <span class="path">⋮ → Add to Home screen</span>,
-                iPhone Safari <span class="path">Share → Add to Home Screen</span>.</li>
-              <li>Green square bottom right = connected. Tap the marker icon at the top to place markers, the menu icon for everything else.</li>
-            </ol>
-          </div>
-        </div>
-        <div class="shots">
-          <figure><img src="img/eud-1-start.png" alt="" loading="lazy"><figcaption>1 · Server set, certificate requested</figcaption></figure>
-          <figure><img src="img/eud-2-map.png" alt="" loading="lazy"><figcaption>2 · Connected – your team on the map</figcaption></figure>
-          <figure><img src="img/eud-3-markers.png" alt="" loading="lazy"><figcaption>3 · Place markers (MIL-STD symbols)</figcaption></figure>
-          <figure><img src="img/eud-4-tools.png" alt="" loading="lazy"><figcaption>4 · Tools: chat, video, data packages, maps</figcaption></figure>
-        </div>
-      </div>
     </section>
 
     <section class="card">

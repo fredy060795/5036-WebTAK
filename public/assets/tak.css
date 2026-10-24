@@ -37,6 +37,9 @@ button:disabled { opacity: 0.5; }
 .tabs { display: flex; border: 1px solid #454c57; border-radius: 3px; overflow: hidden; margin-bottom: 14px; }
 .tabs button { flex: 1; border: none; border-radius: 0; background: #2a2f38; color: var(--mut); }
 .tabs button.on { background: #33475b; color: #fff; }
+.tabs button { flex-direction: column; gap: 0; padding: 8px 4px; font-size: 14px; line-height: 1.2; }
+.tabs button small { display: block; font-size: 11px; color: var(--yellow); }
+.rec { color: var(--yellow); font-weight: 500; }
 .qrbox { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
 .qrbox img.qr { width: 230px; height: 230px; background: #fff; border-radius: 4px; padding: 6px; flex: none; }
 .qrbox .grow { flex: 1; min-width: 240px; }
