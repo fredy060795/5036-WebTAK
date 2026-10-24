@@ -190,7 +190,7 @@ if (navigator.getBattery) navigator.getBattery().then(b => {
 }).catch(() => {});
 
 function showMe() {
-  document.title = profile.callsign ? `TAK EUD – ${profile.callsign}` : 'TAK EUD';
+  document.title = profile.callsign ? `WebTAK – ${profile.callsign}` : 'WebTAK';
 }
 
 // ======================================================================
@@ -747,7 +747,7 @@ function selfXml() {
   const video = window.eudVideoUrl ? `<__video url="${xmlEsc(window.eudVideoUrl)}"/>` : '';
   return `<event version="2.0" uid="${xmlEsc(profile.uid)}" type="a-f-G-U-C" how="m-g" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 120000))}">`
     + `<point lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}" hae="${Number.isFinite(p.alt) ? p.alt.toFixed(1) : '9999999'}" ce="${Math.round(p.acc || 9999999)}" le="9999999"/>`
-    + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="TAK EUD (Web)"/>`
+    + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="WebTAK"/>`
     + `<contact endpoint="*:-1:stcp" callsign="${xmlEsc(profile.callsign || profile.uid)}"/>`
     + `<uid Droid="${xmlEsc(profile.callsign || profile.uid)}"/>`
     + `<precisionlocation altsrc="GPS" geopointsrc="GPS"/>`

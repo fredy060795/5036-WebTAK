@@ -1,7 +1,7 @@
 {
-  "name": "TAK EUD",
-  "short_name": "TAK EUD",
-  "description": "Einfacher TAK-Client: Karte und Lagebild vom TAK-Server",
+  "name": "WebTAK",
+  "short_name": "WebTAK",
+  "description": "WebTAK – TAK client in the browser: map and situational awareness",
   "start_url": "./",
   "scope": "./",
   "display": "standalone",

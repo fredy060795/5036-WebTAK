@@ -4,7 +4,9 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <meta name="robots" content="noindex">
-<title>Helm Camera Admin</title>
+<title>WebTAK Admin</title>
+<link rel="icon" href="/assets/webtak.svg">
+<meta name="theme-color" content="#0b0e12">
 <link rel="stylesheet" href="/assets/style.css">
 <link rel="stylesheet" href="admin.css">
 </head>
@@ -12,13 +14,18 @@
 
 <!-- Anmeldung, Passwort vergessen, neues Passwort -->
 <div id="authView" class="auth hidden">
+  <div class="brand">
+    <img src="/assets/webtak.svg" alt="">
+    <div class="brand-name">WebTAK</div>
+    <div class="brand-sub">Administration</div>
+  </div>
   <form class="card" id="loginForm">
-    <h1>Helm Camera Admin</h1>
+    <h1>Anmelden</h1>
     <label for="lUser">Benutzername</label>
     <input id="lUser" autocomplete="username" required>
     <label for="lPass">Passwort</label>
     <input id="lPass" type="password" autocomplete="current-password" required>
-    <button class="pri wide" type="submit">Anmelden</button>
+    <button class="pri wide" type="submit">Login</button>
     <p class="msg" id="loginMsg"></p>
     <a href="#" id="forgotLink" class="small">Passwort vergessen?</a>
   </form>
@@ -62,25 +69,42 @@
     <button class="pri wide" type="submit">Speichern</button>
     <p class="msg" id="firstMsg"></p>
   </form>
+  <p class="auth-foot">WebTAK · TAK-Zugänge, Teams und Video-Streams</p>
 </div>
 
 <!-- Übersicht -->
 <div id="appView" class="hidden">
   <header class="top">
-    <h1>TAK-Verwaltung</h1>
-    <div class="row">
-      <span class="mut small" id="summary"></span>
-      <button id="notifyBtn" title="Desktop-Benachrichtigungen, wenn jemand die Kamera aktiviert">🔔 Hinweise</button>
-      <button id="settingsBtn">Einstellungen</button>
+    <button class="navtoggle" id="navToggle" aria-label="Menü">☰</button>
+    <img class="logo" src="/assets/webtak.svg" alt="">
+    <h1>WebTAK <span>Admin</span></h1>
+    <div class="row topr">
+      <span class="small" id="summary"></span>
+      <button id="notifyBtn" title="Desktop-Benachrichtigungen, wenn jemand die Kamera aktiviert">🔔</button>
       <button id="logoutBtn">Abmelden</button>
     </div>
   </header>
 
+  <div class="shell">
+  <nav class="side" id="side">
+    <div class="side-h">TAK</div>
+    <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
+    <a href="#teams" data-nav="teams"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
+    <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
+    <div class="side-h">Video</div>
+    <a href="#video" data-nav="video"><span class="ic">🎥</span>Video-Streams <span class="badge nb live" id="navLive"></span></a>
+    <a href="#camera" data-nav="camera"><span class="ic">📷</span>Kamera-Anmeldung</a>
+    <a href="#create" data-nav="create"><span class="ic">＋</span>Stream anlegen</a>
+    <div class="side-h">WebTAK</div>
+    <a href="#webtak" data-nav="webtak"><span class="ic">⌖</span>WebTAK-App</a>
+    <a href="#system" data-nav="system"><span class="ic">⚙</span>System</a>
+  </nav>
+
   <main class="wrap">
-    <section class="card" id="takCard">
+    <section class="card" id="takCard" data-view="users teams ots">
       <div class="row between">
-        <h2>TAK-Zugänge <span class="mut small">(OpenTAKServer)</span></h2>
-        <div class="row">
+        <h2 id="takTitle">Benutzer &amp; Anfragen</h2>
+        <div class="row hidden">
           <button class="sm" type="button" data-takt="users" id="takTabUsers">Benutzer <span class="badge" id="takPending"></span></button>
           <button class="sm" type="button" data-takt="teams">Teams &amp; Sichtbarkeit</button>
           <button class="sm" type="button" data-takt="settings">Einstellungen</button>
@@ -158,7 +182,7 @@
       </div>
     </section>
 
-    <section class="card">
+    <section class="card" data-view="video">
       <div class="row between">
         <h2>Video-Streams <span class="mut small">(automatisch im TAK-Server)</span></h2>
         <div class="row">
@@ -189,10 +213,9 @@
       <p class="mut" id="empty">Noch keine Streams. Nutzer melden sich über den QR-Code unter „Kamera-Anmeldung“ an.</p>
     </section>
 
-    <details class="card fold">
-      <summary>Kamera-Anmeldung (QR-Code für alle, Live-Modus, Server-Adresse)</summary>
+    <section class="card" data-view="camera">
       <div class="row between">
-        <h2>QR-Code für alle Nutzer</h2>
+        <h2>Kamera-Anmeldung <span class="mut small">(QR-Code für alle)</span></h2>
         <div class="row">
           <label class="check"><input type="checkbox" id="liveToggle"> Admin schaltet live</label>
           <label class="check" id="userStartWrap"><input type="checkbox" id="userStartToggle"> Nutzer dürfen selbst starten</label>
@@ -218,10 +241,10 @@
           <p class="msg" id="regMsg"></p>
         </div>
       </div>
-    </details>
+    </section>
 
-    <details class="card fold">
-      <summary>Stream manuell anlegen</summary>
+    <section class="card" data-view="create">
+      <h2>Stream anlegen</h2>
       <p class="mut small">Optional – für eine feste Helmkamera mit eigenem QR-Code. Normalerweise melden sich Nutzer selbst an.</p>
       <form class="row" id="createForm">
         <div class="grow"><label for="cUser">Benutzer</label><input id="cUser" placeholder="z. B. mueller" required pattern="[a-zA-Z0-9][a-zA-Z0-9_\-]{0,31}"></div>
@@ -229,12 +252,12 @@
         <div class="actions-end"><button type="submit">Anlegen</button></div>
       </form>
       <p class="msg" id="createMsg"></p>
-    </details>
+    </section>
 
-    <details class="card fold">
-      <summary>TAK-EUD (Web-App)</summary>
+    <section class="card" data-view="webtak">
+      <h2>WebTAK-App <span class="mut small">(TAK im Browser, als App auf dem Handy)</span></h2>
       <div class="appqr">
-        <img id="eudQr" class="qr-small" alt="QR-Code zum TAK-EUD">
+        <img id="eudQr" class="qr-small" alt="QR-Code zu WebTAK">
         <div class="grow">
           <p class="mut small">Nutzer scannen diesen Code und verbinden sich mit ihren eigenen TAK-Zugangsdaten
             (Zertifikat anfordern, .p12 / Datenpaket laden oder QR-Code vom TAK-Server). Dieser Server reicht die
@@ -255,12 +278,15 @@
               <button class="sm" type="button" id="eudQrBig">QR-Code groß anzeigen / Drucken</button>
             </div>
           </form>
-          <p class="msg" id="takMsg"></p>
+          <p class="msg" id="eudMsg"></p>
           <div id="eudLinks" class="mut small"></div>
         </div>
       </div>
-    </details>
+    </section>
+
+    <section class="card" data-view="system" id="systemCard"></section>
   </main>
+  </div>
 </div>
 
 <!-- Dialog (QR-Code, Einstellungen, Bestätigungen) -->
@@ -309,10 +335,10 @@
       <div class="grow"><label>Server</label><input name="host" placeholder="smtp.example.com"></div>
       <div style="width:110px"><label>Port</label><input name="port" type="number" min="1" max="65535"></div>
     </div>
-    <label class="check"><input type="checkbox" name="secure"> SSL/TLS (meist Port 465; aus = STARTTLS, meist 587)</label>
+    <label class="check"><input type="checkbox" name="secure"> SSL/TLS (Port 465 – bei 465/587/25 wird es automatisch richtig gewählt)</label>
     <label>Benutzer</label><input name="user" autocomplete="off">
     <label>Passwort <span class="mut" data-haspass></span></label><input name="pass" type="password" autocomplete="new-password" placeholder="leer = unverändert">
-    <label>Absender</label><input name="from" placeholder="Helm Camera &lt;noreply@example.com&gt;">
+    <label>Absender</label><input name="from" placeholder="WebTAK &lt;noreply@example.com&gt;">
     <div class="row" style="margin-top:12px">
       <button class="pri" type="submit">SMTP speichern</button>
       <button type="button" data-test>Test-Mail senden</button>
