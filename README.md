@@ -317,7 +317,7 @@ verschwinden nicht mehr aus der Liste.
   bei jeder Anfrage; Helfer ändern unter „Mein Passwort“ nur ihr eigenes Passwort.
 - **🔔 Hinweise** (Kopfzeile): Liste der letzten Ereignisse (neue Registrierungsanfragen, Kameras angemeldet/aktiv,
   Live gestartet/beendet) mit Zähler für Ungelesenes und direkten Knöpfen („Anfragen öffnen“, „Ansehen“, „▶ Live“);
-  Ton, Popup und Desktop-Benachrichtigung dort einzeln schaltbar.
+  Ton, Popup und Desktop-Benachrichtigung dort einzeln schaltbar. Popups sind nur zur Info: höchstens 3 gleichzeitig, sie verschwinden nach 6 s von selbst (Klick öffnet die Liste mit den Aktionen).
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).
 - **System:** Admin-E-Mail und SMTP-Server eintragen, „Test-Mail senden“. SSL/TLS wird bei den Ports 465

@@ -375,14 +375,15 @@ document.addEventListener('click', e => { if (!$('notePanel').classList.contains
 function showToast(ev) {
   addNote(ev, false);
   if (notePref('popup', true)) {
+    // Nur zur Info: verschwindet von selbst, keine Bestätigung nötig (Aktionen stehen in der Hinweisliste)
     const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
-    const close = () => t.remove();
-    const btns = el('div', { class: 'row' }, ...noteActions(ev, close), el('button', { class: 'sm', text: 'OK', onclick: close }));
-    const t = el('div', { class: 'toast ' + ev.kind },
-      el('div', { class: 'toast-head' }, el('b', { text: ev.text }), el('span', { class: 'mut small', text: time })),
-      btns);
+    const t = el('div', { class: 'toast info ' + ev.kind, title: 'Klicken für alle Hinweise' },
+      el('div', { class: 'toast-head' }, el('span', { text: (NOTE_ICON[ev.kind] || '•') + ' ' + ev.text }), el('span', { class: 'mut small', text: time })));
+    const close = () => { t.classList.add('gone'); setTimeout(() => t.remove(), 300); };
+    t.addEventListener('click', e => { e.stopPropagation(); close(); openNotes(); });
     $('toasts').prepend(t);
-    setTimeout(close, 30000);
+    for (const old of [...$('toasts').children].slice(3)) old.remove(); // bei vielen Streams höchstens 3 gleichzeitig
+    setTimeout(close, 6000);
   }
   if (ev.kind === 'takreg' && window.loadTakUsers) window.loadTakUsers();
   if (ev.kind !== 'stop' && notePref('sound', true)) beep();
