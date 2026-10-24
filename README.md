@@ -60,7 +60,9 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 3. Benutzer scannt den QR-Code → Handy-App öffnet sich → **Kamera verbinden** (Helmkamera auswählen) → **Stream starten**.
 4. Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst trennt das Handy Bluetooth).
 
-Handy-Browser: **Android mit Chrome**. iPhone: App **Bluefy** (Safari kann kein Bluetooth). Die Seite muss über
+Handy-Browser: **Android mit Chrome** (nicht Samsung Internet/Firefox). **iPhone:** kein Browser auf dem iPhone kann
+Bluetooth (Apple erlaubt es nicht) – dort die kostenlose App **Bluefy** verwenden. Öffnet der QR-Code Safari, zeigt
+die Seite den Weg: Bluefy laden → „Link für Bluefy kopieren“ → in Bluefy einfügen. Die Seite muss über
 **HTTPS** laufen, sonst erlaubt der Browser kein Bluetooth.
 
 Der QR-Code enthält einen geheimen Zugangsschlüssel. **Rauswerfen** erzeugt einen neuen Schlüssel: Das Handy wird
@@ -92,6 +94,10 @@ nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste 
    - iPhone: Profil laden, unter Einstellungen → Allgemein → VPN & Geräteverwaltung installieren und unter
      Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten
 6. Danach den Stream-QR-Code scannen → Kamera verbinden → Stream starten.
+
+Lädt die Seite am Handy nicht: Handy im selben WLAN (kein Gäste-WLAN, keine mobilen Daten)? start.bat legt eine
+Windows-Firewall-Regel für Port 5036 an (fragt einmal nach Administrator-Rechten); zeigt das Fenster weitere
+Adressen des PCs an, eine davon probieren.
 
 Die Test-CA bleibt erhalten; ändert sich die IP des PCs, wird nur das Server-Zertifikat neu erzeugt (Handys müssen
 nichts neu installieren). Läuft noch ein alter Server auf Port 5036, beendet start.bat ihn automatisch.

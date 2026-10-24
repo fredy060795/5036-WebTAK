@@ -38,6 +38,29 @@ header { display: flex; justify-content: space-between; align-items: center; gap
     <p id="blockedText"></p>
   </section>
 
+  <section class="card hidden" id="iosHelp">
+    <h2>iPhone: bitte in „Bluefy“ öffnen</h2>
+    <p>Auf dem iPhone kann kein normaler Browser (Safari, Chrome …) Bluetooth – das erlaubt Apple nicht.
+      Die kostenlose App <b>Bluefy</b> kann es:</p>
+    <ol>
+      <li><a href="https://apps.apple.com/app/id1492822055" target="_blank" rel="noopener">Bluefy im App Store laden</a></li>
+      <li><button class="pri" id="copyLink" type="button">Link für Bluefy kopieren</button></li>
+      <li>Bluefy öffnen, oben in die Adresszeile tippen, <b>Einsetzen</b> und öffnen.</li>
+    </ol>
+    <p class="mut small">Testbetrieb am PC: vorher das Test-Zertifikat installieren und unter Einstellungen → Allgemein →
+      Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten (QR-Code dafür beim Admin unter „QR / Links“).</p>
+    <input id="appLinkField" readonly class="hidden">
+    <p class="msg" id="copyMsg"></p>
+  </section>
+
+  <section class="card hidden" id="noBle">
+    <h2>Dieser Browser kann kein Bluetooth</h2>
+    <p>Bitte den QR-Code mit <b>Chrome</b> öffnen (Android) – nicht mit Samsung Internet, Firefox oder der Kamera-Vorschau.
+      Tipp: Link kopieren und in Chrome einfügen.</p>
+    <button id="copyLink2" type="button">Link kopieren</button>
+    <p class="msg" id="copyMsg2"></p>
+  </section>
+
   <div id="main" class="hidden">
     <div class="steps">
       <div class="step" id="stServer">1 Server</div>
@@ -256,6 +279,30 @@ async function setupGatt() {
   if (wantLive) startCameraStream();
 }
 
+// Vollständiger Link (mit Schlüssel) zum Weitergeben an Bluefy/Chrome
+function fullAppLink() {
+  return `${location.origin}/app/#u=${encodeURIComponent(link.u)}&s=${encodeURIComponent(link.s)}&k=${encodeURIComponent(link.k)}`;
+}
+
+async function copyAppLink(msgEl) {
+  const text = fullAppLink();
+  try {
+    await navigator.clipboard.writeText(text);
+    msgEl.textContent = 'Kopiert. Jetzt in Bluefy/Chrome einfügen.';
+  } catch (e) {
+    const f = $('appLinkField');
+    f.value = text;
+    f.classList.remove('hidden');
+    f.select();
+    try { document.execCommand('copy'); msgEl.textContent = 'Kopiert. Jetzt in Bluefy/Chrome einfügen.'; } catch (e2) {
+      msgEl.textContent = 'Bitte den Link oben markieren und kopieren.';
+    }
+  }
+  msgEl.className = 'msg ok';
+}
+
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+
 async function connectCamera() {
   if (!window.isSecureContext) {
     setMsg('Bluetooth geht nur über HTTPS. Zum Testen in Chrome chrome://flags/#unsafely-treat-insecure-origin-as-secure öffnen, '
@@ -267,13 +314,27 @@ async function connectCamera() {
     return;
   }
   try {
-    device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }] });
+    // Nach Dienst-UUID oder Namen suchen (falls die UUID nicht in der Werbung steht)
+    device = await navigator.bluetooth.requestDevice({
+      filters: [{ services: [SVC] }, { namePrefix: 'Helm' }],
+      optionalServices: [SVC],
+    });
     device.addEventListener('gattserverdisconnected', onCamDisconnected);
     setMsg('Verbinde mit ' + (device.name || 'Kamera') + ' …');
     await setupGatt();
     setMsg('Kamera verbunden.', 'ok');
   } catch (e) {
-    if (e.name !== 'NotFoundError') setMsg('Kamera-Verbindung fehlgeschlagen: ' + e.message, 'err');
+    if (e.name === 'NotFoundError' && /cancel/i.test(e.message)) return; // Auswahl abgebrochen
+    if (e.name === 'NotFoundError') {
+      setMsg('Keine Kamera gefunden. Bluetooth und Standort am Handy einschalten, Chrome den Zugriff auf '
+        + '„Geräte in der Nähe“/Standort erlauben, Kamera einschalten (rote LED blitzt) und nah ans Handy halten.', 'err');
+    } else if (e.name === 'SecurityError' || e.name === 'NotAllowedError') {
+      setMsg('Bluetooth wurde blockiert: ' + e.message + ' – Seite über https öffnen und Bluetooth für die Seite erlauben.', 'err');
+    } else if (e.name === 'NetworkError') {
+      setMsg('Verbindung zur Kamera abgebrochen. Kamera aus- und einschalten und erneut versuchen.', 'err');
+    } else {
+      setMsg('Kamera-Verbindung fehlgeschlagen: ' + e.message, 'err');
+    }
   }
 }
 
@@ -394,6 +455,13 @@ if (!link) {
   $('srvBadge').classList.add('hidden');
 } else {
   $('main').classList.remove('hidden');
+  if (!navigator.bluetooth && window.isSecureContext) {
+    // Gleich beim Öffnen erklären, statt erst nach dem Tippen auf „Kamera verbinden“
+    $(isIOS ? 'iosHelp' : 'noBle').classList.remove('hidden');
+    $('camBtn').disabled = true;
+  }
+  $('copyLink').onclick = () => copyAppLink($('copyMsg'));
+  $('copyLink2').onclick = () => copyAppLink($('copyMsg2'));
   $('streamName').textContent = link.u + '/' + link.s;
   setSteps();
   connectServer();

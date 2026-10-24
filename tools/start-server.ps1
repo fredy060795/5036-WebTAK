@@ -119,6 +119,26 @@ function Stop-OldServer {
 }
 Stop-OldServer
 
+# ---- Windows-Firewall: Port fuer Handys im WLAN freigeben ----------------------
+function Enable-FirewallPort {
+    if ($env:OS -ne 'Windows_NT') { return }
+    $ruleName = "Helm Camera Streams ($Port)"
+    try {
+        if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) { return }
+    } catch { return }
+    Say "Firewall: Port $Port wird fuer Handys im Netzwerk freigegeben. Windows fragt gleich nach Administrator-Rechten - bitte 'Ja'." 'Yellow'
+    $cmd = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any | Out-Null"
+    try {
+        Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command', $cmd
+    } catch { }
+    if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
+        Say 'Firewall-Regel angelegt.' 'Green'
+    } else {
+        Say "Firewall-Regel fehlt - Handys erreichen den PC evtl. nicht. Manuell: Windows-Firewall -> Eingehende Regel -> TCP-Port $Port erlauben." 'Red'
+    }
+}
+Enable-FirewallPort
+
 # ---- Adresse und eigene HTTPS-Zertifikate --------------------------------------
 $ip = Get-LanIp
 $env:PORT = "$Port"
@@ -162,9 +182,19 @@ $env:PUBLIC_URL = $base
 Write-Host ''
 Say "Admin:   $base/admin/   (erster Login: admin / admin123)" 'Green'
 Say "Daten:   $($env:DATA_DIR)"
+try {
+    $others = [System.Net.NetworkInformation.NetworkInterface]::GetAllNetworkInterfaces() |
+        Where-Object { $_.OperationalStatus -eq 'Up' -and $_.NetworkInterfaceType -ne 'Loopback' } |
+        ForEach-Object { $_.GetIPProperties().UnicastAddresses } |
+        Where-Object { $_.Address.AddressFamily -eq 'InterNetwork' -and $_.Address.ToString() -ne $ip } |
+        ForEach-Object { $_.Address.ToString() }
+    if ($others) { Say ("Andere Adressen dieses PCs: " + ($others -join ', ') + "  (falls das Handy die obige nicht erreicht)") }
+} catch { }
 Write-Host ''
 Write-Host '  Handys im selben WLAN erreichen den Server unter dieser Adresse.'
-Write-Host '  Fragt Windows nach der Firewall, "Zugriff zulassen" waehlen (privates Netzwerk).'
+Write-Host '  Laedt die Seite am Handy nicht: Handy im selben WLAN? (kein Gaeste-WLAN, keine mobilen Daten)'
+Write-Host '  Fragt Windows nach der Firewall, "Zugriff zulassen" waehlen (privat UND oeffentlich).'
+Write-Host '  iPhone: Bluetooth geht nur in der App "Bluefy" - die Handy-Seite zeigt den Weg dorthin.'
 if ($env:TEST_CA_FILE) {
     Write-Host ''
     Write-Host '  Handys einmalig: im Admin bei einem Stream "QR / Links" oeffnen und den QR-Code'
