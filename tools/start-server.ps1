@@ -9,6 +9,8 @@
 
 # Nicht 'Stop': Windows PowerShell 5.1 wuerde sonst bei jeder Warnung von npm/node abbrechen
 $ErrorActionPreference = 'Continue'
+# Node.js gibt UTF-8 aus; sonst zeigt Windows PowerShell 5.1 Umlaute falsch an
+try { [Console]::OutputEncoding = New-Object System.Text.UTF8Encoding $false; $OutputEncoding = [Console]::OutputEncoding } catch { }
 $Root = Split-Path -Parent (Split-Path -Parent $MyInvocation.MyCommand.Path)
 Set-Location $Root
 $Port = 5036
@@ -120,24 +122,32 @@ function Stop-OldServer {
 Stop-OldServer
 
 # ---- Windows-Firewall: Port fuer Handys im WLAN freigeben ----------------------
-function Enable-FirewallPort {
+function Test-FirewallOk {
+    try {
+        if (-not (Get-NetFirewallRule -DisplayName "Helm Camera Streams (TCP $Port)" -ErrorAction SilentlyContinue)) { return $false }
+        $node = (Get-Command node -ErrorAction SilentlyContinue).Source
+        $blocked = Get-NetFirewallApplicationFilter -ErrorAction SilentlyContinue |
+            Where-Object { $_.Program -and ($_.Program -ieq $node -or [IO.Path]::GetFileName($_.Program) -ieq 'node.exe') } |
+            Get-NetFirewallRule -ErrorAction SilentlyContinue |
+            Where-Object { $_.Action -eq 'Block' -and $_.Direction -eq 'Inbound' -and $_.Enabled -eq 'True' }
+        return -not $blocked
+    } catch { return $true } # Firewall nicht abfragbar: nichts tun
+}
+
+function Enable-Firewall {
     if ($env:OS -ne 'Windows_NT') { return }
-    $ruleName = "Helm Camera Streams ($Port)"
-    try {
-        if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) { return }
-    } catch { return }
-    Say "Firewall: Port $Port wird fuer Handys im Netzwerk freigegeben. Windows fragt gleich nach Administrator-Rechten - bitte 'Ja'." 'Yellow'
-    $cmd = "New-NetFirewallRule -DisplayName '$ruleName' -Direction Inbound -Protocol TCP -LocalPort $Port -Action Allow -Profile Any | Out-Null"
-    try {
-        Start-Process powershell -Verb RunAs -Wait -WindowStyle Hidden -ArgumentList '-NoProfile', '-Command', $cmd
-    } catch { }
-    if (Get-NetFirewallRule -DisplayName $ruleName -ErrorAction SilentlyContinue) {
-        Say 'Firewall-Regel angelegt.' 'Green'
+    if (Test-FirewallOk) { return }
+    Say "Firewall: Port $Port und Node.js werden fuer Handys im Netzwerk freigegeben." 'Yellow'
+    Say "          Windows fragt gleich nach Administrator-Rechten - bitte 'Ja' waehlen." 'Yellow'
+    & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $Root 'tools\firewall.ps1') -Port $Port | Out-Null
+    if (Test-FirewallOk) {
+        Say 'Firewall freigegeben.' 'Green'
     } else {
-        Say "Firewall-Regel fehlt - Handys erreichen den PC evtl. nicht. Manuell: Windows-Firewall -> Eingehende Regel -> TCP-Port $Port erlauben." 'Red'
+        Say 'Firewall NICHT freigegeben - Handys erreichen den PC evtl. nicht.' 'Red'
+        Say '  Loesung: firewall.bat doppelklicken und "Ja" waehlen. Details stehen in firewall.log.' 'Red'
     }
 }
-Enable-FirewallPort
+Enable-Firewall
 
 # ---- Adresse und eigene HTTPS-Zertifikate --------------------------------------
 $ip = Get-LanIp
