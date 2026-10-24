@@ -40,7 +40,10 @@ Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts 
 - In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
 - Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
 
-Im Admin, Bereich **Video-Streams**, wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
+Im Admin gibt es dafür **einen** Bereich **Video-Feeds**: oben die Kameras aus WebTAK (Handy/Helmkamera – wer in
+WebTAK Video startet, ist sofort ein OTS-Feed `cam/<rufname>`), darunter **alle Feeds im TAK-Server** mit Herkunft
+(„WebTAK: …“ oder „extern“), ATAK-Link zum Kopieren und dem Formular für weitere Feeds (Pfad + Quelle
+rtsp/rtmp/srt/udp/HLS, MediaMTX holt das Bild bei Bedarf). Bei den Kameras wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
 ändern und Enter – der alte Pfad wird in OTS entfernt, der neue angelegt (leer = wieder automatisch). Der Punkt zeigt
 den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim Darüberfahren). Weitere Schalter:
 „Neue Streams automatisch“, „nur solange die Kamera sendet“ (sonst: solange freigegeben), Pfad-Präfix und
@@ -266,8 +269,6 @@ Unter **TAK-Server** in der Seitenleiste verwaltet WebTAK den OpenTAKServer wie 
 - **Gruppen:** anlegen, löschen (`__ANON__` bleibt).
 - **Missionen (Data Sync):** anlegen (Beschreibung, Passwort, Gruppen; OTS verlangt ein bekanntes Gerät als
   Ersteller – vorausgewählt), auflisten, löschen.
-- **Video-Feeds (OTS):** alle MediaMTX-Pfade; Feed anlegen mit Pfad und Quelle (rtsp/rtmp/srt/udp/http(s)-HLS) –
-  ATAK/iTAK/WinTAK finden ihn unter Video als `rtsp://<TAK-Server>:8554/<pfad>`; löschen.
 - **Meshtastic:** Kanäle anlegen (Name, Funk-Voreinstellung, Region, Schlüssel erzeugen, Up-/Downlink) oder per
   Meshtastic-Link übernehmen, Link kopieren, löschen.
 

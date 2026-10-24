@@ -257,16 +257,23 @@
 
   // ---------------- Video-Feeds (MediaMTX) ----------------
   async function loadFeeds() {
-    const r = await guard($('ofMsg'), () => oapi('feeds'));
+    const r = await oapi('feeds').catch(e => { setMsg($('ofMsg'), e.message); return null; });
     if (!r) return;
     const tb = $('ofTable').querySelector('tbody');
     tb.replaceChildren();
-    if (!r.feeds.length) empty(tb, 4, 'Keine Feeds.');
+    if (!r.feeds.length) empty(tb, 5, 'Keine Feeds.');
+    // Feeds der WebTAK-Kameras erkennen (Pfad aus der Spalte „TAK-Pfad“ oben)
+    const cams = new Map((window.streams || (typeof streams !== 'undefined' ? streams : [])).filter(x => x.tak && x.tak.pushed).map(x => [x.tak.pushed, x]));
+    r.feeds.sort((a, b) => (cams.has(b.path) - cams.has(a.path)) || a.path.localeCompare(b.path));
     for (const f of r.feeds) {
       const rtsp = r.rtspHost ? `rtsp://${r.rtspHost}:8554/${f.path}` : '';
-      tb.append(el('tr', {}, td('Pfad', el('b', { text: f.path })), td('Quelle', el('span', { class: 'small', text: f.source || '(Kamera sendet selbst)' })),
+      const cam = cams.get(f.path);
+      const origin = cam
+        ? el('span', { class: 'badge ' + (cam.receiving ? 'live' : 'off'), text: 'WebTAK: ' + (cam.label || cam.user) + (cam.receiving ? ' · live' : '') })
+        : el('span', { class: 'small', text: 'extern' });
+      tb.append(el('tr', {}, td('Pfad', el('b', { text: f.path })), td('Herkunft', origin), td('Quelle', el('span', { class: 'small', text: cam ? 'WebTAK-Kamera (HLS)' : (f.source || '(Kamera sendet selbst)') })),
         td('Für ATAK', rtsp ? el('div', { class: 'link' }, ...Object.values(copyField(rtsp))) : el('span', { class: 'mut', text: '–' })),
-        td('', btn('Löschen', 'danger', async () => {
+        td('', cam ? el('span', { class: 'mut small', text: 'oben steuern' }) : btn('Löschen', 'danger', async () => {
           if (!confirm(`Feed „${f.path}“ löschen?`)) return;
           await guard($('ofMsg'), () => oapi('feeds/' + f.path.split('/').map(enc).join('/'), { method: 'DELETE' }), 'Gelöscht.');
           loadFeeds();
@@ -313,12 +320,13 @@
   });
   $('omeReload').addEventListener('click', loadMesh);
 
+  let feedTimer = null;
   // Bereich geöffnet: frisch laden
   document.addEventListener('admin-view', e => {
     if (e.detail === 'otsusers') { teams = null; loadUsers(); }
     if (e.detail === 'otsgroups') loadGroups();
     if (e.detail === 'missions') loadMissions();
-    if (e.detail === 'feeds') loadFeeds();
+    if (e.detail === 'video') { loadFeeds(); clearInterval(feedTimer); feedTimer = setInterval(() => { if (!document.hidden && $('ofTable').offsetParent) loadFeeds(); else clearInterval(feedTimer); }, 15000); }
     if (e.detail === 'mesh') loadMesh();
   });
 })();

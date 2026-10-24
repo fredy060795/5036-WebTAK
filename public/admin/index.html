@@ -96,10 +96,9 @@
     <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
     <a href="#otsgroups" data-nav="otsgroups"><span class="ic">◫</span>Gruppen</a>
     <a href="#missions" data-nav="missions"><span class="ic">⟳</span>Missionen (Data Sync)</a>
-    <a href="#feeds" data-nav="feeds"><span class="ic">📡</span>Video-Feeds (OTS)</a>
     <a href="#mesh" data-nav="mesh"><span class="ic">⌁</span>Meshtastic</a>
     <div class="side-h">Video</div>
-    <a href="#video" data-nav="video"><span class="ic">🎥</span>Video-Streams <span class="badge nb live" id="navLive"></span></a>
+    <a href="#video" data-nav="video"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
     <a href="#camera" data-nav="camera"><span class="ic">📷</span>Kamera-Anmeldung</a>
     <a href="#create" data-nav="create"><span class="ic">＋</span>Stream anlegen</a>
     <div class="side-h">WebTAK</div>
@@ -204,7 +203,7 @@
 
     <section class="card" data-view="video">
       <div class="row between">
-        <h2>Video-Streams <span class="mut small">(automatisch im TAK-Server)</span></h2>
+        <h2>Video-Feeds <span class="mut small">– Kameras aus WebTAK (Handy, Helmkamera)</span></h2>
         <div class="row">
           <input id="filter" placeholder="Suchen …" class="filter">
           <button id="liveOffAllBtn" class="live-only">Alle auf Bereit</button>
@@ -335,16 +334,16 @@
       <p class="msg" id="omMsg"></p>
       <div class="table-wrap"><table class="streams" id="omTable"><thead><tr><th>Mission</th><th>Beschreibung</th><th>Inhalt</th><th>Erstellt</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
-    <section class="card" data-view="feeds">
-      <div class="row between"><h2>Video-Feeds <span class="mut small">(MediaMTX im TAK-Server)</span></h2><button id="ofReload" type="button">⟳</button></div>
-      <p class="mut small">Feed anlegen: OTS/MediaMTX holt das Bild bei Bedarf von der Quelle (Kamera, Drohne, anderer Server) und stellt es
-        allen als <b>rtsp://&lt;TAK-Server&gt;:8554/&lt;Pfad&gt;</b> bereit – ATAK/iTAK/WinTAK finden es unter „Video“. Ohne Quelle wartet der Pfad
-        auf eine Kamera, die selbst dorthin sendet (RTSP/RTMP/SRT/WebRTC).</p>
+    <section class="card" data-view="video">
+      <div class="row between"><h2>Alle Feeds im TAK-Server <span class="mut small">(OpenTAKServer/MediaMTX)</span></h2><button id="ofReload" type="button">⟳</button></div>
+      <p class="mut small">Hier stehen alle Feeds, die ATAK/iTAK/WinTAK unter „Video“ sehen – die Kameras aus WebTAK (oben) und weitere Quellen.
+        <b>Weiteren Feed anlegen:</b> OTS/MediaMTX holt das Bild bei Bedarf von der Quelle (Kamera, Drohne, anderer Server) und stellt es als
+        <b>rtsp://&lt;TAK-Server&gt;:8554/&lt;Pfad&gt;</b> bereit. Ohne Quelle wartet der Pfad auf eine Kamera, die selbst dorthin sendet.</p>
       <form class="row" id="ofForm"><div class="grow"><label>Pfad</label><input name="path" placeholder="z. B. drohne1" required></div>
         <div class="grow"><label>Quelle (optional)</label><input name="source" placeholder="rtsp://kamera/stream, https://…/index.m3u8"></div>
         <div class="actions-end"><button class="pri" type="submit">Feed anlegen</button></div></form>
       <p class="msg" id="ofMsg"></p>
-      <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Pfad</th><th>Quelle</th><th>Für ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
+      <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Pfad</th><th>Herkunft</th><th>Quelle</th><th>Für ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="mesh">
       <div class="row between"><h2>Meshtastic-Kanäle</h2><button id="omeReload" type="button">⟳</button></div>
