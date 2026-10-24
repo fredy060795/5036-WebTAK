@@ -1,1 +1,3 @@
-*.bat text eol=crlf
+# Windows-Dateien immer mit CRLF ausliefern, auch bei "Raw"-Download
+start.bat -text
+tools/*.ps1 -text

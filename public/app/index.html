@@ -257,6 +257,11 @@ async function setupGatt() {
 }
 
 async function connectCamera() {
+  if (!window.isSecureContext) {
+    setMsg('Bluetooth geht nur über HTTPS. Zum Testen in Chrome chrome://flags/#unsafely-treat-insecure-origin-as-secure öffnen, '
+      + location.origin + ' eintragen, auf „Enabled“ stellen und Chrome neu starten.', 'err');
+    return;
+  }
   if (!navigator.bluetooth) {
     setMsg('Dieser Browser kann kein Bluetooth. Android: Chrome verwenden. iPhone: App „Bluefy“.', 'err');
     return;

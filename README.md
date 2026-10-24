@@ -80,12 +80,17 @@ nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste 
 1. Repository herunterladen (**Code → Download ZIP**) und entpacken.
 2. **start.bat** doppelklicken. Fehlt Node.js, bietet das Fenster die Installation an (winget); danach start.bat
    erneut starten. Beim ersten Start werden die Pakete installiert (braucht Internet).
-3. Das Admin-Fenster öffnet sich unter `http://localhost:5036/admin/` (erster Login admin / admin123).
-4. Stream anlegen → **QR / Links** → den Link **Handy-App** am PC in Chrome oder Edge öffnen. Hat der PC
-   Bluetooth, lässt sich die Helmkamera direkt verbinden und der Stream im Admin-Fenster ansehen.
+3. Das Admin-Fenster öffnet sich unter `http://<IP-des-PCs>:5036/admin/` (erster Login admin / admin123).
+   Handys im selben WLAN erreichen den Server unter derselben Adresse; fragt Windows nach der Firewall,
+   „Zugriff zulassen“ wählen.
+4. Stream anlegen → **QR / Links** → QR-Code mit dem Handy scannen (oder den Link am PC öffnen).
 
-Mit echten Handys geht Bluetooth im Browser nur über HTTPS – dafür den Server wie unten beschrieben betreiben.
+Bluetooth im Browser braucht eigentlich HTTPS. Zum Testen über die PC-IP in Chrome (PC und Android) einmalig
+`chrome://flags/#unsafely-treat-insecure-origin-as-secure` öffnen, `http://<IP-des-PCs>:5036` eintragen, auf
+„Enabled“ stellen und Chrome neu starten. Am PC selbst geht es auch ohne Flag über `http://localhost:5036`.
+
 Für HLS/MPEG-TS am PC ffmpeg installieren (`winget install Gyan.FFmpeg`) oder nach `tools\ffmpeg\bin\` legen.
+Alle Meldungen stehen zusätzlich in `start.log`.
 
 ## Installation auf dem Server
 
