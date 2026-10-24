@@ -202,7 +202,7 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
 
 **Ablauf**
 
-1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter „OpenTAKServer & Registrierung“), liest
+1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin: „Benutzer & Anfragen“ → „Registrierungs-QR“), liest
    kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
    optional E-Mail-Bestätigung über SMTP). Er bekommt sofort eine Eingangsbestätigung per E-Mail
    („WebTAK – registration request received“, mit seinem persönlichen Statuslink) und sieht nach dem Absenden,
@@ -277,9 +277,12 @@ verschwinden nicht mehr aus der Liste.
 
 ## Admin
 
-**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste: *Benutzer & Anfragen* (Zahl offener Anfragen),
-*Teams & Sichtbarkeit*, *OpenTAKServer & Registrierung*, *Video-Streams* (mit TAK-Pfad), *Kamera-Anmeldung*,
-*Stream anlegen*, *WebTAK-App* und *System* (Admin-Zugang, SMTP, Standard für neue Streams).
+**WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste – oben das Tagesgeschäft, unten die einmaligen Einstellungen:
+- **TAK:** *Benutzer & Anfragen* (Zahl offener Anfragen, Knopf „Registrierungs-QR“), *Teams & Sichtbarkeit*
+- **TAK-Server:** *OTS-Benutzer*, *Gruppen*, *Missionen*, *Meshtastic*
+- **Video:** *Video-Feeds* (WebTAK-Kameras und alle OTS-Feeds), *Kamera-Anmeldung*, *Stream anlegen*
+- **Einstellungen:** *OpenTAKServer & Registrierung* (Verbindung, Passwörter, Registrierung – einmal einrichten),
+  *WebTAK-App*, *System* (Admin-Zugang, SMTP, Standard für neue Streams)
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt
   werden (vorher ist nichts anderes möglich).

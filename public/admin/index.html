@@ -91,7 +91,6 @@
     <div class="side-h">TAK</div>
     <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
     <a href="#teams" data-nav="teams"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
-    <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
     <div class="side-h">TAK-Server</div>
     <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
     <a href="#otsgroups" data-nav="otsgroups"><span class="ic">◫</span>Gruppen</a>
@@ -101,9 +100,10 @@
     <a href="#video" data-nav="video"><span class="ic">📡</span>Video-Feeds <span class="badge nb live" id="navLive"></span></a>
     <a href="#camera" data-nav="camera"><span class="ic">📷</span>Kamera-Anmeldung</a>
     <a href="#create" data-nav="create"><span class="ic">＋</span>Stream anlegen</a>
-    <div class="side-h">WebTAK</div>
+    <div class="side-h">Einstellungen</div>
+    <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
     <a href="#webtak" data-nav="webtak"><span class="ic">⌖</span>WebTAK-App</a>
-    <a href="#system" data-nav="system"><span class="ic">⚙</span>System</a>
+    <a href="#system" data-nav="system"><span class="ic">⚙</span>System (Admin, E-Mail)</a>
   </nav>
 
   <main class="wrap">
@@ -121,6 +121,7 @@
       <div data-takp="users">
         <div class="row">
           <input id="takFilter" class="filter" placeholder="Suchen …">
+          <button class="sm" type="button" id="takJoinBtn" title="QR-Code und Link zur Registrierung zeigen/drucken">📱 Registrierungs-QR</button>
           <select id="takStatus" style="width:auto">
             <option value="" selected>Alle</option><option value="pending">Offen</option><option value="active">Aktiv</option>
             <option value="blocked">Gesperrt</option><option value="rejected">Abgelehnt</option><option value="unconfirmed">E-Mail unbestätigt</option>

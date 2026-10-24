@@ -426,7 +426,7 @@ async function handleAccessApi(req, res, route) {
 // ======================================================================
 
 async function handleOtsAdmin(req, res, route) {
-  if (!takUsers.otsConfigured()) return json(res, 400, { error: 'OpenTAKServer ist nicht verbunden (OpenTAKServer & Registrierung).' });
+  if (!takUsers.otsConfigured()) return json(res, 400, { error: 'OpenTAKServer ist nicht verbunden (Einstellungen → OpenTAKServer & Registrierung).' });
   const ots = takUsers.ots();
   const method = req.method;
   const body = method === 'GET' || method === 'DELETE' ? {} : await readJson(req);

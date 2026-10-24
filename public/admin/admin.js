@@ -427,7 +427,7 @@ function renderTakVideo() {
   if (document.activeElement !== $('tvPrefix')) $('tvPrefix').value = takVideo.prefix || '';
   const inTak = streams.filter(s => s.tak && s.tak.inTak).length;
   const errs = streams.filter(s => s.tak && s.tak.error).length;
-  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „OpenTAKServer & Registrierung“ eintragen.'
+  $('tvStatus').textContent = !takVideo.ready ? 'OpenTAKServer ist nicht verbunden – unter „Einstellungen → OpenTAKServer & Registrierung“ eintragen.'
     : `${inTak} von ${streams.length} Stream${streams.length === 1 ? '' : 's'} im TAK-Server` + (errs ? ` · ${errs} Fehler (Punkt antippen)` : '');
   $('tvStatus').className = 'small ' + (!takVideo.ready || errs ? 'warn' : 'mut');
 }
@@ -550,7 +550,7 @@ function updateRow(r, s) {
   c.takOn.disabled = !takVideo.ready;
   if (document.activeElement !== c.takPath) { c.takPath.value = t.path || ''; c.takPathOld = t.path || ''; }
   c.takPath.disabled = !takVideo.ready;
-  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Menü: OpenTAKServer & Registrierung)']
+  const takState = !takVideo.ready ? ['off', 'OpenTAKServer nicht verbunden (Einstellungen → OpenTAKServer & Registrierung)']
     : t.error ? ['err', 'Fehler: ' + t.error]
       : t.inTak ? ['ok', 'Im TAK-Server: ' + (t.rtsp || t.path)]
         : t.enabled ? ['wait', takVideo.when === 'live' ? 'Wird eingetragen, sobald die Kamera sendet' : 'Wird eingetragen …'] : ['off', 'Nicht im TAK-Server'];
