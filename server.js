@@ -163,6 +163,33 @@ function serveStatic(res, dir, rel) {
 }
 
 // ======================================================================
+// Selbst-Anmeldung (allgemeiner QR-Code -> /app/ -> Name + Einheit)
+// ======================================================================
+
+const registrations = new Map(); // ip -> [zeitpunkte]
+const MAX_REG_PER_HOUR = 20;
+
+function registrationEnabled() {
+  return (store.data.registration || {}).enabled !== false; // Standard: an
+}
+
+async function handleRegister(req, res) {
+  if (!registrationEnabled()) {
+    return json(res, 403, { error: 'Die Anmeldung ist gerade gesperrt. Bitte beim Admin melden.' });
+  }
+  const ip = clientIp(req);
+  const now = Date.now();
+  const list = (registrations.get(ip) || []).filter(t => now - t < 3600 * 1000);
+  if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: 'Zu viele Anmeldungen. Bitte später erneut versuchen.' });
+  const body = await readJson(req);
+  const entry = hub.register(body.name, body.unit);
+  list.push(now);
+  registrations.set(ip, list);
+  log('Selbst-Anmeldung', entry.user + '/' + entry.streamId, JSON.stringify(entry.label), ip);
+  return json(res, 200, { u: entry.user, s: entry.streamId, k: entry.key, label: entry.label });
+}
+
+// ======================================================================
 // Admin-API
 // ======================================================================
 
@@ -244,6 +271,21 @@ async function handleAdminApi(req, res, route) {
 
   // Erst nach dem ersten Passwortwechsel ist der Rest erlaubt
   if (auth.admin.mustChange) return json(res, 403, { error: 'Bitte zuerst das Passwort ändern.', mustChange: true });
+
+  if (route === 'registration' && method === 'GET') {
+    return json(res, 200, { enabled: registrationEnabled(), appUrl: publicBase(req) + '/app/' });
+  }
+  if (route === 'registration' && method === 'POST') {
+    const body = await readJson(req);
+    store.data.registration = { enabled: !!body.enabled };
+    store.save();
+    log('Selbst-Anmeldung', body.enabled ? 'erlaubt' : 'gesperrt');
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'app-qr.svg' && method === 'GET') {
+    const svg = await QRCode.toString(publicBase(req) + '/app/', { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
+    return send(res, 200, svg, 'image/svg+xml');
+  }
 
   if (route === 'ca-qr.svg' && method === 'GET' && config.testCa) {
     const svg = await QRCode.toString(publicBase(req) + '/ca.crt', { type: 'svg', margin: 2 });
@@ -397,6 +439,8 @@ async function handle(req, res) {
       if (!admin) return json(res, 404, { error: 'Nicht gefunden' });
       return await handleAdminApi(req, res, p.slice(11));
     }
+    if (p === '/api/app/register' && req.method === 'POST') return await handleRegister(req, res);
+    if (p === '/api/app/info' && req.method === 'GET') return json(res, 200, { registration: registrationEnabled() });
     if (p === '/app') return send(res, 302, '', 'text/plain', { Location: '/app/' });
     if (p.startsWith('/app/')) return serveStatic(res, 'app', decodeURIComponent(p.slice(5)));
     if (p.startsWith('/assets/')) return serveStatic(res, 'assets', decodeURIComponent(p.slice(8)));
