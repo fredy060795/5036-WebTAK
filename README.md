@@ -157,6 +157,11 @@ Home-Bildschirm“). Aufbau wie ATAK:
    Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
    angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
    Video und Chat stapeln sich, statt sich zu überdecken.
+   **Feeds anderer Systeme:** HLS (`.m3u8`) spielt WebTAK auch in Chrome/Edge (hls.js). RTSP-Feeds von
+   OpenTAKServer/MediaMTX (`rtsp://host:8554/pfad`, wie sie ATAK/iTAK abspielen) holt WebTAK automatisch über den
+   HLS-Ausgang von MediaMTX (`http://host:8888/pfad/index.m3u8`). Das läuft über den eigenen Server
+   (`/api/eud/media`: nur Video-Dateien, Ziel wie bei der TAK-Durchreiche geprüft) – kein Mixed Content, kein CORS.
+   Geht es trotzdem nicht: Hinweis und Knopf „im neuen Tab öffnen“ bzw. „Adresse für VLC kopieren“.
 
 **TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
 Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte

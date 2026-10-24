@@ -767,6 +767,42 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
   }
 });
 
+test('WebTAK-Video: HLS-Feeds über den eigenen Server (Playlist umgeschrieben, Segmente, nur Video, Ziel geprüft)', async () => {
+  const up = http.createServer((req, res) => {
+    if (req.url === '/live/cam/index.m3u8') { res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' }); return res.end('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nseg1.ts\n#EXTINF:2,\nhttp://other.example/x.ts\n'); }
+    if (req.url === '/live/cam/seg1.ts') { res.writeHead(200, { 'Content-Type': 'video/mp2t' }); return res.end(Buffer.from('TSDATA')); }
+    if (req.url === '/live/redirect.m3u8') { res.writeHead(302, { Location: '/live/cam/index.m3u8' }); return res.end(); }
+    res.writeHead(404); res.end();
+  });
+  await new Promise(r => up.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${up.address().port}`;
+  const media = u => fetch(base + '/api/eud/media?u=' + encodeURIComponent(u));
+  try {
+    // ohne Freigabe: eigener Rechner (127.0.0.1) gesperrt
+    assert.equal((await media(origin + '/live/cam/index.m3u8')).status, 403);
+    await api('tak', { method: 'POST', body: { allowedHosts: '127.0.0.1', preset: null } });
+    let r = await media(origin + '/live/cam/index.m3u8');
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /mpegurl/);
+    const pl = await r.text();
+    assert.match(pl, new RegExp('^/api/eud/media\\?u=' + encodeURIComponent(origin + '/live/cam/seg1.ts').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm'));
+    assert.match(pl, /URI="\/api\/eud\/media\?u=[^"]+init\.mp4"/);
+    assert.match(pl, /u=http%3A%2F%2Fother\.example%2Fx\.ts/);
+    r = await media(origin + '/live/cam/seg1.ts');
+    assert.equal(r.status, 200);
+    assert.equal(await r.text(), 'TSDATA');
+    r = await media(origin + '/live/redirect.m3u8');
+    assert.equal(r.status, 200, 'Umleitung auf demselben Server wird verfolgt');
+    assert.equal((await media(origin + '/admin/')).status, 400, 'nur Video-Dateien');
+    assert.equal((await media('file:///etc/passwd.ts')).status, 400);
+    assert.equal((await media('http://tak.example.com/x.m3u8')).status, 403, 'nicht in der Liste');
+    assert.equal((await media(origin + '/live/cam/fehlt.ts')).status, 404);
+  } finally {
+    await api('tak', { method: 'POST', body: { allowedHosts: '', preset: null } });
+    up.close();
+  }
+});
+
 test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis nur an die Admin-Adresse', async () => {
   const sink = await smtpSink();
   try {

@@ -26,6 +26,7 @@ const { TileCache } = require('./lib/tiles');
 const { TakUsers, TEAM_COLORS, ROLES, maskEmail } = require('./lib/takusers');
 const { TakVideo } = require('./lib/takvideo');
 const { atakPackage } = require('./lib/datapackage');
+const { proxyMedia } = require('./lib/mediaproxy');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -228,6 +229,7 @@ const VENDOR = {
   'leaflet-rotate.js': 'leaflet-rotate/dist/leaflet-rotate.js',
   'milsymbol.js': 'milsymbol/dist/milsymbol.js',
   'jsQR.js': 'jsqr/dist/jsQR.js',
+  'hls.min.js': 'hls.js/dist/hls.min.js', // HLS-Feeds in Chrome/Edge (Safari kann es selbst)
   // 3D-Karte (ES-Module; der Worker wird relativ zum Modul geladen)
   'maplibre-gl.mjs': 'maplibre-gl/dist/maplibre-gl.mjs',
   'maplibre-gl-worker.mjs': 'maplibre-gl/dist/maplibre-gl-worker.mjs',
@@ -492,6 +494,10 @@ async function handleEudApi(req, res, route) {
   if (route === 'config' && req.method === 'GET') {
     const t = takSettings();
     return json(res, 200, { preset: t.preset, restricted: !!t.allowedHosts.trim() });
+  }
+  // Video-Feeds (HLS) über den eigenen Server, damit der Browser sie abspielen darf
+  if (route === 'media' && req.method === 'GET') {
+    return proxyMedia(req, res, { allowed: host => tak.targetAllowed(takSettings().allowedHosts, host), log });
   }
   if (req.method !== 'POST') return json(res, 404, { error: 'Unknown request.' });
   if (route === 'p12') {
