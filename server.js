@@ -308,7 +308,6 @@ function mailAdmin(subject, text, notTo) {
   return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
 }
 const accessLink = (req, u) => `${publicBase(req)}/access/#t=${u.token}`;
-const lookupLimits = new Map(); // ip -> [zeitpunkte] für "Status per E-Mail"
 
 function requestMail(u, link) {
   return `Hello ${u.name},\n\nthank you – your registration request for WebTAK has been received.\n\n`
@@ -364,22 +363,6 @@ async function handleAccessApi(req, res, route) {
     if (!u) return json(res, 400, { error: 'This confirmation link is invalid or was already used.' });
     newRequest(u, ' (E-Mail bestätigt)');
     return json(res, 200, { status: u.status });
-  }
-  // Status vergessen: Statuslink per E-Mail (immer gleiche Antwort, damit niemand Adressen ausprobieren kann)
-  if (route === 'lookup' && req.method === 'POST') {
-    const ip = clientIp(req);
-    const now = Date.now();
-    const list = (lookupLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
-    if (list.length >= 5) return json(res, 429, { error: 'Too many requests. Please try again later.' });
-    list.push(now);
-    lookupLimits.set(ip, list);
-    const body = await readJson(req);
-    const u = takUsers.byEmail(body.email);
-    if (u && mailReady()) {
-      mailUser(u.email, 'WebTAK – your status link', `Hello ${u.name},\n\nhere is the link to the status of your WebTAK access:\n\n${accessLink(req, u)}\n\n`
-        + 'If you did not ask for this e-mail, you can ignore it.\n');
-    }
-    return json(res, 200, { ok: true, mail: mailReady() });
   }
   const u = takUsers.byToken(String(token));
   if (!u) return json(res, 404, { error: 'Unknown access link.' });

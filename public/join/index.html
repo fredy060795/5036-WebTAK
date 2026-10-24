@@ -67,18 +67,8 @@
       QR codes and a step-by-step guide. Keep the link private. Bookmark it or add it to your home screen.</p>
     <p class="row"><a class="btn blue" id="statusLink" href="#">Open my status page</a>
       <button type="button" id="copyStatus">Copy link</button></p>
-    <p class="mut small">Lost the link? Use “Check my status” below with your e-mail address.</p>
   </section>
 
-  <section class="card" id="lookupCard">
-    <h2>Check my status</h2>
-    <p class="mut small">Already registered? Enter your e-mail address – we send you the link to your status page.</p>
-    <form id="lookupForm" class="row">
-      <div class="grow"><input id="lookupEmail" type="email" required maxlength="120" autocomplete="email" placeholder="your e-mail address"></div>
-      <button type="submit" id="lookupSend">Send status link</button>
-    </form>
-    <p class="msg" id="lookupMsg"></p>
-  </section>
 
   <section class="card hidden" id="closedCard">
     <h2>Registration closed</h2>
@@ -110,25 +100,6 @@ function steps(list) {
   }));
 }
 
-$('lookupForm').addEventListener('submit', async e => {
-  e.preventDefault();
-  $('lookupSend').disabled = true;
-  const msg = $('lookupMsg');
-  msg.className = 'msg';
-  try {
-    const res = await fetch('/api/access/lookup', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ email: $('lookupEmail').value }) });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Request failed.');
-    msg.className = 'msg ok';
-    msg.textContent = data.mail
-      ? 'If this address is registered, we have just sent you an e-mail with your status link.'
-      : 'E-mail is not available on this server – please ask your administrator for your status link.';
-  } catch (err) {
-    msg.textContent = err.message;
-  } finally {
-    $('lookupSend').disabled = false;
-  }
-});
 $('form').addEventListener('submit', async e => {
   e.preventDefault();
   $('send').disabled = true;

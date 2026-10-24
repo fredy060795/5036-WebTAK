@@ -207,8 +207,7 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
    optional E-Mail-Bestätigung über SMTP). Er bekommt sofort eine Eingangsbestätigung per E-Mail
    („WebTAK – registration request received“, mit seinem persönlichen Statuslink) und sieht nach dem Absenden,
    wie es weitergeht. Die **Statusseite** zeigt eine Zeitleiste (Anfrage → ggf. E-Mail bestätigt → Freigabe →
-   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Link verloren?
-   „Check my status“ auf `/join/` schickt ihn erneut. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
+   Zugangsdaten), aktualisiert sich selbst und sagt, ob die Freigabe per E-Mail kommt. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
 3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, Passwort laut Einstellung –
