@@ -65,3 +65,5 @@ ol.timeline li.now::before { border-color: var(--yellow); background: var(--yell
 ol.timeline li.bad::before { background: var(--red); border-color: var(--red); }
 ol.timeline small { display: block; font-weight: 400; color: var(--mut); }
 @media print { body { background: #fff; color: #000; } .card { border-color: #999; background: #fff; } button, .tabs { display: none; } }
+ol.steps.big li { margin: 14px 0; }
+ol.steps.big .btn { margin-top: 4px; }

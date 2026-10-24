@@ -25,6 +25,7 @@ const tak = require('./lib/tak');
 const { TileCache } = require('./lib/tiles');
 const { TakUsers, TEAM_COLORS, ROLES, maskEmail } = require('./lib/takusers');
 const { TakVideo } = require('./lib/takvideo');
+const { atakPackage } = require('./lib/datapackage');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -385,9 +386,24 @@ async function handleAccessApi(req, res, route) {
   const o = takUsers.t.ots;
   const host = takUsers.takHost();
   const qr = text => QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
-  if (route === 'qr/atak.svg') {
+  // ATAK-QR: normaler https-Link (Handy-Kamera öffnet ihn im Browser) zur Seite mit dem Einrichtungspaket
+  if (route === 'qr/atak.svg') return send(res, 200, await qr(`${publicBase(req)}/access/atak.html#t=${encodeURIComponent(String(token))}`), 'image/svg+xml');
+  // tak://-Link von OTS (nur mit vertrauenswürdigem Server-Zertifikat, z. B. Let's Encrypt)
+  if (route === 'qr/atak-direct.svg') {
     if (!u.atakQr) return send(res, 404, 'Kein QR-Code');
     return send(res, 200, await qr(u.atakQr), 'image/svg+xml');
+  }
+  if (route === 'atak-link') return json(res, 200, { link: u.atakQr || '' });
+  // Einrichtungspaket: Truststore + Server + Benutzer + Passwort + Rufname/Team – ATAK richtet alles ein
+  if (route === 'atak-package.zip') {
+    let truststore;
+    try { truststore = await takUsers.ots().truststore(); } catch (e) { return json(res, 502, { error: 'Truststore not available: ' + e.message }); }
+    const team = takUsers.team(u.team);
+    const pkg = atakPackage({
+      host, port: o.streamPort, description: 'WebTAK ' + host, username: u.username, password: u.password,
+      caPassword: o.truststorePassword || 'atakatak', callsign: u.callsign, team: team.color, role: u.role, truststore,
+    });
+    return send(res, 200, pkg.data, 'application/zip', { 'Content-Disposition': `attachment; filename="${pkg.filename}"`, 'Cache-Control': 'no-store' });
   }
   if (route === 'qr/itak.svg') return send(res, 200, await qr(`${host},${host},${o.streamPort},ssl`), 'image/svg+xml');
   if (route === 'qr/eud.svg') {

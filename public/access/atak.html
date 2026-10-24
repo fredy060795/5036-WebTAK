@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WebTAK Access – Set up ATAK</title>
+<meta name="theme-color" content="#0b0e12">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/assets/brand/favicon.ico" sizes="any">
+<link rel="apple-touch-icon" href="/assets/brand/apple-touch-icon.png">
+<link rel="stylesheet" href="/assets/tak.css">
+</head>
+<body>
+<header class="top"><img src="/assets/brand/webtak-logo-160.png" alt=""><h1>WebTAK <span class="mut">Access</span></h1></header>
+<main class="wrap">
+  <p class="msg" id="msg"></p>
+  <section class="card hidden" id="card">
+    <h2>Set up ATAK in two taps</h2>
+    <p class="mut small">This package contains everything: server, your login, callsign <b id="cs"></b> and the server certificate.
+      You do not need to type anything.</p>
+    <ol class="steps big">
+      <li><a class="btn pri" id="dl" href="#">⬇ Download ATAK setup package</a></li>
+      <li><b>Open the downloaded file with ATAK</b>
+        <span class="mut small">– tap the download notification (or open it in the <i>Files / Downloads</i> app) and choose <b>ATAK</b>.
+          Alternatively in ATAK: <span class="path">☰</span> → <span class="path">Import</span> → <span class="path">Local SD</span> →
+          <span class="path">Download</span> → <span class="path" id="fname">WebTAK-….zip</span>.</span></li>
+      <li>ATAK imports the package, requests its certificate and connects. A <b style="color:var(--green)">green</b> indicator
+        (bottom right) means you are online.</li>
+    </ol>
+    <p class="mut small">No ATAK yet? <a href="https://play.google.com/store/apps/details?id=com.atakmap.app.civ" target="_blank" rel="noopener">Install ATAK-CIV from Google Play</a>,
+      open it once, then come back to this page. iPhone: the same package can be opened with <b>iTAK</b>.</p>
+  </section>
+
+  <section class="card hidden" id="directCard">
+    <h3>Alternative: open directly in ATAK</h3>
+    <p class="mut small">Only works if the server has a publicly trusted certificate (e.g. Let's Encrypt). Otherwise use the package above.</p>
+    <p><a class="btn blue" id="direct" href="#">Open in ATAK</a></p>
+  </section>
+
+  <p class="small"><a href="/access/" id="back">← Back to my access page</a></p>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+let token = new URLSearchParams(location.hash.slice(1)).get('t') || '';
+try {
+  if (token) localStorage.setItem('tak.access', token);
+  else token = localStorage.getItem('tak.access') || '';
+} catch (e) { /* privat */ }
+if (location.hash) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
+
+(async () => {
+  if (!token) { $('msg').textContent = 'No access link. Please use the QR code from your access page.'; return; }
+  const h = { 'X-Access-Token': token };
+  const me = await fetch('/api/access/me', { headers: h }).then(r => r.json().then(d => ({ ok: r.ok, d }))).catch(() => ({ ok: false, d: {} }));
+  if (!me.ok) { $('msg').textContent = me.d.error || 'Unknown access link.'; return; }
+  if (me.d.status !== 'active') { $('msg').textContent = 'Your access is not approved yet. Please check your access page.'; return; }
+  const q = '?t=' + encodeURIComponent(token);
+  $('cs').textContent = me.d.callsign;
+  $('dl').href = '/api/access/atak-package.zip' + q;
+  $('fname').textContent = 'WebTAK-' + String(me.d.callsign || me.d.username).replace(/[^\w.-]+/g, '_') + '.zip';
+  $('back').href = '/access/#t=' + encodeURIComponent(token);
+  $('card').classList.remove('hidden');
+  const link = await fetch('/api/access/atak-link', { headers: h }).then(r => r.json()).catch(() => ({}));
+  if (link.link) { $('direct').href = link.link; $('directCard').classList.remove('hidden'); }
+})().catch(e => { $('msg').textContent = e.message; });
+</script>
+</body>
+</html>

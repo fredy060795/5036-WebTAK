@@ -221,6 +221,14 @@ dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“
 **Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
 Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
 
+**ATAK ohne Tippen:** Der ATAK-QR-Code auf der Zugangsseite ist ein normaler https-Link – mit der Handy-Kamera
+scannen, Seite öffnet sich, **ATAK-Einrichtungspaket** (`.zip`) laden und mit ATAK öffnen. Das Paket enthält Server,
+Benutzer, Passwort, Rufname, Team, Rolle und den Truststore von OTS (Passwort einstellbar, Standard `atakatak`);
+ATAK importiert es, fordert sein Zertifikat an und verbindet sich. Das funktioniert auch mit selbstsigniertem
+Server-Zertifikat. Der `tak://…/enroll`-QR von OTS bleibt als Alternative – laut OTS klappt er nur mit öffentlich
+vertrauenswürdigem Zertifikat (z. B. Let's Encrypt), und viele Kamera-Apps öffnen `tak://`-Links gar nicht.
+Das Paket lässt sich auch mit iTAK öffnen.
+
 **Teams und Sichtbarkeit:** Standard: alle sehen alle – dann bekommen freigegebene Nutzer in OTS **keine Gruppe**,
 genau wie von Hand angelegte Benutzer; OTS nimmt dafür seine Standardgruppe `__ANON__`, und alle (auch WinTAK/ATAK
 ohne Gruppe) sehen sich. Erst wenn in der Matrix „Wer sieht wen?“ ein Haken entfernt wird, legt WebTAK je Team eine

@@ -858,6 +858,19 @@ test('TAK-Zugang: Registrierung -> Freigabe mit Rufname -> Zugangsseite mit QR u
     const ts = await fetch(base + '/api/access/truststore.p12?t=' + token);
     assert.equal(ts.status, 200);
     assert.equal(Buffer.from(await ts.arrayBuffer()).toString(), 'P12DATA');
+    // ATAK-Einrichtungspaket: alles drin, nichts zu tippen; QR = https-Link zur Paket-Seite
+    const pk = await fetch(base + '/api/access/atak-package.zip?t=' + token);
+    assert.equal(pk.status, 200);
+    assert.match(pk.headers.get('content-disposition'), /WebTAK-Alpha_10\.zip/);
+    const files = require('../lib/tak').unzip(Buffer.from(await pk.arrayBuffer()));
+    assert.equal(files['certs/truststore.p12'].toString(), 'P12DATA');
+    const pref = files['certs/config.pref'].toString();
+    assert.match(pref, /key="username0"[^>]*>alpha_10</);
+    assert.match(pref, new RegExp(`key="password0"[^>]*>${mock.state.users.alpha_10.password}<`));
+    assert.match(pref, /key="connectString0"[^>]*>tak\.example\.com:8089:ssl</);
+    assert.equal((await fetch(base + '/api/access/atak-package.zip?t=' + 'x'.repeat(48))).status, 404);
+    assert.equal((await fetch(base + '/access/atak.html')).status, 200);
+    assert.match((await pub('atak-link', { headers: { 'X-Access-Token': token } })).data.link, /^tak:\/\/com\.atakmap\.app\/enroll/);
     // Sperren -> keine Daten mehr
     await api(`takusers/user/${id}/block`, { method: 'POST', body: {} });
     assert.equal(mock.state.users.alpha_10.active, false);
