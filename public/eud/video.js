@@ -363,6 +363,34 @@
 
   // Was der Browser abspielen kann: MJPEG (unsere Streams, als Bild), HLS (.m3u8), MP4/WebM.
   // RTSP/RTMP/SRT/UDP gehen im Browser nicht -> Adresse kopieren (z. B. für VLC).
+  // Abspielen im Browser: eigene Streams als MJPEG, HLS (auch RTSP-Feeds von MediaMTX/OTS über deren
+  // HLS-Ausgang) mit hls.js über den eigenen Server, MP4/WebM direkt. Sonst klarer Hinweis + Ausweg.
+  let hls = null;
+  let hlsLib = null;
+  const mediaProxy = u => '/api/eud/media?u=' + encodeURIComponent(u);
+  function loadHlsLib() {
+    if (hlsLib) return hlsLib;
+    hlsLib = new Promise((resolve, reject) => {
+      const s = document.createElement('script');
+      s.src = 'vendor/hls.min.js';
+      s.onload = () => resolve(window.Hls);
+      s.onerror = () => { hlsLib = null; reject(new Error('hls.js not available')); };
+      document.head.append(s);
+    });
+    return hlsLib;
+  }
+  // HLS-Adresse zu einem Feed: .m3u8 direkt; MediaMTX (OTS): rtsp://host:8554/pfad -> http://host:8888/pfad/index.m3u8,
+  // ebenso die Player-Seiten http://host:8888/pfad bzw. :8889/pfad (WebRTC)
+  function hlsUrl(url) {
+    let u;
+    try { u = new URL(url); } catch (e) { return ''; }
+    const path = u.pathname.replace(/\/+$/, '');
+    if (/\.m3u8$/i.test(path)) return u.href;
+    if (!path || path === '/' || /\.[a-z0-9]{2,4}$/i.test(path)) return '';
+    if (/^rtsps?:$/.test(u.protocol)) return `http://${u.hostname}:8888${path}/index.m3u8`;
+    if (/^https?:$/.test(u.protocol) && (u.port === '8888' || u.port === '8889')) return `${u.protocol}//${u.hostname}:8888${path}/index.m3u8`;
+    return '';
+  }
   function play(name, url) {
     const img = $('vwImg'), vid = $('vwVideo');
     const say = t => { $('vwMsg').textContent = t || ''; };
@@ -371,34 +399,84 @@
     $('vwTitle').textContent = name || 'Stream';
     $('viewer').classList.remove('hidden');
     say('Loading …');
-    if (!/^https?:\/\//i.test(url)) {
-      say('The browser cannot play ' + url.split(':')[0].toUpperCase() + '. Address copied – open it e.g. in VLC.');
-      if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
-      return;
-    }
-    const u = window.eud.browserVideoUrl(url);
-    // Unsere Streams (…/benutzer/id/stream.ts usw.): als MJPEG-Bild, geringe Verzögerung
-    const mjpeg = /\/[a-z0-9][a-z0-9_-]*\/[a-z0-9]{4,32}\/?$/i.test(new URL(u).pathname) ? u.replace(/\/$/, '')
-      : /\/(stream\.ts|snapshot\.jpg)$/i.test(url) ? url.replace(/\/(stream\.ts|snapshot\.jpg)$/i, '') : '';
-    const asVideo = () => {
+    const isHttp = /^https?:\/\//i.test(url);
+    // Letzter Ausweg: im neuen Tab öffnen (http) bzw. Adresse für VLC kopieren (rtsp …)
+    const giveUp = text => {
+      img.classList.add('hidden');
+      vid.classList.add('hidden');
+      say(text);
+      const alt = $('vwAlt');
+      alt.textContent = isHttp ? 'Open in new tab' : 'Copy address (VLC)';
+      alt.onclick = () => {
+        if (isHttp) window.open(url, '_blank', 'noopener');
+        else if (navigator.clipboard) navigator.clipboard.writeText(url).then(() => { alt.textContent = 'Copied'; }, () => prompt('Stream address:', url));
+        else prompt('Stream address:', url);
+      };
+      alt.classList.remove('hidden');
+    };
+    const asVideo = src => {
       img.classList.add('hidden');
       vid.classList.remove('hidden');
       vid.onloadeddata = () => say('');
-      vid.onerror = () => say('Stream cannot be played (format or not reachable).');
-      vid.src = url;
+      vid.onerror = () => giveUp('Stream cannot be played in the browser (format or not reachable).');
+      vid.src = src;
       vid.play().catch(() => {});
     };
+    const asHls = async src => {
+      img.classList.add('hidden');
+      vid.classList.remove('hidden');
+      const via = mediaProxy(src); // gleiche Herkunft: kein Mixed Content, kein CORS
+      if (vid.canPlayType('application/vnd.apple.mpegurl')) { // Safari/iPhone: eingebaut
+        vid.onloadeddata = () => say('');
+        vid.onerror = () => giveUp('Stream not reachable (HLS). ATAK/iTAK may still play it via RTSP.');
+        vid.src = via;
+        vid.play().catch(() => {});
+        return;
+      }
+      let Hls;
+      try { Hls = await loadHlsLib(); } catch (e) { return giveUp('HLS player could not be loaded.'); }
+      if (!Hls || !Hls.isSupported()) return giveUp('This browser cannot play HLS video.');
+      const h = new Hls({ lowLatencyMode: true, liveSyncDurationCount: 2, manifestLoadingMaxRetry: 2 });
+      hls = h;
+      h.on(Hls.Events.MANIFEST_PARSED, () => { say(''); vid.play().catch(() => {}); });
+      h.on(Hls.Events.ERROR, (ev, data) => {
+        if (!data.fatal || hls !== h) return;
+        h.destroy();
+        hls = null;
+        giveUp(data.type === Hls.ErrorTypes.NETWORK_ERROR
+          ? 'Stream not reachable via HLS (is the camera live?). ATAK/iTAK may still play it via RTSP.'
+          : 'Stream format cannot be played in the browser.');
+      });
+      h.loadSource(via);
+      h.attachMedia(vid);
+    };
+    const h = hlsUrl(url);
+    if (!isHttp && !h) {
+      giveUp('The browser cannot play ' + url.split(':')[0].toUpperCase() + ' directly.');
+      return;
+    }
+    const u = isHttp ? window.eud.browserVideoUrl(url) : url;
+    // Unsere Streams (…/benutzer/id/stream.ts usw.): als MJPEG-Bild, geringe Verzögerung
+    const mjpeg = !isHttp ? '' : /\/[a-z0-9][a-z0-9_-]*\/[a-z0-9]{4,32}\/?$/i.test(new URL(u).pathname) ? u.replace(/\/$/, '')
+      : /\/(stream\.ts|snapshot\.jpg)$/i.test(url) ? url.replace(/\/(stream\.ts|snapshot\.jpg)$/i, '') : '';
     if (mjpeg && !/\.m3u8|\.mp4|\.webm/i.test(u)) {
       img.classList.remove('hidden');
       img.onload = () => say('');
-      img.onerror = () => asVideo(); // kein MJPEG: als Video versuchen
+      img.onerror = () => (h ? asHls(h) : asVideo(url)); // kein MJPEG: als Video versuchen
       img.src = mjpeg + (mjpeg.includes('?') ? '&' : '?') + 't=' + Date.now();
+    } else if (h) {
+      asHls(h);
+    } else if (/\.(mp4|webm|ogg|mov)(\?|$)/i.test(url)) {
+      asVideo(url);
     } else {
-      asVideo();
+      // unbekannte http-Adresse (z. B. Player-Seite): kurz als Video versuchen, sonst im Tab öffnen
+      asVideo(url);
     }
   }
   function stopViewer() {
     const img = $('vwImg'), vid = $('vwVideo');
+    if (hls) { hls.destroy(); hls = null; }
+    $('vwAlt').classList.add('hidden');
     img.onerror = img.onload = null;
     img.removeAttribute('src'); // MJPEG-Verbindung beenden
     img.classList.add('hidden');

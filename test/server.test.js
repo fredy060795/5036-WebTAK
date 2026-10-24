@@ -767,6 +767,168 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
   }
 });
 
+test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Gruppen, Missionen, Feeds, Meshtastic', async () => {
+  const { createMockOts } = require('./ots-mock');
+  const mock = createMockOts();
+  const otsUrl = await mock.listen();
+  try {
+    assert.equal((await api('takusers/ots', { method: 'POST', body: { url: otsUrl, username: 'otsadmin', password: 'otspass', host: 'tak.example.com' } })).status, 200);
+    // von Hand in OTS angelegter Benutzer mit Gerät
+    mock.state.users.user1 = { password: 'geheim123', active: true, roles: ['user'] };
+    mock.state.euds.push({ uid: 'ANDROID-1', callsign: 'Horst', username: 'user1' });
+    let r = await api('ots/users');
+    assert.equal(r.status, 200);
+    const u1 = r.data.users.find(u => u.username === 'user1');
+    assert.deepEqual(u1.roles, ['user']);
+    assert.equal(u1.managed, null);
+    assert.equal(u1.euds[0].callsign, 'Horst');
+    // direkt anlegen (ohne Registrierung)
+    r = await api('ots/users', { method: 'POST', body: { callsign: 'Bravo 2', password: '' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.user.username, 'bravo_2');
+    assert.equal(r.data.password, 'atakatak');
+    assert.equal(mock.state.users.bravo_2.password, 'atakatak');
+    assert.match(r.data.link, /\/access\/#t=/);
+    assert.equal((await api('ots/users', { method: 'POST', body: { callsign: 'X', username: 'user1' } })).status, 400, 'gibt es in OTS schon');
+    // übernehmen mit neuem Passwort
+    r = await api('ots/users/user1/import', { method: 'POST', body: { callsign: 'Horst', newPassword: true, password: 'neuespass1' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(mock.state.users.user1.password, 'neuespass1');
+    r = await api('ots/users');
+    assert.equal(r.data.users.find(u => u.username === 'user1').managed.callsign, 'Horst');
+    // Rolle, aktiv, Passwort, Gruppen
+    await api('ots/users/user1/role', { method: 'POST', body: { admin: true } });
+    assert.deepEqual(mock.state.users.user1.roles, ['administrator']);
+    await api('ots/users/user1/active', { method: 'POST', body: { on: false } });
+    assert.equal(mock.state.users.user1.active, false);
+    await api('ots/users/user1/active', { method: 'POST', body: { on: true } });
+    r = await api('ots/users/user1/password', { method: 'POST', body: { password: '' } });
+    assert.equal(r.data.password, 'atakatak');
+    assert.equal((await api('ots/users/user1/password', { method: 'POST', body: { password: 'kurz' } })).status, 400);
+    await api('ots/users/user1/groups', { method: 'POST', body: { group: 'ZUG_1', direction: 'IN' } });
+    assert.deepEqual(mock.groupsOf('user1'), ['ZUG_1.IN']);
+    await api('ots/users/user1/groups', { method: 'POST', body: { group: 'ZUG_1', direction: 'IN', remove: true } });
+    assert.deepEqual(mock.groupsOf('user1'), []);
+    // Gruppen
+    assert.equal((await api('ots/groups', { method: 'POST', body: { name: 'ZUG_2' } })).status, 200);
+    assert.ok((await api('ots/groups')).data.groups.some(g => g.name === 'ZUG_2'));
+    assert.equal((await api('ots/groups', { method: 'POST', body: { name: 'mit leer' } })).status, 400);
+    assert.equal((await api('ots/groups/ZUG_2', { method: 'DELETE' })).status, 200);
+    // Missionen: Ersteller = bekanntes Gerät (automatisch das erste), Gruppen per Name
+    await api('ots/groups', { method: 'POST', body: { name: 'ZUG_3' } });
+    r = await api('ots/missions', { method: 'POST', body: { name: 'Einsatz Nord', description: 'Test', password: 'pw', groups: ['ZUG_3'] } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(mock.state.missions['Einsatz Nord'].creator_uid, 'ANDROID-1');
+    assert.equal(mock.state.missions['Einsatz Nord'].groups.length, 1);
+    r = await api('ots/missions');
+    assert.equal(r.data.missions[0].password, true);
+    await api('ots/missions/' + encodeURIComponent('Einsatz Nord'), { method: 'DELETE' });
+    assert.equal(mock.state.missions['Einsatz Nord'], undefined);
+    // Video-Feeds
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: 'drohne1', source: 'rtsp://10.0.0.5/live' } })).status, 200);
+    assert.equal(mock.state.videos.drohne1.source, 'rtsp://10.0.0.5/live');
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: '../x', source: '' } })).status, 400);
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: 'x', source: 'file:///etc' } })).status, 400);
+    assert.equal((await api('ots/feeds')).data.feeds.length, 1);
+    await api('ots/feeds/drohne1', { method: 'DELETE' });
+    assert.equal(mock.state.videos.drohne1, undefined);
+    // Meshtastic
+    const psk = (await api('ots/mesh/psk')).data.psk;
+    assert.ok(psk);
+    assert.equal((await api('ots/mesh', { method: 'POST', body: { name: 'WebTAK', psk, modemPreset: 'LONG_FAST', region: 'EU_868' } })).status, 200);
+    assert.equal(mock.state.mesh[0].lora_region, 'EU_868');
+    assert.equal((await api('ots/mesh', { method: 'POST', body: { name: 'viel zu lang!' } })).status, 400);
+    const ch = (await api('ots/mesh')).data.channels[0];
+    await api('ots/mesh?url=' + encodeURIComponent(ch.url), { method: 'DELETE' });
+    assert.equal(mock.state.mesh.length, 0);
+    // Löschen (auch aus der WebTAK-Verwaltung)
+    await api('ots/users/bravo_2', { method: 'DELETE' });
+    assert.equal(mock.state.users.bravo_2, undefined);
+    assert.equal((await api('takusers/state')).data.users.some(u => u.username === 'bravo_2'), false);
+    const st = await api('takusers/state');
+    for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
+  } finally {
+    mock.close();
+  }
+});
+
+test('WebTAK-Video: HLS-Feeds über den eigenen Server (Playlist umgeschrieben, Segmente, nur Video, Ziel geprüft)', async () => {
+  const up = http.createServer((req, res) => {
+    if (req.url === '/live/cam/index.m3u8') { res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' }); return res.end('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nseg1.ts\n#EXTINF:2,\nhttp://other.example/x.ts\n'); }
+    if (req.url === '/live/cam/seg1.ts') { res.writeHead(200, { 'Content-Type': 'video/mp2t' }); return res.end(Buffer.from('TSDATA')); }
+    if (req.url === '/live/redirect.m3u8') { res.writeHead(302, { Location: '/live/cam/index.m3u8' }); return res.end(); }
+    res.writeHead(404); res.end();
+  });
+  await new Promise(r => up.listen(0, '127.0.0.1', r));
+  const origin = `http://127.0.0.1:${up.address().port}`;
+  const media = u => fetch(base + '/api/eud/media?u=' + encodeURIComponent(u));
+  try {
+    // ohne Freigabe: eigener Rechner (127.0.0.1) gesperrt
+    assert.equal((await media(origin + '/live/cam/index.m3u8')).status, 403);
+    await api('tak', { method: 'POST', body: { allowedHosts: '127.0.0.1', preset: null } });
+    let r = await media(origin + '/live/cam/index.m3u8');
+    assert.equal(r.status, 200);
+    assert.match(r.headers.get('content-type'), /mpegurl/);
+    const pl = await r.text();
+    assert.match(pl, new RegExp('^/api/eud/media\\?u=' + encodeURIComponent(origin + '/live/cam/seg1.ts').replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '$', 'm'));
+    assert.match(pl, /URI="\/api\/eud\/media\?u=[^"]+init\.mp4"/);
+    assert.match(pl, /u=http%3A%2F%2Fother\.example%2Fx\.ts/);
+    r = await media(origin + '/live/cam/seg1.ts');
+    assert.equal(r.status, 200);
+    assert.equal(await r.text(), 'TSDATA');
+    r = await media(origin + '/live/redirect.m3u8');
+    assert.equal(r.status, 200, 'Umleitung auf demselben Server wird verfolgt');
+    assert.equal((await media(origin + '/admin/')).status, 400, 'nur Video-Dateien');
+    assert.equal((await media('file:///etc/passwd.ts')).status, 400);
+    assert.equal((await media('http://tak.example.com/x.m3u8')).status, 403, 'nicht in der Liste');
+    assert.equal((await media(origin + '/live/cam/fehlt.ts')).status, 404);
+  } finally {
+    await api('tak', { method: 'POST', body: { allowedHosts: '', preset: null } });
+    up.close();
+  }
+});
+
+test('TAK-Zugang: Mails – Nutzer bekommt nie einen Admin-Link, Admin-Hinweis nur an die Admin-Adresse', async () => {
+  const sink = await smtpSink();
+  try {
+    await api('smtp', { method: 'POST', body: { host: '127.0.0.1', port: sink.port, secure: false, from: 'webtak@example.com' } });
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: true, codeword: '' } });
+    const pub = (p, body) => fetch(base + '/api/access/' + p, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) }).then(async r => ({ status: r.status, data: await r.json() }));
+    const flat = m => m.replace(/=\n/g, '').replace(/=3D/g, '=');
+    const waitMails = async n => { for (let i = 0; i < 100 && sink.mails.length < n; i++) await sleep(30); };
+    let r = await pub('register', { name: 'Mail Test', email: 'mutti@example.com', callsign: 'MUTTI' });
+    assert.equal(r.data.status, 'unconfirmed');
+    await waitMails(1);
+    const confirm = flat(sink.mails[0]);
+    assert.match(confirm, /^To: mutti@example\.com/m);
+    const code = /&c=([a-f0-9]+)/.exec(confirm)[1];
+    assert.equal((await pub('confirm', { code })).status, 200);
+    await waitMails(2);
+    await sleep(200);
+    const toUser = sink.mails.map(flat).filter(m => /^To: mutti@example\.com/m.test(m));
+    const toAdmin = sink.mails.map(flat).filter(m => /^To: chef@example\.com/m.test(m));
+    assert.equal(toAdmin.length, 1, 'Admin bekommt genau einen Hinweis');
+    assert.match(toAdmin[0], /WebTAK-Zugang angefragt: Mail Test/);
+    assert.doesNotMatch(toAdmin[0], /https?:\/\//, 'kein Link im Admin-Hinweis');
+    for (const m of toUser) assert.doesNotMatch(m, /\/admin/i, 'kein Admin-Link an den Nutzer');
+    assert.ok(sink.mails.map(flat).every(m => !/^To: mutti@example\.com/m.test(m) || !/WebTAK-Zugang angefragt/.test(m)), 'Admin-Hinweis nie an den Nutzer');
+    // Admin-Adresse gleich der Adresse der Anfrage: kein Admin-Hinweis an diese Adresse
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: false, codeword: '' } });
+    const before = sink.mails.length;
+    r = await pub('register', { name: 'Gleiche Adresse', email: 'chef@example.com' });
+    assert.equal(r.data.status, 'pending');
+    await sleep(400);
+    const newMails = sink.mails.slice(before).map(flat);
+    assert.equal(newMails.filter(m => /WebTAK-Zugang angefragt/.test(m)).length, 0);
+    assert.equal(newMails.filter(m => /your registration request for WebTAK has been received/.test(m)).length, 1);
+    // aufräumen für die folgenden Tests
+    const st = await api('takusers/state');
+    for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
+  } finally {
+    sink.srv.close();
+  }
+});
+
 test('TAK-Zugang: Registrierung -> Freigabe mit Rufname -> Zugangsseite mit QR und Truststore -> Sperren', async () => {
   const { createMockOts } = require('./ots-mock');
   const mock = createMockOts();
@@ -817,6 +979,19 @@ test('TAK-Zugang: Registrierung -> Freigabe mit Rufname -> Zugangsseite mit QR u
     const ts = await fetch(base + '/api/access/truststore.p12?t=' + token);
     assert.equal(ts.status, 200);
     assert.equal(Buffer.from(await ts.arrayBuffer()).toString(), 'P12DATA');
+    // ATAK-Einrichtungspaket: alles drin, nichts zu tippen; QR = https-Link zur Paket-Seite
+    const pk = await fetch(base + '/api/access/atak-package.zip?t=' + token);
+    assert.equal(pk.status, 200);
+    assert.match(pk.headers.get('content-disposition'), /WebTAK-Alpha_10\.zip/);
+    const files = require('../lib/tak').unzip(Buffer.from(await pk.arrayBuffer()));
+    assert.equal(files['certs/truststore.p12'].toString(), 'P12DATA');
+    const pref = files['certs/config.pref'].toString();
+    assert.match(pref, /key="username0"[^>]*>alpha_10</);
+    assert.match(pref, new RegExp(`key="password0"[^>]*>${mock.state.users.alpha_10.password}<`));
+    assert.match(pref, /key="connectString0"[^>]*>tak\.example\.com:8089:ssl</);
+    assert.equal((await fetch(base + '/api/access/atak-package.zip?t=' + 'x'.repeat(48))).status, 404);
+    assert.equal((await fetch(base + '/access/atak.html')).status, 200);
+    assert.match((await pub('atak-link', { headers: { 'X-Access-Token': token } })).data.link, /^tak:\/\/com\.atakmap\.app\/enroll/);
     // Sperren -> keine Daten mehr
     await api(`takusers/user/${id}/block`, { method: 'POST', body: {} });
     assert.equal(mock.state.users.alpha_10.active, false);

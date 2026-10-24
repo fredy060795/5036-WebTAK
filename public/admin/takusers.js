@@ -43,8 +43,11 @@
     const tb = $('takTable').querySelector('tbody');
     const q = $('takFilter').value.trim().toLowerCase();
     const st = $('takStatus').value;
+    // Offene Anfragen zuerst, dann aktive, gesperrte … (freigegebene Nutzer bleiben sichtbar)
+    const ORDER = { pending: 0, unconfirmed: 1, active: 2, blocked: 3, rejected: 4 };
     const list = state.users.filter(u => (!st || u.status === st)
-      && (!q || [u.name, u.unit, u.callsign, u.requestedCallsign, u.email, u.username].join(' ').toLowerCase().includes(q)));
+      && (!q || [u.name, u.unit, u.callsign, u.requestedCallsign, u.email, u.username].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || String(a.callsign).localeCompare(String(b.callsign)));
     tb.replaceChildren();
     if (!list.length) tb.append(el('tr', {}, el('td', { colspan: '8', class: 'mut', text: st === 'pending' ? 'Keine offenen Anfragen.' : 'Keine Einträge.' })));
     for (const u of list) {
@@ -213,6 +216,9 @@
     f.streamPort.value = state.ots.streamPort || '';
     f.enrollPort.value = state.ots.enrollPort || '';
     f.apiPort.value = state.ots.apiPort || '';
+    f.userPassword.value = state.ots.userPassword || '';
+    f.anon.checked = state.ots.anon !== false;
+    f.truststorePassword.value = state.ots.truststorePassword || 'atakatak';
     $('otsHasPass').textContent = state.ots.hasPassword ? '(gespeichert)' : '';
     const r = $('regForm2');
     r.open.checked = !!state.registration.open;
@@ -224,7 +230,8 @@
   const otsBody = () => {
     const f = $('otsForm');
     return { url: f.url.value, username: f.username.value, password: f.password.value, insecure: f.insecure.checked, host: f.host.value,
-      streamPort: f.streamPort.value, enrollPort: f.enrollPort.value, apiPort: f.apiPort.value };
+      streamPort: f.streamPort.value, enrollPort: f.enrollPort.value, apiPort: f.apiPort.value,
+      userPassword: f.userPassword.value, anon: f.anon.checked, truststorePassword: f.truststorePassword.value };
   };
   $('otsForm').addEventListener('submit', async e => {
     e.preventDefault();

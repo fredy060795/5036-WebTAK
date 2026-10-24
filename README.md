@@ -40,7 +40,10 @@ Kamera-Stream **automatisch** als Video-Feed in OTS ein – von Hand ist nichts 
 - In ATAK/WinTAK erscheint der Stream unter **Video** als `rtsp://<TAK-Server>:8554/<pfad>`.
 - Sperren, Abschalten (Häkchen in der Spalte „TAK-Pfad“) oder Löschen trägt den Stream wieder aus.
 
-Im Admin, Bereich **Video-Streams**, wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
+Im Admin gibt es dafür **einen** Bereich **Video-Feeds**: oben die Kameras aus WebTAK (Handy/Helmkamera – wer in
+WebTAK Video startet, ist sofort ein OTS-Feed `cam/<rufname>`), darunter **alle Feeds im TAK-Server** mit Herkunft
+(„WebTAK: …“ oder „extern“), ATAK-Link zum Kopieren und dem Formular für weitere Feeds (Pfad + Quelle
+rtsp/rtmp/srt/udp/HLS, MediaMTX holt das Bild bei Bedarf). Bei den Kameras wird hauptsächlich der **Pfad** gepflegt: Feld in der Spalte „TAK-Pfad“
 ändern und Enter – der alte Pfad wird in OTS entfernt, der neue angelegt (leer = wieder automatisch). Der Punkt zeigt
 den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim Darüberfahren). Weitere Schalter:
 „Neue Streams automatisch“, „nur solange die Kamera sendet“ (sonst: solange freigegeben), Pfad-Präfix und
@@ -157,6 +160,11 @@ Home-Bildschirm“). Aufbau wie ATAK:
    Feeds des TAK-Servers im Viewer (MJPEG/HLS; RTSP wird kopiert). Der Viewer verhält sich wie der Chat: unten
    angedockt (quer: rechts), Minimieren = nur die Kopfzeile, Kopfzeile antippen = wieder groß, Vollbild, schließen;
    Video und Chat stapeln sich, statt sich zu überdecken.
+   **Feeds anderer Systeme:** HLS (`.m3u8`) spielt WebTAK auch in Chrome/Edge (hls.js). RTSP-Feeds von
+   OpenTAKServer/MediaMTX (`rtsp://host:8554/pfad`, wie sie ATAK/iTAK abspielen) holt WebTAK automatisch über den
+   HLS-Ausgang von MediaMTX (`http://host:8888/pfad/index.m3u8`). Das läuft über den eigenen Server
+   (`/api/eud/media`: nur Video-Dateien, Ziel wie bei der TAK-Durchreiche geprüft) – kein Mixed Content, kein CORS.
+   Geht es trotzdem nicht: Hinweis und Knopf „im neuen Tab öffnen“ bzw. „Adresse für VLC kopieren“.
 
 **TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
 Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte
@@ -203,7 +211,8 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
    „Check my status“ auf `/join/` schickt ihn erneut. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
-3. Die App legt das OTS-Konto an (Benutzername aus dem Rufnamen, zufälliges Passwort), setzt die
+3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, Passwort laut Einstellung –
+   Standard `atakatak`, leer = zufällig je Nutzer; danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
    Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
    bzw. der Admin gibt ihm den angezeigten Link.
 4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
@@ -220,9 +229,21 @@ dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“
 **Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
 Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
 
-**Teams und Sichtbarkeit:** Jedes Team ist eine OTS-Gruppe (`TEAM_<NAME>`). Standard: alle sehen alle. In der
-Matrix „Wer sieht wen?“ einen Haken entfernen = dieses Team liest die Gruppe des anderen nicht mehr –
-OTS stellt dann dessen Positionen, Marker und Chats nicht zu. So können mehrere Einheiten einen Server
+**ATAK ohne Tippen:** Der ATAK-QR-Code auf der Zugangsseite ist ein normaler https-Link – mit der Handy-Kamera
+scannen, Seite öffnet sich, **ATAK-Einrichtungspaket** (`.zip`) laden und mit ATAK öffnen. Das Paket enthält Server,
+Benutzer, Passwort, Rufname, Team, Rolle und den Truststore von OTS (Passwort einstellbar, Standard `atakatak`);
+ATAK importiert es, fordert sein Zertifikat an und verbindet sich. Das funktioniert auch mit selbstsigniertem
+Server-Zertifikat. Der `tak://…/enroll`-QR von OTS bleibt als Alternative – laut OTS klappt er nur mit öffentlich
+vertrauenswürdigem Zertifikat (z. B. Let's Encrypt), und viele Kamera-Apps öffnen `tak://`-Links gar nicht.
+Das Paket lässt sich auch mit iTAK öffnen.
+
+**Teams und Sichtbarkeit:** Standard: alle sehen alle – dann bekommen freigegebene Nutzer in OTS **keine Gruppe**,
+genau wie von Hand angelegte Benutzer; OTS nimmt dafür seine Standardgruppe `__ANON__`, und alle (auch WinTAK/ATAK
+ohne Gruppe) sehen sich. Erst wenn in der Matrix „Wer sieht wen?“ ein Haken entfernt wird, legt WebTAK je Team eine
+OTS-Gruppe an (`TEAM_<NAME>`): das Team liest die Gruppe des anderen nicht mehr, OTS stellt dann dessen Positionen,
+Marker und Chats nicht zu. Mit Geräten ohne Gruppe (`__ANON__`) wird dabei weiter ausgetauscht (abschaltbar);
+ein ausgeblendetes Team sendet nicht nach `__ANON__`, sonst wäre es dort doch sichtbar. Beim Start und mit
+„Mit OTS abgleichen“ werden die Gruppen aller Nutzer auf diesen Stand gebracht; Geräte verbinden sich danach neu. So können mehrere Einheiten einen Server
 nutzen, ohne sich zu stören. (Voraussetzung: OTS mit Kanälen/Gruppen, Standard `OTS_ENABLE_CHANNELS=True`,
 kein LDAP.)
 
@@ -235,6 +256,24 @@ kein LDAP.)
 **Sicherheit:** Die Passwörter der TAK-Konten und das OTS-Admin-Passwort liegen in `DATA_DIR/db.json`
 (Dateirechte 600), damit die Zugangsseite die Daten zeigen kann; der Zugangslink ist geheim (48 Zeichen) und
 nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
+
+## TAK-Server verwalten (im WebTAK-Admin)
+
+Unter **TAK-Server** in der Seitenleiste verwaltet WebTAK den OpenTAKServer wie dessen eigene Oberfläche:
+
+- **OTS-Benutzer:** alle Konten aus OTS – auch die, die direkt in OTS angelegt wurden – mit Rolle, aktiv/gesperrt,
+  Gruppen, Geräten und letzter Anmeldung. **Neuer Benutzer** legt ein Konto ohne Registrierung an (Rufname, optional
+  Benutzername/Passwort/E-Mail, Team, Rolle, OTS-Administrator) und zeigt den Zugangslink. **Übernehmen** verwaltet
+  einen vorhandenen OTS-Benutzer zusätzlich in WebTAK (Rufname, Team, Zugangsseite; optional neues Passwort und
+  Team-Gruppen). Außerdem: Rolle User/Administrator, sperren/aktivieren, Passwort setzen, Gruppen (IN/OUT) pflegen, löschen.
+- **Gruppen:** anlegen, löschen (`__ANON__` bleibt).
+- **Missionen (Data Sync):** anlegen (Beschreibung, Passwort, Gruppen; OTS verlangt ein bekanntes Gerät als
+  Ersteller – vorausgewählt), auflisten, löschen.
+- **Meshtastic:** Kanäle anlegen (Name, Funk-Voreinstellung, Region, Schlüssel erzeugen, Up-/Downlink) oder per
+  Meshtastic-Link übernehmen, Link kopieren, löschen.
+
+Benutzer & Anfragen zeigt standardmäßig **alle** WebTAK-Nutzer (offene Anfragen oben) – freigegebene Nutzer
+verschwinden nicht mehr aus der Liste.
 
 ## Admin
 

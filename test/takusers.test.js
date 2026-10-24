@@ -62,11 +62,11 @@ test('Freigabe nur mit OTS; legt Konto, Gruppen und QR an; Rufname überschreibe
   assert.equal(u.status, 'active');
   assert.equal(u.callsign, 'Alpha 10');
   assert.equal(u.username, 'alpha_10');
-  assert.match(u.password, /^[A-Za-z0-9]{14}$/);
+  assert.equal(u.password, 'atakatak', 'Standard-Passwort für neue Konten');
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.match(u.atakQr, /^tak:\/\/com\.atakmap\.app\/enroll\?host=tak\.example\.com:8089&username=alpha_10&token=/);
-  // Blau schreibt in Blau und liest Blau + Rot
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT']);
+  // Ohne Sperren: keine Gruppe – wie von Hand angelegte OTS-Benutzer (OTS nimmt dann __ANON__)
+  assert.deepEqual(mock.groupsOf('alpha_10'), []);
   // Zugangsseite zeigt Daten erst nach Freigabe
   const pv = tu.publicView(u);
   assert.equal(pv.username, 'alpha_10');
@@ -74,15 +74,17 @@ test('Freigabe nur mit OTS; legt Konto, Gruppen und QR an; Rufname überschreibe
   const vera = tu.list().find(x => x.name === 'Vera');
   assert.equal(tu.publicView(vera).password, undefined);
   await tu.approve(vera.id, { callsign: 'Rot 1', team: rot.id });
-  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_BLAU.OUT', 'TEAM_ROT.IN', 'TEAM_ROT.OUT']);
+  assert.deepEqual(mock.groupsOf('rot_1'), []);
 });
 
 test('Sichtbarkeit: Rot darf Blau nicht sehen -> Rot liest Blau nicht mehr', async () => {
   const [blau, rot] = tu.t.teams;
   const errors = await tu.setTeams(tu.t.teams, [[rot.id, blau.id]]);
   assert.deepEqual(errors, []);
-  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT']);
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT']);
+  // Rot liest Blau nicht; mit Geräten ohne Gruppe (__ANON__) tauscht Rot weiter aus. Blau ist für Rot
+  // ausgeblendet und sendet daher nicht nach __ANON__ (sonst sähe Rot es dort doch).
+  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT', '__ANON__.IN', '__ANON__.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
   assert.equal(tu.canSee(blau.id, rot.id), true);
   assert.equal(tu.canSee(rot.id, blau.id), false);
   // neues Team mit Sperre in einem Schritt (Entwurfs-Kennung)
@@ -92,9 +94,18 @@ test('Sichtbarkeit: Rot darf Blau nicht sehen -> Rot liest Blau nicht mehr', asy
   assert.equal(tu.canSee(gelb.id, rot.id), false);
   assert.equal(tu.canSee(gelb.id, blau.id), true);
   // Gelb ist neu: Blau und Rot (sofern nicht gesperrt) lesen es mit
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_GELB.OUT', 'TEAM_ROT.OUT']);
-  await tu.setTeams(tu.t.teams.filter(t => t.name !== 'Gelb'), [[rot.id, blau.id]]);
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_GELB.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
+  // Sperren wieder weg: alle Gruppen werden entfernt
+  await tu.setTeams(tu.t.teams.filter(t => t.name !== 'Gelb'), []);
+  assert.deepEqual(mock.groupsOf('alpha_10'), []);
+  assert.deepEqual(mock.groupsOf('rot_1'), []);
+  // Ohne __ANON__-Austausch nur die Team-Gruppen
+  tu.setOts({ ...tu.t.ots, anon: false });
+  await tu.setTeams(tu.t.teams, [[rot.id, blau.id]]);
+  assert.deepEqual(mock.groupsOf('rot_1'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT']);
+  tu.setOts({ ...tu.t.ots, anon: true });
+  await tu.syncAllGroups();
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLAU.IN', 'TEAM_BLAU.OUT', 'TEAM_ROT.OUT', '__ANON__.OUT']);
 });
 
 test('Rufname/Team/Rolle als Geräte-Profil für alle Geräte des Benutzers, Teamwechsel ändert Gruppen', async () => {
@@ -111,7 +122,7 @@ test('Rufname/Team/Rolle als Geräte-Profil für alle Geräte des Benutzers, Tea
   await tu.update(horst.id, { callsign: 'Alpha 11', team: rot.id });
   assert.equal(mock.profileOf('ANDROID-abc', 'locationCallsign'), 'Alpha 11');
   assert.equal(mock.profileOf('ANDROID-abc', 'locationTeam'), 'Red');
-  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT']);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_ROT.IN', 'TEAM_ROT.OUT', '__ANON__.IN', '__ANON__.OUT']);
   assert.deepEqual(tu.assignmentFor('alpha_10'), { callsign: 'Alpha 11', team: 'Red', role: 'Team Lead' });
   assert.equal(tu.assignmentFor('unbekannt'), null);
 });
@@ -123,10 +134,14 @@ test('Sperren, Entsperren, neues Passwort, Löschen', async () => {
   assert.equal(tu.assignmentFor('alpha_10'), null);
   await tu.unblock(horst.id);
   assert.equal(mock.state.users.alpha_10.active, true);
-  const old = horst.password;
+  // Passwort-Einstellung leer = zufällig; ungültige Werte abgelehnt
+  assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'kurz' }), /8–64/);
+  assert.throws(() => tu.setOts({ ...tu.t.ots, userPassword: 'a&b<c>defgh' }), /OTS/);
+  tu.setOts({ ...tu.t.ots, userPassword: '' });
   await tu.newPassword(horst.id);
-  assert.notEqual(horst.password, old);
+  assert.match(horst.password, /^[A-Za-z0-9]{14}$/);
   assert.equal(mock.state.users.alpha_10.password, horst.password);
+  tu.setOts({ ...tu.t.ots, userPassword: 'atakatak' });
   await tu.remove(horst.id);
   assert.equal(mock.state.users.alpha_10, undefined);
   assert.equal(tu.list().some(u => u.username === 'alpha_10'), false);

@@ -219,6 +219,7 @@ $('logoutBtn').addEventListener('click', async () => {
 const VIEW_TITLES = { users: 'Benutzer & Anfragen', teams: 'Teams & Sichtbarkeit', ots: 'OpenTAKServer & Registrierung' };
 const TAK_TAB = { users: 'users', teams: 'teams', ots: 'settings' };
 function showView(view) {
+  if (view === 'feeds') view = 'video'; // früherer eigener Bereich, jetzt zusammengelegt
   if (!document.querySelector(`[data-nav="${view}"]`)) view = 'users';
   for (const a of document.querySelectorAll('[data-nav]')) a.classList.toggle('on', a.dataset.nav === view);
   for (const sec of document.querySelectorAll('[data-view]')) sec.classList.toggle('hidden', !sec.dataset.view.split(' ').includes(view));
@@ -228,6 +229,7 @@ function showView(view) {
     $('takTitle').textContent = VIEW_TITLES[view];
   }
   if (view === 'system') renderSystem();
+  document.dispatchEvent(new CustomEvent('admin-view', { detail: view }));
   if (location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
   document.body.classList.remove('navopen');
   try { localStorage.setItem('webtak.adminView', view); } catch (e) { /* privat */ }

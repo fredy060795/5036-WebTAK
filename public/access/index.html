@@ -42,53 +42,20 @@
         <a class="btn" id="trustBtn" href="#">⬇ Download truststore (.p12)</a>
         <button type="button" onclick="print()">🖨 Print</button>
       </div>
-      <p class="mut small">Truststore password (if asked): <b>atakatak</b> unless your administrator told you otherwise.</p>
+      <p class="mut small">Truststore password (if asked): <b id="tsPw">atakatak</b>.</p>
     </section>
 
     <section class="card">
       <h2>Set up your app</h2>
+      <p class="mut small"><b class="rec">★ Recommended: WebTAK</b> – works right away in the browser on any phone, tablet or PC.
+        Nothing to install from an app store, your server and login are filled in automatically. ATAK and iTAK are optional.</p>
       <div class="tabs" id="tabs">
-        <button type="button" data-tab="atak" class="on">ATAK (Android)</button>
-        <button type="button" data-tab="itak">iTAK (iPhone)</button>
-        <button type="button" data-tab="eud">WebTAK (any phone)</button>
+        <button type="button" data-tab="eud" class="on">★ WebTAK<small>recommended</small></button>
+        <button type="button" data-tab="atak">ATAK<small style="color:var(--mut)">Android</small></button>
+        <button type="button" data-tab="itak">iTAK<small style="color:var(--mut)">iPhone</small></button>
       </div>
 
-      <div data-pane="atak">
-        <div class="qrbox">
-          <img class="qr" id="qrAtak" alt="ATAK QR code">
-          <div class="grow">
-            <ol class="steps">
-              <li>Install <b>ATAK-CIV</b> from Google Play and open it once (allow location).</li>
-              <li>Tap <span class="path">☰</span> → <span class="path">Settings</span> → <span class="path">Network Preferences</span> →
-                <span class="path">Manage Server Connections</span>.</li>
-              <li>Tap <span class="path">⋮</span> → <span class="path">Scan QR Code</span> and scan this code
-                (on the same phone: take a screenshot and use <i>Import from image</i>, or print the page).</li>
-              <li>ATAK requests its certificate and connects. A <b style="color:var(--green)">green</b> indicator (bottom right) means you are online.</li>
-              <li>Disconnect and reconnect once – the server then sets your callsign <b class="cs"></b> and team.</li>
-            </ol>
-            <p class="mut small">Menu names can differ slightly between ATAK versions. Manual setup: Add server → address
-              <b class="hostTxt"></b>, protocol <b>SSL</b>, port <b class="portTxt"></b>, tick <i>Use authentication</i>
-              and <i>Enroll for client certificate</i>, enter user and password above.</p>
-          </div>
-        </div>
-      </div>
-
-      <div data-pane="itak" class="hidden">
-        <div class="qrbox">
-          <img class="qr" id="qrItak" alt="iTAK QR code">
-          <div class="grow">
-            <ol class="steps">
-              <li>Install <b>iTAK</b> from the App Store and open it.</li>
-              <li>Tap <span class="path">Settings</span> → <span class="path">Network</span> → <span class="path">Servers</span> →
-                <span class="path">+</span> → <span class="path">Scan QR</span> and scan this code.</li>
-              <li>Enter your <b>user</b> and <b>password</b> from above when asked – iTAK fetches its certificate.</li>
-              <li>In <span class="path">Settings</span> set your callsign to <b class="cs"></b> and your team colour to <b class="teamTxt"></b>.</li>
-            </ol>
-          </div>
-        </div>
-      </div>
-
-      <div data-pane="eud" class="hidden">
+      <div data-pane="eud">
         <div class="qrbox">
           <img class="qr" id="qrEud" alt="WebTAK QR code">
           <div class="grow">
@@ -109,6 +76,44 @@
           <figure><img src="img/eud-4-tools.png" alt="" loading="lazy"><figcaption>4 · Tools: chat, video, data packages, maps</figcaption></figure>
         </div>
       </div>
+      <div data-pane="atak" class="hidden">
+        <div class="qrbox">
+          <img class="qr" id="qrAtak" alt="ATAK QR code">
+          <div class="grow">
+            <p><b>No typing needed:</b> server, user, password, callsign and certificate come in one setup package.</p>
+            <ol class="steps">
+              <li>Install <b>ATAK-CIV</b> from Google Play and open it once (allow location).</li>
+              <li>Scan this code with the <b>normal phone camera</b> and open the link – or on the phone tap
+                <a class="btn pri" id="atakPkg" href="#" style="min-height:34px;padding:4px 10px">⬇ ATAK setup package</a></li>
+              <li>Open the downloaded file with <b>ATAK</b> (tap the download notification). ATAK imports everything,
+                requests its certificate and connects – <b style="color:var(--green)">green</b> indicator bottom right = online.</li>
+            </ol>
+            <p class="mut small" id="atakDirectBox">Server with a public certificate (e.g. Let's Encrypt)? Then ATAK can also enroll directly:
+              <a id="atakDirect" href="#">open in ATAK</a> or scan <a id="atakDirectQr" href="#" target="_blank">this QR code</a> in ATAK
+              (<span class="path">Network Preferences</span> → <span class="path">Manage Server Connections</span> → <span class="path">⋮</span> → <span class="path">Scan QR Code</span>).</p>
+            <p class="mut small">Menu names can differ slightly between ATAK versions. Manual setup: Add server → address
+              <b class="hostTxt"></b>, protocol <b>SSL</b>, port <b class="portTxt"></b>, tick <i>Use authentication</i>
+              and <i>Enroll for client certificate</i>, enter user and password above.</p>
+          </div>
+        </div>
+      </div>
+
+      <div data-pane="itak" class="hidden">
+        <div class="qrbox">
+          <img class="qr" id="qrItak" alt="iTAK QR code">
+          <div class="grow">
+            <ol class="steps">
+              <li>Install <b>iTAK</b> from the App Store and open it.</li>
+              <li>Tap <span class="path">Settings</span> → <span class="path">Network</span> → <span class="path">Servers</span> →
+                <span class="path">+</span> → <span class="path">Scan QR</span> and scan this code.</li>
+              <li>Enter your <b>user</b> and <b>password</b> from above when asked – iTAK fetches its certificate.
+                <span class="mut small">Or without typing: download the <a id="itakPkg" href="#">setup package</a> on the iPhone and open it with iTAK.</span></li>
+              <li>In <span class="path">Settings</span> set your callsign to <b class="cs"></b> and your team colour to <b class="teamTxt"></b>.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
     </section>
 
     <section class="card">
@@ -202,6 +207,7 @@ async function load() {
   $('vHost').textContent = me.host;
   $('vPort').textContent = `${me.streamPort} (SSL) · enrollment ${me.enrollPort}`;
   $('vUser').textContent = me.username;
+  $('tsPw').textContent = me.truststorePassword || 'atakatak';
   $('showPass').onclick = () => {
     const shown = $('vPass').textContent !== '••••••••••';
     $('vPass').textContent = shown ? '••••••••••' : me.password;
@@ -216,9 +222,15 @@ async function load() {
   $('qrItak').src = '/api/access/qr/itak.svg' + q;
   $('qrEud').src = '/api/access/qr/eud.svg' + q;
   $('trustBtn').href = '/api/access/truststore.p12' + q;
+  $('atakPkg').href = '/api/access/atak-package.zip' + q;
+  $('itakPkg').href = '/api/access/atak-package.zip' + q;
+  if (me.hasAtakQr) {
+    $('atakDirectQr').href = '/api/access/qr/atak-direct.svg' + q;
+    fetch('/api/access/atak-link', { headers: { 'X-Access-Token': token } }).then(r => r.json()).then(d => { if (d.link) $('atakDirect').href = d.link; }).catch(() => {});
+  } else $('atakDirectBox').classList.add('hidden');
   const p = new URLSearchParams({ host: me.host, port: me.streamPort, proto: 'ssl', enroll: me.enrollPort, username: me.username, password: me.password, callsign: me.callsign });
   $('eudLink').href = '/eud/#' + p;
-  if (!me.hasAtakQr) $('qrAtak').replaceWith(Object.assign(document.createElement('p'), { className: 'mut small', textContent: 'No ATAK QR code available – please use the manual setup.' }));
+
 }
 for (const b of document.querySelectorAll('#tabs button')) {
   b.addEventListener('click', () => {

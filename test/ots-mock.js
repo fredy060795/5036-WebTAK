@@ -11,6 +11,8 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
     profiles: [],     // { eud_uid, preference_key, preference_value }
     tokens: {},       // username -> Zähler
     videos: {},       // path -> { source, host }
+    missions: {},     // name -> { name, description, creator_uid, password, groups }
+    mesh: [],         // { name, url, … }
     calls: [],
   };
   const TOKEN = 'tok-' + Math.random().toString(36).slice(2);
@@ -26,6 +28,9 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
       state.calls.push(`${req.method} ${u.pathname}`);
 
       if (u.pathname === '/api/login' && req.method === 'POST') {
+        // wie OTS: jeder aktive Benutzer kann sich anmelden; nur der Admin darf danach die Admin-API nutzen
+        const u = state.users[json.username];
+        if (u && u.active && u.password === json.password) return send(200, { meta: { code: 200 }, response: { csrf_token: 'c', user: { authentication_token: 'user-' + json.username } } });
         if (json.username !== admin || json.password !== password) return send(400, { meta: { code: 400 }, response: { errors: ['Invalid password'] } });
         return send(200, { meta: { code: 200 }, response: { csrf_token: 'c', user: { authentication_token: TOKEN } } });
       }
@@ -53,7 +58,7 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
         state.tokens[json.username] = (state.tokens[json.username] || 0) + 1;
         return send(200, { success: true, qr_string: `tak://com.atakmap.app/enroll?host=tak.example.com:8089&username=${json.username}&token=T${state.tokens[json.username]}` });
       }
-      if (u.pathname === '/api/groups' && req.method === 'GET') return send(200, { results: [...state.groups].map(name => ({ name })) });
+      if (u.pathname === '/api/groups' && req.method === 'GET') return send(200, { results: [...state.groups].map((name, i) => ({ name, id: i + 1 })) });
       if (u.pathname === '/api/groups' && req.method === 'POST') {
         if (state.groups.has(json.name)) return fail(400, `${json.name} group already exists`);
         state.groups.add(json.name);
@@ -76,7 +81,41 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
         if (!user) return fail(404, 'not found');
         return send(200, { success: true, results: state.members.filter(m => m.username === u.searchParams.get('username')).map(m => ({ group_name: m.group, direction: m.direction, active: true })) });
       }
-      if (u.pathname === '/api/eud') return send(200, { results: state.euds.filter(e => e.username === u.searchParams.get('username')) });
+      if (u.pathname === '/api/eud') {
+        const un = u.searchParams.get('username');
+        return send(200, { results: state.euds.filter(e => !un || e.username === un) });
+      }
+      if (u.pathname === '/api/users/all') {
+        return send(200, Object.entries(state.users).map(([n, x]) => ({
+          username: n, active: x.active, roles: (x.roles || ['user']).map(name => ({ name })),
+          group_memberships: state.members.filter(m => m.username === n).map(m => ({ group_name: m.group, direction: m.direction, enabled: true })),
+          euds: state.euds.filter(e => e.username === n).map(e => ({ uid: e.uid, callsign: e.callsign })),
+        })));
+      }
+      if (u.pathname === '/api/user/role' && req.method === 'POST') { if (!user) return fail(400, 'not found'); user.roles = json.roles; return send(200, { success: true }); }
+      if (u.pathname === '/api/groups' && req.method === 'DELETE') {
+        const n = u.searchParams.get('group_name');
+        if (!state.groups.has(n)) return fail(404, 'not found');
+        state.groups.delete(n);
+        state.members = state.members.filter(m => m.group !== n);
+        return send(200, { success: true });
+      }
+      if (u.pathname === '/api/missions' && req.method === 'GET') return send(200, { results: Object.values(state.missions).map(m => ({ ...m, password_protected: !!m.password, uids: [], contents: [] })) });
+      if (u.pathname === '/api/missions' && req.method === 'POST') {
+        if (!json.name || !json.creator_uid) return fail(400, 'Please provide a mission name and creator UID');
+        if (!state.euds.some(e => e.uid === json.creator_uid)) return fail(400, 'Invalid UID: ' + json.creator_uid);
+        state.missions[json.name] = { name: json.name, description: json.description, creator_uid: json.creator_uid, password: json.password || '', groups: json.groups || [], tool: json.tool };
+        return send(200, { success: true });
+      }
+      if (u.pathname === '/api/missions' && req.method === 'DELETE') { delete state.missions[u.searchParams.get('name')]; return send(200, { success: true }); }
+      if (u.pathname === '/api/meshtastic/generate_psk') return send(200, { success: true, psk: 'PSK' + state.mesh.length + 'xyz' });
+      if (u.pathname === '/api/meshtastic/channel' && req.method === 'GET') return send(200, { results: state.mesh });
+      if (u.pathname === '/api/meshtastic/channel' && req.method === 'POST') {
+        const url = json.url || 'https://meshtastic.org/e/#' + Buffer.from(JSON.stringify([json.name, json.psk, json.modem_preset])).toString('base64url');
+        state.mesh.push({ ...json, url });
+        return send(200, { success: true });
+      }
+      if (u.pathname === '/api/meshtastic/channel' && req.method === 'DELETE') { state.mesh = state.mesh.filter(c => c.url !== u.searchParams.get('url')); return send(200, { success: true }); }
       if (u.pathname === '/api/profiles' && req.method === 'POST') {
         state.profiles = state.profiles.filter(p => !(p.eud_uid === json.eud_uid && p.preference_key === json.preference_key));
         state.profiles.push(json);
