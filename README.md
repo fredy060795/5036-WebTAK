@@ -75,6 +75,18 @@ nur ein Handy; verbindet sich ein zweites mit demselben QR-Code, wird das erste 
   „Passwort vergessen?“ auf der Login-Seite: Der Link zum Zurücksetzen kommt an die Admin-E-Mail und gilt 1 Stunde.
 - Nach 10 falschen Passwörtern ist der Login für diese IP 15 Minuten gesperrt.
 
+## Test am Windows-PC
+
+1. Repository herunterladen (**Code → Download ZIP**) und entpacken.
+2. **start.bat** doppelklicken. Fehlt Node.js, bietet das Fenster die Installation an (winget); danach start.bat
+   erneut starten. Beim ersten Start werden die Pakete installiert (braucht Internet).
+3. Das Admin-Fenster öffnet sich unter `http://localhost:5036/admin/` (erster Login admin / admin123).
+4. Stream anlegen → **QR / Links** → den Link **Handy-App** am PC in Chrome oder Edge öffnen. Hat der PC
+   Bluetooth, lässt sich die Helmkamera direkt verbinden und der Stream im Admin-Fenster ansehen.
+
+Mit echten Handys geht Bluetooth im Browser nur über HTTPS – dafür den Server wie unten beschrieben betreiben.
+Für HLS/MPEG-TS am PC ffmpeg installieren (`winget install Gyan.FFmpeg`) oder nach `tools\ffmpeg\bin\` legen.
+
 ## Installation auf dem Server
 
 ### Mit Docker (empfohlen) – Port 5036
