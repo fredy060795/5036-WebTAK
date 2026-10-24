@@ -111,14 +111,8 @@ header { display: flex; justify-content: space-between; align-items: center; gap
         <dt>Bildrate</dt><dd id="fps">–</dd>
         <dt>Zuschauer</dt><dd id="viewers">–</dd>
         <dt>Drehung</dt><dd id="rotation">–</dd>
+        <dt>Bildgröße</dt><dd id="resolution">–</dd>
       </dl>
-      <label for="res">Bildgröße</label>
-      <select id="res">
-        <option value="1">160x120 – sehr schnell</option>
-        <option value="5" selected>320x240 – empfohlen</option>
-        <option value="8">640x480 – Helmkamera langsam</option>
-        <option value="11">1280x720 – nur Handy-Kamera</option>
-      </select>
       <p class="mut small">Bildschirm anlassen und die App im Vordergrund lassen, sonst stoppt das Handy Kamera und Bluetooth.
         Helmkamera am iPhone: nur in der App „Bluefy“.</p>
     </section>
@@ -161,7 +155,9 @@ let source = null;               // 'phone' = Handy-Kamera, 'ble' = Helmkamera
 let mediaStream = null, captureTimer = null, capturing = false;
 const CAM_KEY = 'helmcam.camera';  // zuletzt gewählte Kamera
 const PHONE_FPS = 5;             // Bilder/s der Handy-Kamera
-const RES_PX = { 1: 160, 5: 320, 8: 640, 11: 1280 }; // längere Bildseite je Auswahl
+const RES_PX = { 1: 160, 5: 320, 8: 640, 11: 1280 }; // längere Bildseite je Bildgröße
+const RES_NAME = { 1: '160x120', 5: '320x240', 8: '640x480', 11: '1280x720' };
+let framesize = 1;               // Bildgröße, legt der Admin fest (Standard 160x120)
 
 // Dreht ein JPEG um einen beliebigen Winkel im Uhrzeigersinn, optional gespiegelt.
 // Das Ausgabeformat (quer/hoch) richtet sich nach dem nächsten 90°-Schritt.
@@ -270,6 +266,12 @@ function connectServer() {
       rotate = msg.rotate || 0;
       mirror = !!msg.mirror;
       fit = msg.fit === 'fit' ? 'fit' : 'fill';
+      const fs = RES_PX[msg.framesize] ? msg.framesize : 1;
+      if (fs !== framesize) {
+        framesize = fs; // Admin hat die Bildgröße geändert: sofort übernehmen
+        if (camConnected && source === 'ble') camSend({ cmd: 'cam', framesize });
+      }
+      $('resolution').textContent = RES_NAME[framesize];
       if (msg.label !== undefined) $('streamName').textContent = (msg.label ? msg.label + ' – ' : '') + link.u + '/' + link.s;
       showRotation();
     } else if (msg.type === 'stats') {
@@ -311,7 +313,7 @@ function sendHello() {
       type: 'hello',
       camera: source === 'phone' ? $('camName').textContent : (device ? device.name || 'Helmkamera' : ''),
       phone: navigator.userAgent,
-      resolution: $('res').selectedOptions[0].textContent.split(' ')[0],
+      resolution: RES_NAME[framesize],
     }));
   }
 }
@@ -586,7 +588,7 @@ async function captureFrame() {
   if (capturing || !v.videoWidth) return;
   capturing = true;
   try {
-    const scale = Math.min(1, (RES_PX[$('res').value] || 320) / Math.max(v.videoWidth, v.videoHeight));
+    const scale = Math.min(1, (RES_PX[framesize] || 160) / Math.max(v.videoWidth, v.videoHeight));
     const c = document.createElement('canvas');
     c.width = Math.round(v.videoWidth * scale);
     c.height = Math.round(v.videoHeight * scale);
@@ -629,7 +631,7 @@ async function startPreview() {
     startCapture();
     return;
   }
-  await camSend({ cmd: 'cam', framesize: +$('res').value });
+  await camSend({ cmd: 'cam', framesize });
   await camSend({ cmd: 'stream', on: true, interval: 0 });
 }
 
@@ -675,10 +677,7 @@ for (const b of document.querySelectorAll('#alignCard [data-rot]')) {
 $('mirrorBtn').onclick = () => setAlignment(rotate, !mirror);
 $('bleBtn').onclick = () => connectCamera();
 $('liveBtn').onclick = () => (wantLive ? stopLive() : startLive());
-$('res').onchange = () => {
-  if (camConnected && source === 'ble') camSend({ cmd: 'cam', framesize: +$('res').value });
-  sendHello();
-};
+
 
 function showRegister(text) {
   $('main').classList.add('hidden');

@@ -64,8 +64,11 @@ Ab 45° wird das Bild hochkant; HLS/MPEG-TS starten beim Wechsel quer/hoch kurz 
 
 Bildschirm des Handys anlassen, App im Vordergrund lassen (sonst stoppt das Handy Kamera und Bluetooth).
 
-**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s, Bildgröße
-wählbar bis 1280x720. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
+**Bildgröße** legt der Admin fest – pro Stream in der Liste oder im Ansehen-Fenster, Standard für neue Streams unter
+Einstellungen (vorbelegt **160x120, sehr schnell**). Auswahl: 160x120, 320x240, 640x480, 1280x720 (nur Handy-Kamera
+sinnvoll). Änderungen gelten sofort am Handy, auch während des Streams; der Nutzer sieht die Bildgröße nur an.
+
+**Handy-Kamera:** geht in jedem Handy-Browser über HTTPS – auch Safari am iPhone. Etwa 5 Bilder/s. Unter **Kamera** lassen sich alle Kameras auswählen, die das Gerät meldet: Rück-/Frontkamera
 und angesteckte **USB/UVC-Kameras** (Windows/macOS/Linux, iPad mit USB-C, manche Android-Geräte; iPhone nicht).
 Das Handy merkt sich die Auswahl.
 

@@ -124,7 +124,7 @@
       <div class="table-wrap">
         <table class="streams">
           <thead>
-            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Drehung</th><th>Link</th><th></th></tr>
+            <tr><th>Status</th><th>Stream</th><th>Kamera</th><th>Bilder/s</th><th>Zuschauer</th><th>Letztes Bild</th><th>Drehung</th><th>Bildgröße</th><th>Link</th><th></th></tr>
           </thead>
           <tbody id="rows"></tbody>
         </table>
@@ -156,7 +156,7 @@
     <p class="msg" data-msg></p>
   </form>
   <form id="defaultsForm">
-    <h3>Bild drehen (Standard für neue Streams)</h3>
+    <h3>Standard für neue Streams (Bild drehen, Bildgröße)</h3>
     <p class="mut small">Grundwinkel für neue Streams, z. B. 90°, wenn die Kamera quer im Gehäuse liegt. Den genauen Winkel
       pro Helm stellst du danach im Ansehen-Fenster unter „∠ Ausrichten“ ein. Das Handy dreht jedes Bild, bevor es
       gesendet wird – alle Links (MJPEG, HLS, TS) liefern dann das gedrehte Bild.</p>
@@ -164,6 +164,8 @@
     <input name="rotate" type="number" min="0" max="359.5" step="0.5" value="0">
     <label>Bei schrägen Winkeln</label>
     <span data-fit></span>
+    <label>Bildgröße für neue Streams</label>
+    <span data-size></span>
     <label class="check"><input type="checkbox" name="mirror"> Spiegeln</label>
     <label class="check"><input type="checkbox" name="applyAll"> Auch auf alle bestehenden Streams anwenden</label>
     <button class="pri" type="submit">Speichern</button>

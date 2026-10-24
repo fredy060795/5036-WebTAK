@@ -17,6 +17,14 @@ function angleInput(value, cls = 'rot') {
   return i;
 }
 
+const SIZES = [[1, '160x120 – sehr schnell'], [5, '320x240'], [8, '640x480 – langsam'], [11, '1280x720 – nur Handy-Kamera']];
+function sizeSelect(value, cls = '') {
+  const sel = el('select', { class: cls, title: 'Bildgröße (gilt sofort am Handy)' });
+  for (const [v, t] of SIZES) sel.append(el('option', { value: String(v), text: t }));
+  sel.value = String(value || 1);
+  return sel;
+}
+
 function fitSelect(value) {
   const sel = el('select', { title: 'Bei schrägen Winkeln' });
   sel.append(el('option', { value: 'fill', text: 'Füllen (Rand abschneiden)' }), el('option', { value: 'fit', text: 'Ganzes Bild (schwarze Ecken)' }));
@@ -326,6 +334,10 @@ function buildRow(s) {
   c.rot = angleInput(s.rotate);
   c.rot.addEventListener('change', () => setOptions(id, { rotate: normDeg(c.rot.value) }));
   c.rotTd.append(el('span', { class: 'deg' }, c.rot, '°'));
+  c.sizeTd = td('Bildgröße');
+  c.size = sizeSelect(s.framesize, 'rot-size');
+  c.size.addEventListener('change', () => setOptions(id, { framesize: +c.size.value }));
+  c.sizeTd.append(c.size);
   c.link = td('Link');
   const f = copyField(s.links.stream);
   c.linkInput = f.input;
@@ -337,7 +349,7 @@ function buildRow(s) {
   c.revoke = el('button', { class: 'sm danger', text: 'Rauswerfen', onclick: () => revokeStream(id) });
   c.remove = el('button', { class: 'sm danger', text: 'Löschen', onclick: () => removeStream(id) });
   c.actions.append(el('div', { class: 'btns' }, c.view, c.qr, c.toggle, c.revoke, c.remove));
-  const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.rotTd, c.link, c.actions);
+  const tr = el('tr', {}, c.status, c.name, c.camera, c.fps, c.viewers, c.last, c.rotTd, c.sizeTd, c.link, c.actions);
   return { tr, c };
 }
 
@@ -353,6 +365,7 @@ function updateRow(r, s) {
   c.last.textContent = ago(s.lastFrameAt);
   if (document.activeElement !== c.rot && !pendingOpts.has(sid(s))) c.rot.value = String(s.rotate || 0);
   c.rotTd.title = (s.mirror ? 'gespiegelt, ' : '') + (s.fit === 'fit' ? 'ganzes Bild' : 'füllen');
+  if (document.activeElement !== c.size) c.size.value = String(s.framesize || 1);
   if (document.activeElement !== c.linkInput) c.linkInput.value = s.links.stream;
   c.toggle.textContent = s.enabled ? 'Stoppen' : 'Freigeben';
 }
@@ -518,6 +531,8 @@ $('settingsBtn').addEventListener('click', async () => {
   const defFit = fitSelect('fill');
   defFit.name = 'fit';
   defs.querySelector('[data-fit]').replaceWith(defFit);
+  const defSize = sizeSelect(1);
+  defs.querySelector('[data-size]').replaceWith(defSize);
   openModal('Einstellungen', defs, cred, smtp);
 
   try {
@@ -525,12 +540,13 @@ $('settingsBtn').addEventListener('click', async () => {
     defs.rotate.value = String(d.rotate);
     defs.mirror.checked = d.mirror;
     defFit.value = d.fit;
+    defSize.value = String(d.framesize);
   } catch (e) { /* angezeigt durch api() */ }
   defs.addEventListener('submit', async e => {
     e.preventDefault();
     const msg = defs.querySelector('[data-msg]');
     try {
-      await api('defaults', { method: 'POST', body: { rotate: normDeg(defs.rotate.value), mirror: defs.mirror.checked, fit: defFit.value, applyAll: defs.applyAll.checked } });
+      await api('defaults', { method: 'POST', body: { rotate: normDeg(defs.rotate.value), mirror: defs.mirror.checked, fit: defFit.value, framesize: +defSize.value, applyAll: defs.applyAll.checked } });
       defs.applyAll.checked = false;
       await refresh();
       setMsg(msg, 'Gespeichert.', true);
@@ -606,6 +622,7 @@ function openWindow(id) {
   const num = angleInput(s.rotate, 'rot');
   const mirrorBox = el('input', { type: 'checkbox' });
   const fitSel = fitSelect(s.fit);
+  const sizeSel = sizeSelect(s.framesize);
   const setAngle = (v, now) => {
     const a = normDeg(v);
     range.value = String(a);
@@ -622,9 +639,11 @@ function openWindow(id) {
       el('button', { class: 'sm', type: 'button', text: '0°', onclick: () => setAngle(0, true) })),
     el('div', { class: 'row' },
       el('label', { class: 'check' }, mirrorBox, 'Spiegeln'), fitSel),
+    el('div', { class: 'row' }, el('span', { class: 'mut', text: 'Bildgröße' }), sizeSel),
   );
   mirrorBox.addEventListener('change', () => setOptions(id, { mirror: mirrorBox.checked }));
   fitSel.addEventListener('change', () => setOptions(id, { fit: fitSel.value }));
+  sizeSel.addEventListener('change', () => setOptions(id, { framesize: +sizeSel.value }));
   btnAlign.addEventListener('click', () => {
     align.classList.toggle('hidden');
     btnAlign.classList.toggle('pri', !align.classList.contains('hidden'));
@@ -661,6 +680,7 @@ function openWindow(id) {
         range.value = String(st.rotate || 0);
         num.value = String(st.rotate || 0);
         fitSel.value = st.fit === 'fit' ? 'fit' : 'fill';
+        if (document.activeElement !== sizeSel) sizeSel.value = String(st.framesize || 1);
       }
       mirrorBox.checked = !!st.mirror;
       btnAlign.textContent = '∠ ' + (st.rotate ? fmtDeg(st.rotate) : 'Ausrichten');

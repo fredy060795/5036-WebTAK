@@ -549,3 +549,28 @@ test('Adresse im Admin einstellen: Links und QR-Codes passen sich an', async () 
   assert.equal((await api('registration')).data.appUrl, base + '/app/');
   assert.equal(await appQr(), await qrOf(base + '/app/'));
 });
+
+test('Bildgröße legt der Admin fest (Standard 160x120)', async () => {
+  const reg = async name => (await (await fetch(base + '/api/app/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name }) })).json());
+  // Defaults aus früheren Tests zurücksetzen
+  await api('defaults', { method: 'POST', body: { rotate: 0 } });
+  const a = await reg('Groesse');
+  const find = async s => (await api('streams')).data.streams.find(x => x.streamId === s);
+  assert.equal((await find(a.s)).framesize, 1);
+
+  const p = publisher({ user: a.u, streamId: a.s }, a.k);
+  assert.equal((await p.waitFor('config')).framesize, 1);
+  p.messages.length = 0;
+  await api(`streams/${a.u}/${a.s}/options`, { method: 'POST', body: { framesize: 8 } });
+  assert.equal((await p.waitFor('config')).framesize, 8);
+  assert.equal((await find(a.s)).framesize, 8);
+  await api(`streams/${a.u}/${a.s}/options`, { method: 'POST', body: { framesize: 99 } });
+  assert.equal((await find(a.s)).framesize, 1, 'ungültig -> 160x120');
+  p.ws.close();
+
+  await api('defaults', { method: 'POST', body: { framesize: 5 } });
+  assert.equal((await api('defaults')).data.framesize, 5);
+  const b = await reg('Groesse2');
+  assert.equal((await find(b.s)).framesize, 5);
+  await api('defaults', { method: 'POST', body: { framesize: 1 } });
+});
