@@ -213,6 +213,8 @@
     f.streamPort.value = state.ots.streamPort || '';
     f.enrollPort.value = state.ots.enrollPort || '';
     f.apiPort.value = state.ots.apiPort || '';
+    f.userPassword.value = state.ots.userPassword || '';
+    f.anon.checked = state.ots.anon !== false;
     $('otsHasPass').textContent = state.ots.hasPassword ? '(gespeichert)' : '';
     const r = $('regForm2');
     r.open.checked = !!state.registration.open;
@@ -224,7 +226,8 @@
   const otsBody = () => {
     const f = $('otsForm');
     return { url: f.url.value, username: f.username.value, password: f.password.value, insecure: f.insecure.checked, host: f.host.value,
-      streamPort: f.streamPort.value, enrollPort: f.enrollPort.value, apiPort: f.apiPort.value };
+      streamPort: f.streamPort.value, enrollPort: f.enrollPort.value, apiPort: f.apiPort.value,
+      userPassword: f.userPassword.value, anon: f.anon.checked };
   };
   $('otsForm').addEventListener('submit', async e => {
     e.preventDefault();

@@ -26,6 +26,9 @@ function createMockOts({ admin = 'otsadmin', password = 'otspass' } = {}) {
       state.calls.push(`${req.method} ${u.pathname}`);
 
       if (u.pathname === '/api/login' && req.method === 'POST') {
+        // wie OTS: jeder aktive Benutzer kann sich anmelden; nur der Admin darf danach die Admin-API nutzen
+        const u = state.users[json.username];
+        if (u && u.active && u.password === json.password) return send(200, { meta: { code: 200 }, response: { csrf_token: 'c', user: { authentication_token: 'user-' + json.username } } });
         if (json.username !== admin || json.password !== password) return send(400, { meta: { code: 400 }, response: { errors: ['Invalid password'] } });
         return send(200, { meta: { code: 200 }, response: { csrf_token: 'c', user: { authentication_token: TOKEN } } });
       }

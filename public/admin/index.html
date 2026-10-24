@@ -131,8 +131,9 @@
       </div>
 
       <div data-takp="teams" class="hidden">
-        <p class="mut small">Jedes Team wird in OTS eine eigene Gruppe. Standard: alle sehen alle. Haken entfernen = dieses Team
-          sieht das andere nicht (OTS stellt dann keine Positionen, Marker und Chats dieses Teams zu).</p>
+        <p class="mut small">Standard: alle sehen alle – dann bekommen die Nutzer in OTS keine Gruppe (wie von Hand angelegte Benutzer).
+          Haken entfernen = dieses Team sieht das andere nicht. Erst dann legt WebTAK je Team eine OTS-Gruppe an (TEAM_…) und
+          OTS stellt Positionen, Marker und Chats des ausgeblendeten Teams nicht mehr zu. Geräte müssen sich danach neu verbinden.</p>
         <div id="takTeams"></div>
         <div class="row" style="margin-top:8px">
           <button class="sm" type="button" id="takAddTeam">+ Team</button>
@@ -159,6 +160,15 @@
             <div style="width:100px"><label>Zertifikat</label><input name="enrollPort" type="number" placeholder="8446"></div>
             <div style="width:100px"><label>API</label><input name="apiPort" type="number" placeholder="8443"></div>
           </div>
+          <h3>Neue TAK-Konten</h3>
+          <div class="row">
+            <div class="grow"><label>Passwort für neue Konten (leer = zufällig je Nutzer)</label><input name="userPassword" autocomplete="off" placeholder="zufällig"></div>
+          </div>
+          <p class="mut small">Ein festes Passwort (z. B. <b>atakatak</b>) ist einfacher einzugeben, aber jeder, der einen Benutzernamen kennt,
+            kann sich damit anmelden. Zufällige Passwörter sind sicherer – sie stehen auf der Zugangsseite des Nutzers.</p>
+          <label class="check"><input type="checkbox" name="anon"> Bei Team-Sperren trotzdem mit Geräten ohne Gruppe (__ANON__) austauschen</label>
+          <p class="mut small">Solange keine Team-Sperren gesetzt sind, bekommen freigegebene Nutzer in OTS <b>keine Gruppe</b> – wie von Hand angelegte
+            Benutzer. So sehen sich alle gegenseitig (OTS-Standardgruppe __ANON__). Team-Gruppen werden nur für Sperren gebraucht.</p>
           <div class="row" style="margin-top:10px">
             <button class="pri" type="submit">Speichern</button>
             <button type="button" id="otsTest">Verbindung testen</button>

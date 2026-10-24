@@ -203,7 +203,8 @@ Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Ko
    „Check my status“ auf `/join/` schickt ihn erneut. Der Admin bekommt bei jeder neuen Anfrage eine E-Mail.
 2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
    Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
-3. Die App legt das OTS-Konto an (Benutzername aus dem Rufnamen, zufälliges Passwort), setzt die
+3. Die App legt das OTS-Konto an (Rolle „user“, Benutzername aus dem Rufnamen, Passwort laut Einstellung –
+   Standard `atakatak`, leer = zufällig je Nutzer; danach prüft sie, dass die Anmeldung damit klappt), setzt ggf. die
    Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
    bzw. der Admin gibt ihm den angezeigten Link.
 4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
@@ -220,9 +221,13 @@ dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“
 **Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
 Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
 
-**Teams und Sichtbarkeit:** Jedes Team ist eine OTS-Gruppe (`TEAM_<NAME>`). Standard: alle sehen alle. In der
-Matrix „Wer sieht wen?“ einen Haken entfernen = dieses Team liest die Gruppe des anderen nicht mehr –
-OTS stellt dann dessen Positionen, Marker und Chats nicht zu. So können mehrere Einheiten einen Server
+**Teams und Sichtbarkeit:** Standard: alle sehen alle – dann bekommen freigegebene Nutzer in OTS **keine Gruppe**,
+genau wie von Hand angelegte Benutzer; OTS nimmt dafür seine Standardgruppe `__ANON__`, und alle (auch WinTAK/ATAK
+ohne Gruppe) sehen sich. Erst wenn in der Matrix „Wer sieht wen?“ ein Haken entfernt wird, legt WebTAK je Team eine
+OTS-Gruppe an (`TEAM_<NAME>`): das Team liest die Gruppe des anderen nicht mehr, OTS stellt dann dessen Positionen,
+Marker und Chats nicht zu. Mit Geräten ohne Gruppe (`__ANON__`) wird dabei weiter ausgetauscht (abschaltbar);
+ein ausgeblendetes Team sendet nicht nach `__ANON__`, sonst wäre es dort doch sichtbar. Beim Start und mit
+„Mit OTS abgleichen“ werden die Gruppen aller Nutzer auf diesen Stand gebracht; Geräte verbinden sich danach neu. So können mehrere Einheiten einen Server
 nutzen, ohne sich zu stören. (Voraussetzung: OTS mit Kanälen/Gruppen, Standard `OTS_ENABLE_CHANNELS=True`,
 kein LDAP.)
 

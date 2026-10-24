@@ -264,6 +264,9 @@ async function serveTile(res, rel) {
 
 const takUsers = new TakUsers(store, { log });
 // Rufname/Team/Rolle für neue Geräte regelmäßig als OTS-Profil setzen
+// Gruppen beim Start einmal auf den Soll-Stand bringen (z. B. alte TEAM_-Gruppen entfernen, wenn niemand gesperrt ist)
+setTimeout(() => takUsers.syncAllGroups().then(errs => { for (const e of errs) log('OTS-Gruppen:', e); })
+  .catch(e => log('OTS-Gruppen:', e.message)), 10000).unref();
 setInterval(() => takUsers.syncProfiles().then(r => { if (r.updated) log('OTS-Profile aktualisiert:', r.updated); })
   .catch(e => log('OTS-Profile:', e.message)), 2 * 60 * 1000).unref();
 
