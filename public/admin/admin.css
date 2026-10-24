@@ -178,3 +178,8 @@ body:not(.helper) .helper-only { display: none !important; }
 .note-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 14px; }
 .np-foot { padding: 8px 12px; border-top: 1px solid var(--bd); display: grid; gap: 2px; }
 .np-foot .check { font-size: 13px; margin: 2px 0; }
+
+/* Sende-Adressen (Drohne/OBS) */
+table.kv { border-collapse: collapse; margin: 8px 0; width: 100%; }
+table.kv th { text-align: left; font-weight: 500; padding: 4px 10px 4px 0; white-space: nowrap; vertical-align: top; }
+table.kv td { padding: 4px 0; word-break: break-all; }

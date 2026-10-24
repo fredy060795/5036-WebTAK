@@ -267,6 +267,11 @@
     const tb = $('ofTable').querySelector('tbody');
     tb.replaceChildren();
     if (!r.feeds.length) empty(tb, 5, 'Keine Feeds.');
+    // Vorlagen zum Selbst-Senden (MediaMTX im OTS prüft TAK-Benutzer/Passwort und legt den Feed an)
+    const h = r.rtspHost || '<TAK-Server>';
+    $('ofRtmp').textContent = `rtmp://${h}:1935/<pfad>?user=<benutzer>&pass=<passwort>`;
+    $('ofRtspPush').textContent = `rtsp://<benutzer>:<passwort>@${h}:8554/<pfad>`;
+    $('ofSrt').textContent = `srt://${h}:8890?streamid=publish:<pfad>:<benutzer>:<passwort>`;
     // Feeds der WebTAK-Kameras erkennen (Pfad aus der Spalte „TAK-Pfad“ oben)
     const cams = new Map((window.streams || (typeof streams !== 'undefined' ? streams : [])).filter(x => x.tak && x.tak.pushed).map(x => [x.tak.pushed, x]));
     r.feeds.sort((a, b) => (cams.has(b.path) - cams.has(a.path)) || a.path.localeCompare(b.path));

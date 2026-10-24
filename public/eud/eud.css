@@ -330,3 +330,8 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 .clr input { width: 18px; height: 18px; }
 .clr .name { flex: 1; }
 .clr.none { opacity: .45; }
+
+/* Drohne / externe Kamera */
+details.drone { margin: 10px 0; border: 1px solid var(--line); border-radius: 3px; padding: 8px 10px; }
+details.drone summary { cursor: pointer; font-size: 14px; font-weight: 500; }
+#droneUrl { font-family: ui-monospace, monospace; font-size: 12px; }

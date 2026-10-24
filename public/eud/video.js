@@ -296,9 +296,19 @@
     if (!profile.callsign) { openPopup('me'); toast('Please enter a callsign first.'); return; }
     msg('');
     previewHidden = false;
-    $('phoneBtn').disabled = $('bleBtn').disabled = true;
+    $('phoneBtn').disabled = $('bleBtn').disabled = $('screenBtn').disabled = true;
     try {
-      if (kind === 'phone') {
+      if (kind === 'screen') {
+        // Bildschirm teilen (nur Desktop-Browser; Handy-Browser erlauben das nicht)
+        const stream = await navigator.mediaDevices.getDisplayMedia({ video: { frameRate: { ideal: 10, max: 15 } }, audio: false });
+        source = 'screen';
+        await attach(stream);
+        $('vidCam').textContent = 'Screen';
+        const track = stream.getVideoTracks()[0];
+        if (track) track.addEventListener('ended', () => { if (running) stop(); }); // im Browser „Freigabe beenden“
+        clearInterval(captureTimer);
+        captureTimer = setInterval(captureFrame, 1000 / PHONE_FPS);
+      } else if (kind === 'phone') {
         let saved = '';
         try { saved = localStorage.getItem('eud.camera') || ''; } catch (e) { /* privat */ }
         let stream;
@@ -328,7 +338,7 @@
       if (!(e.name === 'NotFoundError' && /cancel/i.test(e.message))) msg(e.message);
       stop(true);
     } finally {
-      $('phoneBtn').disabled = false;
+      $('phoneBtn').disabled = $('screenBtn').disabled = false;
       render();
     }
   }
@@ -518,6 +528,38 @@
 
   $('phoneBtn').addEventListener('click', () => start('phone'));
   $('bleBtn').addEventListener('click', () => start('ble'));
+  $('screenBtn').addEventListener('click', () => start('screen'));
+  // Bildschirm teilen nur, wo der Browser es kann (PC); auf dem Handy bleibt der Knopf weg
+  const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && window.isSecureContext && !/Android|iPhone|iPad/i.test(navigator.userAgent);
+  $('screenBtn').classList.toggle('hidden', !canShare);
+
+  // Drohne / externe Kamera: RTMP-Adresse mit dem TAK-Login (MediaMTX im TAK-Server legt den Feed selbst an)
+  function fillDroneServers() {
+    const list = window.eud.getServers().filter(x => x.host);
+    $('droneSrv').replaceChildren(...list.map(x => new Option(x.name || x.host, x.id)));
+    $('droneSrvRow').classList.toggle('hidden', list.length < 2);
+    $('droneBox').classList.toggle('hidden', !list.length);
+  }
+  $('droneBox').addEventListener('toggle', fillDroneServers);
+  document.addEventListener('eud-popup', e => { if (e.detail === 'video') fillDroneServers(); });
+  $('droneMake').addEventListener('click', () => {
+    const srv = window.eud.getServers().find(x => x.id === $('droneSrv').value) || window.eud.getServers().find(x => x.host);
+    if (!srv) return toast('Add a TAK server first.');
+    const user = srv.username || (srv.certInfo && srv.certInfo.cn) || '';
+    const pw = $('dronePw').value;
+    if (!user || !pw) return toast('TAK user and password are needed (user from the server settings).');
+    const slug = String(profile.callsign || user).toLowerCase().normalize('NFKD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'cam';
+    const path = 'drone-' + slug;
+    $('droneUrl').value = `rtmp://${srv.host}:1935/${path}?user=${encodeURIComponent(user)}&pass=${encodeURIComponent(pw)}`;
+    $('dronePath').textContent = path;
+    $('droneOut').classList.remove('hidden');
+    $('dronePw').value = '';
+  });
+  $('droneCopy').addEventListener('click', () => {
+    const v = $('droneUrl').value;
+    if (navigator.clipboard) navigator.clipboard.writeText(v).then(() => toast('Address copied.'), () => $('droneUrl').select());
+    else $('droneUrl').select();
+  });
   $('vidStop').addEventListener('click', () => stop());
   $('btnVideo').addEventListener('click', () => openPopup('video'));
   $('livePreview').addEventListener('click', e => { if (!e.target.closest('button')) openPopup('video'); });

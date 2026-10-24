@@ -52,6 +52,29 @@ den Stand (grün = eingetragen, gelb = wartet, rot = Fehler mit Erklärung beim 
 Wer OTS nicht verbindet, kann den HLS-Link (Knopf „QR / Links“) weiterhin von Hand in OTS unter
 **Videostreams → Add Video** als Quelle eintragen.
 
+## Drohne (DJI), Bildschirm und externe Kameras
+
+Alles landet als Feed im TAK-Server (ATAK/iTAK/WinTAK unter „Video“) – kein Anlegen nötig. MediaMTX im
+OpenTAKServer prüft den **TAK-Benutzer und das Passwort** und legt den Feed beim ersten Senden selbst an.
+
+| Quelle | Weg |
+|---|---|
+| **DJI-Drohne** (DJI Fly / DJI Pilot 2) | ⋯ → Übertragung/Livestream → **RTMP** → Adresse von der Zugangsseite einfügen |
+| **OBS, Larix Broadcaster** | RTMP, RTSP oder SRT (Adressen siehe unten) |
+| **Handy-Bildschirm** | App „Larix Screencaster“ (Android) mit der RTMP-Adresse – Handy-Browser können den Bildschirm nicht teilen |
+| **PC-Bildschirm** | WebTAK → Video → **🖥 Share screen** (nur Desktop-Browser) |
+| **Helmkamera / Handy als Kamera ohne TAK-Zugang** | Kamera-App `/app/` (QR unter „Links & QR-Codes“) |
+
+Adressen (fertig ausgefüllt auf der Zugangsseite `/access/`, in WebTAK unter Video und als Vorlage im Admin unter Video-Feeds):
+
+```
+rtmp://<TAK-Server>:1935/drone-<rufname>?user=<benutzer>&pass=<passwort>
+rtsp://<benutzer>:<passwort>@<TAK-Server>:8554/drone-<rufname>
+srt://<TAK-Server>:8890?streamid=publish:drone-<rufname>:<benutzer>:<passwort>
+```
+
+Ports 1935 (RTMP), 8554 (RTSP) und 8890/udp (SRT) müssen am TAK-Server erreichbar sein.
+
 ## Bild ausrichten (jeder Helm ist anders montiert)
 
 Ausrichten kann der Nutzer am Handy selbst (Karte „Ausrichten“) und der Admin im Ansehen-Fenster – beide sehen dieselbe Einstellung.

@@ -256,18 +256,18 @@
           <div class="link"><input id="eudUrl" readonly><button class="sm" id="eudUrlCopy" type="button">Kopieren</button></div>
         </div>
       </div>
-      <details class="fold" style="margin-top:14px">
-        <summary>Kamera-App ohne WebTAK (nur Helmkamera, alt)</summary>
+      <div class="lcard" style="margin-top:14px">
+        <h3>Kamera-App <span class="mut small">– reine Kamera ohne TAK-Zugang (Helmkamera, Handy als Kamera)</span></h3>
         <div class="appqr">
           <img id="appQr" class="qr-small" alt="QR-Code zur Kamera-App">
           <div class="grow">
-            <p class="mut small">Nur noch nötig für reine Kameras ohne TAK-Zugang: scannen, Name und Einheit eingeben, Kamera verbinden, Stream starten.
-              Normalerweise startet man Video direkt in WebTAK.</p>
+            <p class="mut small">Für Kameras ohne eigenen TAK-Zugang: scannen, Name und Einheit eingeben, Kamera verbinden, Stream starten –
+              der Feed landet automatisch im TAK-Server. Nutzer mit Zugang starten Video direkt in WebTAK.</p>
             <div class="link"><input id="appUrl" readonly><button class="sm" id="appUrlCopy" type="button">Kopieren</button></div>
             <div class="row" style="margin-top:8px"><button id="appQrBig" type="button">Groß anzeigen / Drucken</button></div>
           </div>
         </div>
-      </details>
+      </div>
     </section>
 
     <section class="card" data-view="create">
@@ -347,6 +347,19 @@
         <div class="grow"><label>Quelle (optional)</label><input name="source" placeholder="rtsp://kamera/stream, https://…/index.m3u8"></div>
         <div class="actions-end"><button class="pri" type="submit">Feed anlegen</button></div></form>
       <p class="msg" id="ofMsg"></p>
+      <details class="fold" id="ofPush">
+        <summary>🚁 Drohne (DJI), OBS oder Bildschirm-App direkt in den TAK-Server senden</summary>
+        <p class="mut small">Kein Anlegen nötig: Wer mit seinem <b>TAK-Benutzer und Passwort</b> an einen Pfad sendet, erscheint sofort als Feed.
+          Nutzer finden ihre fertige Adresse auf ihrer Zugangsseite und in WebTAK unter Video.</p>
+        <table class="kv small">
+          <tr><th>RTMP (DJI Fly, DJI Pilot 2, OBS, Larix)</th><td><code id="ofRtmp"></code></td></tr>
+          <tr><th>RTSP</th><td><code id="ofRtspPush"></code></td></tr>
+          <tr><th>SRT</th><td><code id="ofSrt"></code></td></tr>
+        </table>
+        <p class="mut small">DJI Fly: ⋯ → Übertragung → Live-Streaming → RTMP. DJI Pilot 2: ⋯ → Livestream → RTMP.
+          Handy-Bildschirm: App „Larix Screencaster“ (Android) mit der RTMP-Adresse – Browser können den Handy-Bildschirm nicht teilen.
+          PC-Bildschirm: in WebTAK unter Video „Share screen“.</p>
+      </details>
       <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Pfad</th><th>Herkunft</th><th>Quelle</th><th>Für ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
     <section class="card" data-view="mesh">
