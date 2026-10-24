@@ -23,6 +23,7 @@ const { StreamHub, normRotate, normFit, normFramesize } = require('./lib/streams
 const { sendMail, configured: smtpConfigured } = require('./lib/mailer');
 const tak = require('./lib/tak');
 const { TileCache } = require('./lib/tiles');
+const { TakUsers, TEAM_COLORS, ROLES } = require('./lib/takusers');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -251,6 +252,140 @@ async function serveTile(res, rel) {
   }
 }
 
+// ======================================================================
+// TAK-Zugänge (OpenTAKServer): Registrierung, Zugangsseite, Verwaltung
+// ======================================================================
+
+const takUsers = new TakUsers(store, { log });
+// Rufname/Team/Rolle für neue Geräte regelmäßig als OTS-Profil setzen
+setInterval(() => takUsers.syncProfiles().then(r => { if (r.updated) log('OTS-Profile aktualisiert:', r.updated); })
+  .catch(e => log('OTS-Profile:', e.message)), 2 * 60 * 1000).unref();
+
+const accessLimits = new Map(); // ip -> [zeitpunkte] für Registrierungen
+function mailReady() { return smtpConfigured(store.data.smtp); }
+function mailUser(to, subject, text) {
+  if (!mailReady() || !to) return Promise.resolve(false);
+  return sendMail(store.data.smtp, { to, subject, text }).then(() => true).catch(e => { log('E-Mail fehlgeschlagen:', e.message); return false; });
+}
+const accessLink = (req, u) => `${publicBase(req)}/access/#t=${u.token}`;
+
+async function handleAccessApi(req, res, route) {
+  const url = new URL(req.url, 'http://x');
+  const token = req.headers['x-access-token'] || url.searchParams.get('t') || '';
+  if (route === 'config' && req.method === 'GET') {
+    const r = takUsers.t.registration;
+    return json(res, 200, { open: r.open, codeword: !!r.codeword, emailConfirm: r.emailConfirm && mailReady() });
+  }
+  if (route === 'register' && req.method === 'POST') {
+    const ip = clientIp(req);
+    const now = Date.now();
+    const list = (accessLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
+    if (list.length >= 5) return json(res, 429, { error: 'Too many registrations. Please try again later.' });
+    list.push(now);
+    accessLimits.set(ip, list);
+    const body = await readJson(req);
+    let u;
+    try { u = takUsers.register(body, { smtpReady: mailReady() }); } catch (e) { return json(res, e.status || 400, { error: e.message }); }
+    const link = accessLink(req, u);
+    if (u.status === 'unconfirmed') {
+      await mailUser(u.email, 'TAK access – please confirm your e-mail',
+        `Hello ${u.name},\n\nplease confirm your e-mail address with this link:\n\n${link}&c=${u.emailToken}\n\nAfter that an administrator will review your request. You will get an e-mail when your access is ready.\n`);
+    } else {
+      hub.event('tak', 'takreg', `TAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''}`);
+      mailUser(u.email, 'TAK access – request received',
+        `Hello ${u.name},\n\nyour request for TAK access has been received. An administrator will review it.\nStatus and – once approved – your access details:\n\n${link}\n`);
+    }
+    return json(res, 200, { status: u.status, token: u.token });
+  }
+  if (route === 'confirm' && req.method === 'POST') {
+    const body = await readJson(req);
+    const u = takUsers.confirmEmail(String(body.code || ''));
+    if (!u) return json(res, 400, { error: 'This confirmation link is invalid or was already used.' });
+    hub.event('tak', 'takreg', `TAK-Zugang angefragt: ${u.name}${u.unit ? ' – ' + u.unit : ''} (E-Mail bestätigt)`);
+    return json(res, 200, { status: u.status });
+  }
+  const u = takUsers.byToken(String(token));
+  if (!u) return json(res, 404, { error: 'Unknown access link.' });
+  if (route === 'me' && req.method === 'GET') return json(res, 200, takUsers.publicView(u));
+  if (u.status !== 'active') return json(res, 403, { error: 'Your access is not approved yet.' });
+  const o = takUsers.t.ots;
+  const host = takUsers.takHost();
+  const qr = text => QRCode.toString(text, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' });
+  if (route === 'qr/atak.svg') {
+    if (!u.atakQr) return send(res, 404, 'Kein QR-Code');
+    return send(res, 200, await qr(u.atakQr), 'image/svg+xml');
+  }
+  if (route === 'qr/itak.svg') return send(res, 200, await qr(`${host},${host},${o.streamPort},ssl`), 'image/svg+xml');
+  if (route === 'qr/eud.svg') {
+    const p = new URLSearchParams({ host, port: o.streamPort, proto: 'ssl', enroll: o.enrollPort, username: u.username, password: u.password, callsign: u.callsign });
+    return send(res, 200, await qr(`${publicBase(req)}/eud/#${p}`), 'image/svg+xml');
+  }
+  if (route === 'truststore.p12') {
+    try {
+      const data = await takUsers.ots().truststore();
+      return send(res, 200, data, 'application/x-pkcs12', { 'Content-Disposition': `attachment; filename="truststore-${host || 'tak'}.p12"` });
+    } catch (e) { return json(res, 502, { error: 'Truststore not available: ' + e.message }); }
+  }
+  return json(res, 404, { error: 'Unknown request.' });
+}
+
+async function handleTakAdmin(req, res, route) {
+  const method = req.method;
+  if (route === 'state' && method === 'GET') {
+    const { password, ...ots } = takUsers.t.ots;
+    return json(res, 200, {
+      ots: { ...ots, hasPassword: !!password }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
+      teams: takUsers.t.teams, blocks: takUsers.t.blocks, users: takUsers.list().map(u => takUsers.adminView(u)),
+      colors: TEAM_COLORS, roles: ROLES, joinUrl: publicBase(req) + '/join/', mail: mailReady(),
+    });
+  }
+  if (route === 'join-qr.svg' && method === 'GET') {
+    return send(res, 200, await QRCode.toString(publicBase(req) + '/join/', { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }), 'image/svg+xml');
+  }
+  if (method === 'GET') {
+    const m = /^user\/([a-f0-9]+)\/link$/.exec(route);
+    if (m) return json(res, 200, { link: accessLink(req, takUsers.get(m[1])) });
+    return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  }
+  const body = method === 'DELETE' ? {} : await readJson(req);
+  if (route === 'ots') { takUsers.setOts(body); return json(res, 200, { ok: true }); }
+  if (route === 'ots/test') {
+    const r = await takUsers.ots().test();
+    let groups = [];
+    try { groups = await takUsers.ots().groups(); } catch (e) { /* Gruppen evtl. per LDAP */ }
+    return json(res, 200, { ok: r.ok, groups });
+  }
+  if (route === 'registration') { takUsers.setRegistration(body); return json(res, 200, { ok: true }); }
+  if (route === 'teams') {
+    const errors = await takUsers.setTeams(body.teams, body.blocks);
+    return json(res, 200, { ok: true, errors });
+  }
+  if (route === 'sync') {
+    const groupErrors = await takUsers.syncAllGroups();
+    const r = await takUsers.syncProfiles();
+    return json(res, 200, { ok: true, updated: r.updated, errors: [...groupErrors, ...r.errors] });
+  }
+  const m = /^user\/([a-f0-9]+)(?:\/([a-z]+))?$/.exec(route);
+  if (!m) return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  const [, id, action] = m;
+  if (method === 'DELETE' && !action) { await takUsers.remove(id); return json(res, 200, { ok: true }); }
+  let u;
+  if (action === 'approve') {
+    u = await takUsers.approve(id, body);
+    const sent = await mailUser(u.email, 'Your TAK access is ready',
+      `Hello ${u.name},\n\nyour TAK access has been approved.\n\nCallsign: ${u.callsign}\n\nOpen this page for your login details, QR codes and the step-by-step guide:\n\n${accessLink(req, u)}\n\nKeep this link private.\n`);
+    return json(res, 200, { ok: true, user: takUsers.adminView(u), mailed: sent, link: accessLink(req, u) });
+  }
+  if (action === 'update') u = await takUsers.update(id, body);
+  else if (action === 'reject') u = await takUsers.reject(id);
+  else if (action === 'block') u = await takUsers.block(id);
+  else if (action === 'unblock') u = await takUsers.unblock(id);
+  else if (action === 'password') u = await takUsers.newPassword(id);
+  else if (action === 'qr') u = await takUsers.newQr(id);
+  else return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  return json(res, 200, { ok: true, user: takUsers.adminView(u) });
+}
+
 function takSettings() {
   const s = store.data.settings || {};
   return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
@@ -426,6 +561,7 @@ async function handleAdminApi(req, res, route) {
       autoUrl: config.publicUrl || `${protoOf(req)}://${host}`,          // ohne Einstellung
     });
   }
+  if (route.startsWith('takusers/')) return await handleTakAdmin(req, res, route.slice(9));
   if (route === 'tak' && method === 'GET') {
     return json(res, 200, { allowedHosts: takSettings().allowedHosts, preset: takSettings().preset, eudUrl: publicBase(req) + '/eud/' });
   }
@@ -675,6 +811,10 @@ async function handle(req, res) {
     }
     if (p === '/api/app/register' && req.method === 'POST') return await handleRegister(req, res);
     if (p.startsWith('/api/eud/')) return await handleEudApi(req, res, p.slice(9));
+    if (p.startsWith('/api/access/')) return await handleAccessApi(req, res, p.slice(12));
+    if (p === '/join' || p === '/access') return send(res, 302, '', 'text/plain', { Location: p + '/' });
+    if (p.startsWith('/join/')) return serveStatic(res, 'join', decodeURIComponent(p.slice(6)));
+    if (p.startsWith('/access/')) return serveStatic(res, 'access', decodeURIComponent(p.slice(8)));
     if (p === '/eud') return send(res, 302, '', 'text/plain', { Location: '/eud/' });
     if (p.startsWith('/eud/vendor/')) return serveVendor(res, p.slice(12));
     if (p === '/eud/tiles/sources.json') return json(res, 200, { sources: TileCache.list() });
@@ -703,6 +843,18 @@ const takWss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
 const takLinks = new Map(); // ws -> Verbindungsinfo (für die Admin-Übersicht)
 const MAX_TAK_PER_IP = 5;
 
+// Eigene Position (SA) eines verwalteten Zugangs: Rufname, Team und Rolle wie vom Admin festgelegt
+function enforceAssignment(xml, uid, a) {
+  const m = /<event\b[^>]*\buid="([^"]*)"/.exec(xml);
+  if (!m || m[1] !== uid || !/\btype="a-/.test(xml.slice(0, 400))) return xml;
+  const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  return xml
+    .replace(/(<contact\b[^>]*\bcallsign=")[^"]*(")/, `$1${attr(a.callsign)}$2`)
+    .replace(/(<uid\b[^>]*\bDroid=")[^"]*(")/, `$1${attr(a.callsign)}$2`)
+    .replace(/(<__group\b[^>]*\bname=")[^"]*(")/, `$1${attr(a.team)}$2`)
+    .replace(/(<__group\b[^>]*\brole=")[^"]*(")/, `$1${attr(a.role)}$2`);
+}
+
 // EUD <-> TAK-Server: der Browser schickt Zugangsdaten und CoT, wir reichen nur durch
 function handleTakSocket(ws, req) {
   const ip = clientIp(req);
@@ -712,6 +864,8 @@ function handleTakSocket(ws, req) {
     return ws.close(4002, 'limit');
   }
   let link = null;
+  let assigned = null; // vom Admin festgelegter Rufname/Team/Rolle (verwalteter TAK-Zugang)
+  let eudUid = '';
   const entry = { ip, since: Date.now(), host: '', callsign: '', state: 'idle', info() {
     return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
   } };
@@ -734,6 +888,17 @@ function handleTakSocket(ws, req) {
       stop();
       entry.host = `${host}:${msg.port}`;
       entry.callsign = String(msg.callsign || '').slice(0, 40);
+      eudUid = String(msg.uid || '');
+      // Verwalteter Zugang? Benutzername steht im Client-Zertifikat (CN)
+      assigned = null;
+      try {
+        const cn = msg.certPem ? (/(?:^|, )CN=([^,]+)/.exec(tak.certInfo(msg.certPem).subject) || [])[1] : '';
+        assigned = takUsers.assignmentFor(cn);
+      } catch (e) { /* kein lesbares Zertifikat */ }
+      if (assigned) {
+        entry.callsign = assigned.callsign;
+        if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign', ...assigned }));
+      }
       link = new tak.TakLink({
         host, port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
         certPem: msg.certPem, keyPem: msg.keyPem, caPems: Array.isArray(msg.caPems) ? msg.caPems : [], fingerprint: msg.fingerprint,
@@ -743,7 +908,7 @@ function handleTakSocket(ws, req) {
       link.start();
       log('EUD verbindet', entry.callsign, '->', entry.host, msg.proto);
     } else if (msg.type === 'cot' && link && typeof msg.xml === 'string' && msg.xml.length < 256 * 1024) {
-      if (/^\s*<event[\s>]/.test(msg.xml)) link.send(msg.xml);
+      if (/^\s*<event[\s>]/.test(msg.xml)) link.send(assigned ? enforceAssignment(msg.xml, eudUid, assigned) : msg.xml);
     } else if (msg.type === 'disconnect') {
       stop();
       say('closed', 'Disconnected.');

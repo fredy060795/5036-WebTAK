@@ -137,6 +137,87 @@
       </div>
     </section>
 
+    <section class="card" id="takCard">
+      <div class="row between">
+        <h2>TAK-Zugänge <span class="mut small">(OpenTAKServer)</span></h2>
+        <div class="row">
+          <button class="sm" type="button" data-takt="users" id="takTabUsers">Benutzer <span class="badge" id="takPending"></span></button>
+          <button class="sm" type="button" data-takt="teams">Teams &amp; Sichtbarkeit</button>
+          <button class="sm" type="button" data-takt="settings">Einstellungen</button>
+        </div>
+      </div>
+      <p class="msg" id="takMsg"></p>
+
+      <div data-takp="users">
+        <div class="row">
+          <input id="takFilter" class="filter" placeholder="Suchen …">
+          <select id="takStatus" style="width:auto">
+            <option value="">Alle</option><option value="pending" selected>Offen</option><option value="active">Aktiv</option>
+            <option value="blocked">Gesperrt</option><option value="rejected">Abgelehnt</option><option value="unconfirmed">E-Mail unbestätigt</option>
+          </select>
+          <button class="sm" type="button" id="takSync" title="Gruppen und Rufnamen/Teams nach OTS übertragen">⟳ Mit OTS abgleichen</button>
+        </div>
+        <div class="table-wrap">
+          <table class="streams" id="takTable">
+            <thead><tr><th>Status</th><th>Name / Einheit</th><th>Rufname</th><th>Team / Rolle</th><th>OTS-Benutzer</th><th>Geräte</th><th>Angefragt</th><th></th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </div>
+      </div>
+
+      <div data-takp="teams" class="hidden">
+        <p class="mut small">Jedes Team wird in OTS eine eigene Gruppe. Standard: alle sehen alle. Haken entfernen = dieses Team
+          sieht das andere nicht (OTS stellt dann keine Positionen, Marker und Chats dieses Teams zu).</p>
+        <div id="takTeams"></div>
+        <div class="row" style="margin-top:8px">
+          <button class="sm" type="button" id="takAddTeam">+ Team</button>
+        </div>
+        <h3 style="margin-top:16px">Wer sieht wen?</h3>
+        <div class="table-wrap"><table class="streams" id="takMatrix"></table></div>
+        <div class="row" style="margin-top:10px"><button class="pri" type="button" id="takSaveTeams">Teams speichern &amp; auf OTS anwenden</button></div>
+      </div>
+
+      <div data-takp="settings" class="hidden">
+        <form id="otsForm">
+          <h3>OpenTAKServer</h3>
+          <div class="row">
+            <div class="grow"><label>Adresse der OTS-Weboberfläche / API</label><input name="url" placeholder="https://ots.example.com" autocomplete="off"></div>
+          </div>
+          <div class="row">
+            <div class="grow"><label>OTS-Admin-Benutzer</label><input name="username" autocomplete="off"></div>
+            <div class="grow"><label>Passwort <span class="mut" id="otsHasPass"></span></label><input name="password" type="password" autocomplete="new-password" placeholder="leer = unverändert"></div>
+          </div>
+          <label class="check"><input type="checkbox" name="insecure"> Selbstsigniertes Zertifikat der OTS-Weboberfläche akzeptieren</label>
+          <div class="row">
+            <div class="grow"><label>Öffentliche TAK-Adresse für die Geräte (leer = aus der OTS-Adresse)</label><input name="host" placeholder="tak.example.com" autocomplete="off"></div>
+            <div style="width:100px"><label>Streaming</label><input name="streamPort" type="number" placeholder="8089"></div>
+            <div style="width:100px"><label>Zertifikat</label><input name="enrollPort" type="number" placeholder="8446"></div>
+            <div style="width:100px"><label>API</label><input name="apiPort" type="number" placeholder="8443"></div>
+          </div>
+          <div class="row" style="margin-top:10px">
+            <button class="pri" type="submit">Speichern</button>
+            <button type="button" id="otsTest">Verbindung testen</button>
+          </div>
+        </form>
+        <form id="regForm2">
+          <h3>Registrierung</h3>
+          <label class="check"><input type="checkbox" name="open"> Registrierung offen</label>
+          <label class="check"><input type="checkbox" name="emailConfirm"> E-Mail-Adresse bestätigen lassen (braucht SMTP)</label>
+          <label>Codewort (leer = keins)</label><input name="codeword" autocomplete="off">
+          <div class="row" style="margin-top:10px"><button class="pri" type="submit">Speichern</button></div>
+        </form>
+        <h3>Link zur Registrierung</h3>
+        <div class="appqr">
+          <img id="joinQr" class="qr-small" alt="QR-Code zur Registrierung" style="cursor:pointer">
+          <div class="grow">
+            <p class="mut small">Neue Nutzer registrieren sich hier. Jede Anfrage muss im Reiter „Benutzer“ freigegeben werden –
+              erst dann wird ein OTS-Konto angelegt und der Nutzer bekommt Zugangsdaten, QR-Codes und Anleitung.</p>
+            <div class="link"><input id="joinUrl" readonly><button class="sm" id="joinCopy" type="button">Kopieren</button></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
     <section class="card">
       <h2>Stream manuell anlegen <span class="mut small">(optional, mit eigenem QR-Code)</span></h2>
       <form class="row" id="createForm">
@@ -229,5 +310,6 @@
 </template>
 
 <script src="admin.js"></script>
+<script src="takusers.js"></script>
 </body>
 </html>

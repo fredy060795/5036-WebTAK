@@ -222,6 +222,7 @@ function showApp() {
   loadRegistration();
   loadTak();
   loadEudLinks();
+  if (window.loadTakUsers) window.loadTakUsers();
   refresh();
   startPolling();
 }
@@ -276,6 +277,10 @@ function showToast(ev) {
   const time = new Date(ev.at).toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
   const close = () => t.remove();
   const btns = el('div', { class: 'row' });
+  if (ev.kind === 'takreg') {
+    btns.append(el('button', { class: 'sm pri', text: 'Anfragen öffnen', onclick: () => { $('takCard').scrollIntoView({ behavior: 'smooth' }); if (window.loadTakUsers) window.loadTakUsers(); close(); } }));
+    if (window.loadTakUsers) window.loadTakUsers();
+  }
   if (s) {
     btns.append(el('button', { class: 'sm pri', text: 'Ansehen', onclick: () => { openWindow(ev.id); close(); } }));
     if (liveMode === 'admin' && !s.onAir && ev.kind !== 'stop') {

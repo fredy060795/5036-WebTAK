@@ -766,3 +766,69 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
     assert.equal((await fetch(base + bad)).status, 404, bad);
   }
 });
+
+test('TAK-Zugang: Registrierung -> Freigabe mit Rufname -> Zugangsseite mit QR und Truststore -> Sperren', async () => {
+  const { createMockOts } = require('./ots-mock');
+  const mock = createMockOts();
+  const otsUrl = await mock.listen();
+  try {
+    const pub = (p, opts = {}) => fetch(base + '/api/access/' + p, opts).then(async r => ({ status: r.status, data: (r.headers.get('content-type') || '').includes('json') ? await r.json() : await r.text(), type: r.headers.get('content-type') }));
+    for (const p of ['/join/', '/access/', '/assets/tak.css']) assert.equal((await fetch(base + p)).status, 200, p);
+    await api('takusers/registration', { method: 'POST', body: { open: true, emailConfirm: false, codeword: '' } });
+    assert.equal((await pub('config')).data.open, true);
+    // Registrierung
+    let r = await pub('register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ name: 'Horst Huber', unit: 'Zug 2', callsign: 'Horst', email: 'horst@example.com' }) });
+    assert.equal(r.status, 200);
+    assert.equal(r.data.status, 'pending');
+    const token = r.data.token;
+    r = await pub('me', { headers: { 'X-Access-Token': token } });
+    assert.equal(r.data.status, 'pending');
+    assert.equal(r.data.password, undefined);
+    assert.equal((await pub('qr/atak.svg?t=' + token)).status, 403);
+    assert.equal((await pub('me', { headers: { 'X-Access-Token': 'x'.repeat(48) } })).status, 404);
+    // Admin: OTS verbinden, Teams, Freigabe
+    let a = await api('takusers/ots', { method: 'POST', body: { url: otsUrl, username: 'otsadmin', password: 'otspass', host: 'tak.example.com' } });
+    assert.equal(a.status, 200);
+    assert.equal((await api('takusers/ots/test', { method: 'POST', body: {} })).status, 200);
+    a = await api('takusers/teams', { method: 'POST', body: { teams: [{ name: 'Alpha', color: 'Blue' }, { name: 'Bravo', color: 'Red' }], blocks: [] } });
+    assert.deepEqual(a.data.errors, []);
+    let st = await api('takusers/state');
+    assert.equal(st.data.users.length, 1);
+    assert.equal(st.data.ots.password, undefined, 'OTS-Passwort geht nicht an den Browser');
+    const [alpha] = st.data.teams;
+    const id = st.data.users[0].id;
+    assert.equal(st.data.users[0].token, undefined, 'Zugangs-Token nicht in der Admin-Liste');
+    a = await api(`takusers/user/${id}/approve`, { method: 'POST', body: { callsign: 'Alpha 10', team: alpha.id, role: 'Team Lead' } });
+    assert.equal(a.status, 200, JSON.stringify(a.data));
+    assert.match(a.data.link, /\/access\/#t=[a-f0-9]{48}$/);
+    assert.equal(mock.state.users.alpha_10.active, true);
+    // Zugangsseite: Daten, QR-Codes, Truststore
+    r = await pub('me', { headers: { 'X-Access-Token': token } });
+    assert.equal(r.data.status, 'active');
+    assert.equal(r.data.callsign, 'Alpha 10');
+    assert.equal(r.data.username, 'alpha_10');
+    assert.equal(r.data.teamColor, 'Blue');
+    assert.equal(r.data.password, mock.state.users.alpha_10.password);
+    for (const q of ['qr/atak.svg', 'qr/itak.svg', 'qr/eud.svg']) {
+      const x = await pub(q + '?t=' + token);
+      assert.equal(x.status, 200, q);
+      assert.match(x.data, /<svg/);
+    }
+    const ts = await fetch(base + '/api/access/truststore.p12?t=' + token);
+    assert.equal(ts.status, 200);
+    assert.equal(Buffer.from(await ts.arrayBuffer()).toString(), 'P12DATA');
+    // Sperren -> keine Daten mehr
+    await api(`takusers/user/${id}/block`, { method: 'POST', body: {} });
+    assert.equal(mock.state.users.alpha_10.active, false);
+    r = await pub('me', { headers: { 'X-Access-Token': token } });
+    assert.equal(r.data.status, 'blocked');
+    assert.equal(r.data.password, undefined);
+    // Ohne Anmeldung keine Verwaltung
+    const anon = await fetch(base + '/api/admin/takusers/state');
+    assert.equal(anon.status, 401);
+    await api(`takusers/user/${id}`, { method: 'DELETE' });
+    assert.equal(mock.state.users.alpha_10, undefined);
+  } finally {
+    mock.close();
+  }
+});

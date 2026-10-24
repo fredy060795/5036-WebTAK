@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAK Access – Registration</title>
+<meta name="theme-color" content="#0b0e12">
+<link rel="icon" href="/eud/icon-192.png">
+<link rel="stylesheet" href="/assets/tak.css">
+</head>
+<body>
+<header class="top"><img src="/eud/icon-192.png" alt=""><h1>TAK Access</h1></header>
+<main class="wrap">
+  <section class="card">
+    <h2>What is TAK?</h2>
+    <p class="mut">The Team Awareness Kit (TAK) shows your team on one shared map – live and on every device: Android (ATAK),
+      iPhone (iTAK), Windows (WinTAK) or simply in the browser (Web EUD).</p>
+    <div class="features">
+      <div><b>Live positions</b>Everyone in your team on the map, with callsign and team colour.</div>
+      <div><b>Markers &amp; drawings</b>Mark points, hostile/friendly units, routes and areas – instantly shared.</div>
+      <div><b>Chat</b>Messages to everyone or to single team members.</div>
+      <div><b>Video</b>Live streams from helmet cameras, drones and phones.</div>
+      <div><b>Data packages &amp; maps</b>Mission data, overlays and offline maps from the server.</div>
+      <div><b>Data Sync</b>Missions that stay up to date on all devices.</div>
+    </div>
+  </section>
+
+  <section class="card" id="formCard">
+    <h2>Request access</h2>
+    <p class="mut small" id="intro">Fill in the form. An administrator checks every request – you will get your login details
+      once your access has been approved.</p>
+    <form id="form" autocomplete="on">
+      <label for="name">Full name *</label>
+      <input id="name" name="name" required maxlength="60" autocomplete="name">
+      <label for="unit">Unit / organisation</label>
+      <input id="unit" name="unit" maxlength="60" autocomplete="organization">
+      <label for="callsign">Preferred callsign</label>
+      <input id="callsign" name="callsign" maxlength="30" autocomplete="off" placeholder="e.g. ALPHA-1 (the administrator may change it)">
+      <label for="email">E-mail *</label>
+      <input id="email" name="email" type="email" required maxlength="120" autocomplete="email">
+      <label for="phone">Phone (optional)</label>
+      <input id="phone" name="phone" maxlength="30" autocomplete="tel">
+      <div id="codeRow" class="hidden">
+        <label for="codeword">Code word *</label>
+        <input id="codeword" name="codeword" maxlength="60" autocomplete="off">
+      </div>
+      <label class="check"><input type="checkbox" id="agree" required> I will only use this access for the intended purpose and keep my login details private.</label>
+      <p class="msg" id="msg"></p>
+      <button class="pri" type="submit" id="send">Send request</button>
+    </form>
+  </section>
+
+  <section class="card hidden" id="doneCard">
+    <h2>Request received</h2>
+    <p id="doneText"></p>
+    <p class="mut small">Your personal status page (keep it private – it will show your login details once approved):</p>
+    <p><a class="btn blue" id="statusLink" href="#">Open my status page</a></p>
+  </section>
+
+  <section class="card hidden" id="closedCard">
+    <h2>Registration closed</h2>
+    <p class="mut">Registration is currently closed. Please contact your administrator.</p>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+(async () => {
+  try {
+    const cfg = await fetch('/api/access/config').then(r => r.json());
+    if (!cfg.open) { $('formCard').classList.add('hidden'); $('closedCard').classList.remove('hidden'); return; }
+    if (cfg.codeword) { $('codeRow').classList.remove('hidden'); $('codeword').required = true; }
+    if (cfg.emailConfirm) $('intro').textContent += ' You will first receive an e-mail to confirm your address.';
+  } catch (e) { /* offline */ }
+})();
+$('form').addEventListener('submit', async e => {
+  e.preventDefault();
+  $('send').disabled = true;
+  $('msg').textContent = '';
+  const body = {};
+  for (const id of ['name', 'unit', 'callsign', 'email', 'phone', 'codeword']) body[id] = $(id).value;
+  try {
+    const res = await fetch('/api/access/register', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(data.error || 'Request failed.');
+    try { localStorage.setItem('tak.access', data.token); } catch (err) { /* privat */ }
+    $('formCard').classList.add('hidden');
+    $('doneCard').classList.remove('hidden');
+    $('doneText').textContent = data.status === 'unconfirmed'
+      ? 'Please check your e-mail and click the confirmation link. After that an administrator will review your request.'
+      : 'An administrator will review your request. You will be notified by e-mail once your access is ready.';
+    $('statusLink').href = '/access/#t=' + data.token;
+  } catch (err) {
+    $('msg').textContent = err.message;
+  } finally {
+    $('send').disabled = false;
+  }
+});
+</script>
+</body>
+</html>

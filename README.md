@@ -162,6 +162,51 @@ Schlüssel liegen nur auf dem Handy. Im Admin unter „Erlaubte TAK-Server“ de
 eintragen, damit niemand den Server als offene Durchreiche benutzt. Ohne Eintrag sind alle Server
 erlaubt – außer dem Server-Rechner selbst (`localhost`) und Link-Local-Adressen.
 
+## TAK-Zugänge (OpenTAKServer)
+
+Nutzer beantragen hier echte TAK-Zugänge; nach der Freigabe legt die App das Konto auf dem
+**OpenTAKServer (OTS)** an und der Nutzer bekommt Zugangsdaten, QR-Codes und eine bebilderte Anleitung.
+
+**Ablauf**
+
+1. Nutzer öffnet `https://<server>/join/` (QR-Code im Admin unter TAK-Zugänge → Einstellungen), liest
+   kurz, was TAK kann, und stellt eine Anfrage (Name, Einheit, Wunsch-Rufname, E-Mail; optional Codewort,
+   optional E-Mail-Bestätigung über SMTP). Er bekommt einen persönlichen Statuslink.
+2. Der Admin sieht die Anfrage (Hinweis + Liste „Offen“) und gibt sie frei – **nichts passiert ohne
+   Freigabe**. Dabei legt er **Rufname** (überschreibt z. B. „Horst“ mit „ALPHA 10“), **Team** und **Rolle** fest.
+3. Die App legt das OTS-Konto an (Benutzername aus dem Rufnamen, zufälliges Passwort), setzt die
+   Team-Gruppen und erzeugt den ATAK-Enrollment-QR-Code. Der Nutzer bekommt eine E-Mail (falls SMTP)
+   bzw. der Admin gibt ihm den angezeigten Link.
+4. Auf der Zugangsseite `/access/` (englisch, für multinationale Nutzer): Rufname, Team, Rolle, Server,
+   Benutzer, Passwort, **Truststore-Download**, QR-Codes und Schritt-für-Schritt-Anleitung für
+   **ATAK** (Android), **iTAK** (iPhone) und die **Web-EUD** (QR öffnet die EUD mit allen Daten, das
+   Zertifikat wird automatisch angefordert).
+
+**Verwaltung** (Admin → TAK-Zugänge): suchen/filtern, freigeben, ablehnen, bearbeiten, sperren/entsperren
+(OTS-Konto wird deaktiviert), neues Passwort, neuer ATAK-QR, Zugangslink kopieren, löschen (auch auf OTS).
+
+**Rufname, Team und Rolle überschreiben:** Die App setzt für jedes Gerät des Nutzers OTS-Geräte-Profile
+(`locationCallsign`, `locationTeam`, `atakRoleType`). **ATAK** übernimmt sie beim (nächsten) Verbinden mit
+dem Server; neue Geräte werden alle 2 Minuten erkannt („Mit OTS abgleichen“ erzwingt es sofort). In der
+**Web-EUD** gilt die Zuweisung sofort und ist gesperrt; die Durchreiche setzt sie auch in der gesendeten
+Position durch. **iTAK** übernimmt keine Server-Profile – dort stellt der Nutzer Rufname/Team laut Zugangsseite ein.
+
+**Teams und Sichtbarkeit:** Jedes Team ist eine OTS-Gruppe (`TEAM_<NAME>`). Standard: alle sehen alle. In der
+Matrix „Wer sieht wen?“ einen Haken entfernen = dieses Team liest die Gruppe des anderen nicht mehr –
+OTS stellt dann dessen Positionen, Marker und Chats nicht zu. So können mehrere Einheiten einen Server
+nutzen, ohne sich zu stören. (Voraussetzung: OTS mit Kanälen/Gruppen, Standard `OTS_ENABLE_CHANNELS=True`,
+kein LDAP.)
+
+**Einrichtung:** Admin → TAK-Zugänge → Einstellungen:
+- Adresse der OTS-Weboberfläche/API (z. B. `https://ots.example.com`, oder intern `http://127.0.0.1:8081`
+  wenn beide auf demselben Rechner laufen), OTS-Admin-Benutzer und Passwort (**ohne Zwei-Faktor**).
+- Öffentliche TAK-Adresse für die Geräte (wird in die QR-Codes eingesetzt) und Ports (8089/8446/8443).
+- „Verbindung testen“, dann Registrierung öffnen und den QR-Code zur Registrierung verteilen.
+
+**Sicherheit:** Die Passwörter der TAK-Konten und das OTS-Admin-Passwort liegen in `DATA_DIR/db.json`
+(Dateirechte 600), damit die Zugangsseite die Daten zeigen kann; der Zugangslink ist geheim (48 Zeichen) und
+nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
+
 ## Admin
 
 - Erster Login: **admin / admin123**. Danach muss sofort ein eigener Benutzername und ein neues Passwort festgelegt

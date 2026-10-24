@@ -655,6 +655,7 @@ function openConn(srv) {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'cot') return handleCot(msg.xml, { srv });
+    if (msg.type === 'assign') return applyAssignment(msg);
     if (msg.type !== 'status') return;
     const was = c.state;
     c.state = msg.state;
@@ -979,10 +980,27 @@ function renderList() {
 
 for (const t of Object.keys(TEAMS)) $('fTeam').append(new Option(t, t));
 for (const r of ROLES) $('fRole').append(new Option(r, r));
+// Vom Admin festgelegt (verwalteter TAK-Zugang): übernehmen und im Menü sperren
+function applyAssignment(a) {
+  const changed = profile.callsign !== a.callsign || profile.team !== a.team || profile.role !== a.role;
+  profile.assigned = { callsign: String(a.callsign || ''), team: TEAMS[a.team] ? a.team : profile.team, role: ROLES.includes(a.role) ? a.role : profile.role };
+  Object.assign(profile, profile.assigned);
+  saveProfile();
+  showMe();
+  if (typeof updateSelfInfo === 'function') updateSelfInfo();
+  if (me) drawMe();
+  if (popupSec === 'me') fillMe();
+  if (changed) { toast(`Assigned by administrator: ${profile.callsign} (${profile.team})`, 5000); sendSelf(); }
+}
+
 function fillMe() {
   $('fCallsign').value = profile.callsign;
   $('fTeam').value = profile.team;
   $('fRole').value = profile.role;
+  const locked = !!profile.assigned;
+  for (const id of ['fCallsign', 'fTeam', 'fRole']) $(id).disabled = locked;
+  $('meLocked').classList.toggle('hidden', !locked);
+  $('meSave').classList.toggle('hidden', locked);
   $('uidText').textContent = profile.uid;
 }
 $('meSave').addEventListener('click', () => {

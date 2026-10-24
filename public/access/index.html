@@ -1,0 +1,195 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>TAK Access – My access</title>
+<meta name="theme-color" content="#0b0e12">
+<meta name="referrer" content="no-referrer">
+<link rel="icon" href="/eud/icon-192.png">
+<link rel="stylesheet" href="/assets/tak.css">
+</head>
+<body>
+<header class="top"><img src="/eud/icon-192.png" alt=""><h1>My TAK access</h1><span class="badge" id="badge"></span></header>
+<main class="wrap">
+  <p class="msg" id="msg"></p>
+
+  <section class="card hidden" id="waitCard">
+    <h2 id="waitTitle"></h2>
+    <p class="mut" id="waitText"></p>
+    <p class="mut small">Keep this page – it will show your login details as soon as your access is ready.</p>
+  </section>
+
+  <div id="activeView" class="hidden">
+    <section class="card">
+      <h2>Your login details</h2>
+      <div class="kv">
+        <span class="mut">Callsign</span><b id="vCallsign"></b>
+        <span class="mut">Team</span><b><span class="chip" id="vChip"></span><span id="vTeam"></span></b>
+        <span class="mut">Role</span><b id="vRole"></b>
+        <span class="mut">Server</span><b id="vHost"></b>
+        <span class="mut">Port</span><b id="vPort"></b>
+        <span class="mut">User</span><b class="secret" id="vUser"></b>
+        <span class="mut">Password</span><b><span class="secret" id="vPass">••••••••••</span> <button type="button" id="showPass" style="min-height:32px;padding:4px 10px">Show</button></b>
+      </div>
+      <p class="mut small">Callsign, team and role are set by your administrator and are applied automatically when your device connects.</p>
+      <div class="row">
+        <a class="btn" id="trustBtn" href="#">⬇ Download truststore (.p12)</a>
+        <button type="button" onclick="print()">🖨 Print</button>
+      </div>
+      <p class="mut small">Truststore password (if asked): <b>atakatak</b> unless your administrator told you otherwise.</p>
+    </section>
+
+    <section class="card">
+      <h2>Set up your app</h2>
+      <div class="tabs" id="tabs">
+        <button type="button" data-tab="atak" class="on">ATAK (Android)</button>
+        <button type="button" data-tab="itak">iTAK (iPhone)</button>
+        <button type="button" data-tab="eud">Web EUD (any phone)</button>
+      </div>
+
+      <div data-pane="atak">
+        <div class="qrbox">
+          <img class="qr" id="qrAtak" alt="ATAK QR code">
+          <div class="grow">
+            <ol class="steps">
+              <li>Install <b>ATAK-CIV</b> from Google Play and open it once (allow location).</li>
+              <li>Tap <span class="path">☰</span> → <span class="path">Settings</span> → <span class="path">Network Preferences</span> →
+                <span class="path">Manage Server Connections</span>.</li>
+              <li>Tap <span class="path">⋮</span> → <span class="path">Scan QR Code</span> and scan this code
+                (on the same phone: take a screenshot and use <i>Import from image</i>, or print the page).</li>
+              <li>ATAK requests its certificate and connects. A <b style="color:var(--green)">green</b> indicator (bottom right) means you are online.</li>
+              <li>Disconnect and reconnect once – the server then sets your callsign <b class="cs"></b> and team.</li>
+            </ol>
+            <p class="mut small">Menu names can differ slightly between ATAK versions. Manual setup: Add server → address
+              <b class="hostTxt"></b>, protocol <b>SSL</b>, port <b class="portTxt"></b>, tick <i>Use authentication</i>
+              and <i>Enroll for client certificate</i>, enter user and password above.</p>
+          </div>
+        </div>
+      </div>
+
+      <div data-pane="itak" class="hidden">
+        <div class="qrbox">
+          <img class="qr" id="qrItak" alt="iTAK QR code">
+          <div class="grow">
+            <ol class="steps">
+              <li>Install <b>iTAK</b> from the App Store and open it.</li>
+              <li>Tap <span class="path">Settings</span> → <span class="path">Network</span> → <span class="path">Servers</span> →
+                <span class="path">+</span> → <span class="path">Scan QR</span> and scan this code.</li>
+              <li>Enter your <b>user</b> and <b>password</b> from above when asked – iTAK fetches its certificate.</li>
+              <li>In <span class="path">Settings</span> set your callsign to <b class="cs"></b> and your team colour to <b class="teamTxt"></b>.</li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <div data-pane="eud" class="hidden">
+        <div class="qrbox">
+          <img class="qr" id="qrEud" alt="Web EUD QR code">
+          <div class="grow">
+            <ol class="steps">
+              <li>Scan this code with the phone camera – or on the phone tap <a class="btn blue" id="eudLink" href="#" style="min-height:34px;padding:4px 10px">Open TAK EUD</a></li>
+              <li>The app opens with your server already set and requests its certificate automatically.
+                If asked about an unknown server certificate, tap <b>TRUST</b> (or load the truststore first).</li>
+              <li>Add it to your home screen: Android Chrome <span class="path">⋮ → Add to Home screen</span>,
+                iPhone Safari <span class="path">Share → Add to Home Screen</span>.</li>
+              <li>Green square bottom right = connected. Tap the marker icon at the top to place markers, the menu icon for everything else.</li>
+            </ol>
+          </div>
+        </div>
+        <div class="shots">
+          <figure><img src="img/eud-1-start.png" alt="" loading="lazy"><figcaption>1 · Server set, certificate requested</figcaption></figure>
+          <figure><img src="img/eud-2-map.png" alt="" loading="lazy"><figcaption>2 · Connected – your team on the map</figcaption></figure>
+          <figure><img src="img/eud-3-markers.png" alt="" loading="lazy"><figcaption>3 · Place markers (MIL-STD symbols)</figcaption></figure>
+          <figure><img src="img/eud-4-tools.png" alt="" loading="lazy"><figcaption>4 · Tools: chat, video, data packages, maps</figcaption></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <h2>What you can do with TAK</h2>
+      <div class="features">
+        <div><b>See your team</b>Live positions with callsign and team colour.</div>
+        <div><b>Mark the situation</b>Points, units (MIL-STD 2525), routes and areas – shared instantly.</div>
+        <div><b>Chat</b>All chat rooms or direct messages.</div>
+        <div><b>Video</b>Watch helmet cameras, drones and phone streams.</div>
+        <div><b>Data &amp; maps</b>Data packages, overlays and missions (Data Sync) from the server.</div>
+        <div><b>Offline</b>Save map areas and keep working when the network drops.</div>
+      </div>
+    </section>
+  </div>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const COLORS = { White: '#FFFFFF', Yellow: '#FFFF00', Orange: '#FF7700', Magenta: '#FF00FF', Red: '#FF0000', Maroon: '#7F0000', Purple: '#7F007F',
+  'Dark Blue': '#00007F', Blue: '#0000FF', Cyan: '#00FFFF', Teal: '#007F7F', Green: '#00FF00', 'Dark Green': '#007F00', Brown: '#A0714F' };
+const hash = new URLSearchParams(location.hash.slice(1));
+let token = hash.get('t') || '';
+try {
+  if (token) localStorage.setItem('tak.access', token);
+  else token = localStorage.getItem('tak.access') || '';
+} catch (e) { /* privat */ }
+if (location.hash) history.replaceState(null, '', location.pathname); // Schlüssel nicht in der Adresszeile lassen
+
+const STATUS = {
+  unconfirmed: ['Please confirm your e-mail', 'We sent you an e-mail with a confirmation link.'],
+  pending: ['Waiting for approval', 'An administrator will review your request. You will be notified by e-mail.'],
+  blocked: ['Access blocked', 'Your access has been blocked. Please contact your administrator.'],
+  rejected: ['Request declined', 'Your request was declined. Please contact your administrator.'],
+};
+
+async function load() {
+  if (!token) { $('msg').textContent = 'No access link. Please use the link from your e-mail or register first.'; return; }
+  if (hash.get('c')) {
+    const r = await fetch('/api/access/confirm', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ code: hash.get('c') }) });
+    if (!r.ok) $('msg').textContent = (await r.json().catch(() => ({}))).error || 'Confirmation failed.';
+  }
+  const res = await fetch('/api/access/me', { headers: { 'X-Access-Token': token } });
+  const me = await res.json().catch(() => ({}));
+  if (!res.ok) { $('msg').textContent = me.error || 'Unknown access link.'; return; }
+  $('badge').textContent = me.status;
+  $('badge').className = 'badge ' + me.status;
+  if (me.status !== 'active') {
+    const [title, text] = STATUS[me.status] || ['', ''];
+    $('waitTitle').textContent = title;
+    $('waitText').textContent = text;
+    $('waitCard').classList.remove('hidden');
+    return;
+  }
+  $('activeView').classList.remove('hidden');
+  $('vCallsign').textContent = me.callsign;
+  $('vTeam').textContent = `${me.team} (${me.teamColor})`;
+  $('vChip').style.background = COLORS[me.teamColor] || '#0ff';
+  $('vRole').textContent = me.role;
+  $('vHost').textContent = me.host;
+  $('vPort').textContent = `${me.streamPort} (SSL) · enrollment ${me.enrollPort}`;
+  $('vUser').textContent = me.username;
+  $('showPass').onclick = () => {
+    const shown = $('vPass').textContent !== '••••••••••';
+    $('vPass').textContent = shown ? '••••••••••' : me.password;
+    $('showPass').textContent = shown ? 'Show' : 'Hide';
+  };
+  for (const e of document.querySelectorAll('.cs')) e.textContent = me.callsign;
+  for (const e of document.querySelectorAll('.hostTxt')) e.textContent = me.host;
+  for (const e of document.querySelectorAll('.portTxt')) e.textContent = me.streamPort;
+  for (const e of document.querySelectorAll('.teamTxt')) e.textContent = me.teamColor;
+  const q = '?t=' + encodeURIComponent(token);
+  $('qrAtak').src = '/api/access/qr/atak.svg' + q;
+  $('qrItak').src = '/api/access/qr/itak.svg' + q;
+  $('qrEud').src = '/api/access/qr/eud.svg' + q;
+  $('trustBtn').href = '/api/access/truststore.p12' + q;
+  const p = new URLSearchParams({ host: me.host, port: me.streamPort, proto: 'ssl', enroll: me.enrollPort, username: me.username, password: me.password, callsign: me.callsign });
+  $('eudLink').href = '/eud/#' + p;
+  if (!me.hasAtakQr) $('qrAtak').replaceWith(Object.assign(document.createElement('p'), { className: 'mut small', textContent: 'No ATAK QR code available – please use the manual setup.' }));
+}
+for (const b of document.querySelectorAll('#tabs button')) {
+  b.addEventListener('click', () => {
+    for (const x of document.querySelectorAll('#tabs button')) x.classList.toggle('on', x === b);
+    for (const p of document.querySelectorAll('[data-pane]')) p.classList.toggle('hidden', p.dataset.pane !== b.dataset.tab);
+  });
+}
+load().catch(e => { $('msg').textContent = e.message; });
+</script>
+</body>
+</html>

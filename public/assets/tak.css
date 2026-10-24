@@ -1,0 +1,52 @@
+/* Registrierung und Zugangsseite (gleicher Stil wie die EUD) */
+:root { --bg: #11151b; --card: #1d2128; --line: #3a404a; --text: #fff; --mut: #9aa3ad; --blue: #33b5e5; --cyan: #2fd8ff; --green: #3ddc4b; --red: #e53935; --yellow: #f6c344; color-scheme: dark; }
+* { box-sizing: border-box; }
+html, body { margin: 0; background: var(--bg); color: var(--text); font: 16px/1.5 Roboto, system-ui, -apple-system, 'Segoe UI', sans-serif; }
+.wrap { max-width: 760px; margin: 0 auto; padding: 16px 16px 48px; }
+header.top { display: flex; align-items: center; gap: 12px; padding: 14px 16px; background: #0b0e12; border-bottom: 1px solid var(--line); }
+header.top img { width: 36px; height: 36px; }
+header.top h1 { font-size: 20px; margin: 0; font-weight: 500; flex: 1; }
+h2 { font-size: 19px; font-weight: 500; margin: 0 0 10px; }
+h3 { font-size: 16px; font-weight: 500; margin: 18px 0 6px; color: var(--cyan); }
+.card { background: var(--card); border: 1px solid var(--line); border-radius: 6px; padding: 16px; margin: 14px 0; }
+.mut { color: var(--mut); }
+.small { font-size: 14px; }
+.hidden { display: none !important; }
+label { display: block; font-size: 13px; color: var(--mut); margin: 12px 0 2px; }
+input, select { width: 100%; padding: 9px 4px; background: transparent; border: none; border-bottom: 1px solid var(--mut); color: #fff; font: 16px inherit; font-family: inherit; }
+input:focus { outline: none; border-bottom-color: var(--blue); }
+label.check { display: flex; gap: 8px; align-items: flex-start; color: #ddd; font-size: 14px; }
+label.check input { width: auto; margin-top: 4px; }
+button, .btn { display: inline-flex; align-items: center; justify-content: center; gap: 6px; min-height: 44px; padding: 10px 16px; border-radius: 3px; border: 1px solid #454c57;
+  background: #2a2f38; color: #fff; font: 500 15px inherit; font-family: inherit; text-decoration: none; cursor: pointer; }
+button.pri, .btn.pri { background: #1f6f3a; border-color: #2e8b4a; }
+button.blue, .btn.blue { background: #1f4f6a; border-color: #2c6f93; }
+button:disabled { opacity: 0.5; }
+.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
+.msg { min-height: 1.2em; color: #ff6b6b; margin: 10px 0 0; }
+.msg.ok { color: var(--green); }
+.badge { display: inline-block; padding: 3px 10px; border-radius: 12px; font-size: 13px; font-weight: 500; }
+.badge.pending, .badge.unconfirmed { background: rgba(246, 195, 68, 0.2); color: var(--yellow); }
+.badge.active { background: rgba(61, 220, 75, 0.18); color: var(--green); }
+.badge.blocked, .badge.rejected { background: rgba(229, 57, 53, 0.2); color: #ff8a80; }
+.kv { display: grid; grid-template-columns: 120px 1fr; gap: 6px 12px; align-items: center; }
+.kv b { font-weight: 500; word-break: break-all; }
+.secret { font-family: ui-monospace, 'Roboto Mono', monospace; letter-spacing: 0.5px; }
+.chip { display: inline-block; width: 14px; height: 14px; border-radius: 50%; border: 1px solid #000; vertical-align: -2px; margin-right: 6px; }
+.tabs { display: flex; border: 1px solid #454c57; border-radius: 3px; overflow: hidden; margin-bottom: 14px; }
+.tabs button { flex: 1; border: none; border-radius: 0; background: #2a2f38; color: var(--mut); }
+.tabs button.on { background: #33475b; color: #fff; }
+.qrbox { display: flex; gap: 16px; flex-wrap: wrap; align-items: flex-start; }
+.qrbox img.qr { width: 230px; height: 230px; background: #fff; border-radius: 4px; padding: 6px; flex: none; }
+.qrbox .grow { flex: 1; min-width: 240px; }
+ol.steps { padding-left: 22px; margin: 6px 0; }
+ol.steps li { margin: 8px 0; }
+.shots { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-top: 10px; }
+.shots figure { margin: 0; }
+.shots img { width: 100%; border: 1px solid var(--line); border-radius: 6px; display: block; }
+.shots figcaption { font-size: 13px; color: var(--mut); margin-top: 4px; }
+.features { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.features div { background: #262b33; border-radius: 4px; padding: 10px 12px; font-size: 14px; }
+.features b { display: block; color: var(--cyan); font-weight: 500; margin-bottom: 2px; }
+.path { display: inline-block; background: #262b33; border: 1px solid var(--line); border-radius: 3px; padding: 1px 6px; font-size: 14px; }
+@media print { body { background: #fff; color: #000; } .card { border-color: #999; background: #fff; } button, .tabs { display: none; } }
