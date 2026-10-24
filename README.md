@@ -254,6 +254,26 @@ kein LDAP.)
 (Dateirechte 600), damit die Zugangsseite die Daten zeigen kann; der Zugangslink ist geheim (48 Zeichen) und
 nach dem Sperren/Löschen wertlos. Registrierungen sind auf 5 pro Stunde und IP begrenzt.
 
+## TAK-Server verwalten (im WebTAK-Admin)
+
+Unter **TAK-Server** in der Seitenleiste verwaltet WebTAK den OpenTAKServer wie dessen eigene Oberfläche:
+
+- **OTS-Benutzer:** alle Konten aus OTS – auch die, die direkt in OTS angelegt wurden – mit Rolle, aktiv/gesperrt,
+  Gruppen, Geräten und letzter Anmeldung. **Neuer Benutzer** legt ein Konto ohne Registrierung an (Rufname, optional
+  Benutzername/Passwort/E-Mail, Team, Rolle, OTS-Administrator) und zeigt den Zugangslink. **Übernehmen** verwaltet
+  einen vorhandenen OTS-Benutzer zusätzlich in WebTAK (Rufname, Team, Zugangsseite; optional neues Passwort und
+  Team-Gruppen). Außerdem: Rolle User/Administrator, sperren/aktivieren, Passwort setzen, Gruppen (IN/OUT) pflegen, löschen.
+- **Gruppen:** anlegen, löschen (`__ANON__` bleibt).
+- **Missionen (Data Sync):** anlegen (Beschreibung, Passwort, Gruppen; OTS verlangt ein bekanntes Gerät als
+  Ersteller – vorausgewählt), auflisten, löschen.
+- **Video-Feeds (OTS):** alle MediaMTX-Pfade; Feed anlegen mit Pfad und Quelle (rtsp/rtmp/srt/udp/http(s)-HLS) –
+  ATAK/iTAK/WinTAK finden ihn unter Video als `rtsp://<TAK-Server>:8554/<pfad>`; löschen.
+- **Meshtastic:** Kanäle anlegen (Name, Funk-Voreinstellung, Region, Schlüssel erzeugen, Up-/Downlink) oder per
+  Meshtastic-Link übernehmen, Link kopieren, löschen.
+
+Benutzer & Anfragen zeigt standardmäßig **alle** WebTAK-Nutzer (offene Anfragen oben) – freigegebene Nutzer
+verschwinden nicht mehr aus der Liste.
+
 ## Admin
 
 **WebTAK Admin** im dunklen ATAK-Stil mit Seitenleiste: *Benutzer & Anfragen* (Zahl offener Anfragen),

@@ -43,8 +43,11 @@
     const tb = $('takTable').querySelector('tbody');
     const q = $('takFilter').value.trim().toLowerCase();
     const st = $('takStatus').value;
+    // Offene Anfragen zuerst, dann aktive, gesperrte … (freigegebene Nutzer bleiben sichtbar)
+    const ORDER = { pending: 0, unconfirmed: 1, active: 2, blocked: 3, rejected: 4 };
     const list = state.users.filter(u => (!st || u.status === st)
-      && (!q || [u.name, u.unit, u.callsign, u.requestedCallsign, u.email, u.username].join(' ').toLowerCase().includes(q)));
+      && (!q || [u.name, u.unit, u.callsign, u.requestedCallsign, u.email, u.username].join(' ').toLowerCase().includes(q)))
+      .sort((a, b) => (ORDER[a.status] ?? 9) - (ORDER[b.status] ?? 9) || String(a.callsign).localeCompare(String(b.callsign)));
     tb.replaceChildren();
     if (!list.length) tb.append(el('tr', {}, el('td', { colspan: '8', class: 'mut', text: st === 'pending' ? 'Keine offenen Anfragen.' : 'Keine Einträge.' })));
     for (const u of list) {

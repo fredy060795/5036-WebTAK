@@ -767,6 +767,91 @@ test('Kartenkacheln über den eigenen Server, mit Zwischenspeicher', async () =>
   }
 });
 
+test('TAK-Server verwalten: alle OTS-Benutzer, anlegen, übernehmen, Rolle, Gruppen, Missionen, Feeds, Meshtastic', async () => {
+  const { createMockOts } = require('./ots-mock');
+  const mock = createMockOts();
+  const otsUrl = await mock.listen();
+  try {
+    assert.equal((await api('takusers/ots', { method: 'POST', body: { url: otsUrl, username: 'otsadmin', password: 'otspass', host: 'tak.example.com' } })).status, 200);
+    // von Hand in OTS angelegter Benutzer mit Gerät
+    mock.state.users.user1 = { password: 'geheim123', active: true, roles: ['user'] };
+    mock.state.euds.push({ uid: 'ANDROID-1', callsign: 'Horst', username: 'user1' });
+    let r = await api('ots/users');
+    assert.equal(r.status, 200);
+    const u1 = r.data.users.find(u => u.username === 'user1');
+    assert.deepEqual(u1.roles, ['user']);
+    assert.equal(u1.managed, null);
+    assert.equal(u1.euds[0].callsign, 'Horst');
+    // direkt anlegen (ohne Registrierung)
+    r = await api('ots/users', { method: 'POST', body: { callsign: 'Bravo 2', password: '' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(r.data.user.username, 'bravo_2');
+    assert.equal(r.data.password, 'atakatak');
+    assert.equal(mock.state.users.bravo_2.password, 'atakatak');
+    assert.match(r.data.link, /\/access\/#t=/);
+    assert.equal((await api('ots/users', { method: 'POST', body: { callsign: 'X', username: 'user1' } })).status, 400, 'gibt es in OTS schon');
+    // übernehmen mit neuem Passwort
+    r = await api('ots/users/user1/import', { method: 'POST', body: { callsign: 'Horst', newPassword: true, password: 'neuespass1' } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(mock.state.users.user1.password, 'neuespass1');
+    r = await api('ots/users');
+    assert.equal(r.data.users.find(u => u.username === 'user1').managed.callsign, 'Horst');
+    // Rolle, aktiv, Passwort, Gruppen
+    await api('ots/users/user1/role', { method: 'POST', body: { admin: true } });
+    assert.deepEqual(mock.state.users.user1.roles, ['administrator']);
+    await api('ots/users/user1/active', { method: 'POST', body: { on: false } });
+    assert.equal(mock.state.users.user1.active, false);
+    await api('ots/users/user1/active', { method: 'POST', body: { on: true } });
+    r = await api('ots/users/user1/password', { method: 'POST', body: { password: '' } });
+    assert.equal(r.data.password, 'atakatak');
+    assert.equal((await api('ots/users/user1/password', { method: 'POST', body: { password: 'kurz' } })).status, 400);
+    await api('ots/users/user1/groups', { method: 'POST', body: { group: 'ZUG_1', direction: 'IN' } });
+    assert.deepEqual(mock.groupsOf('user1'), ['ZUG_1.IN']);
+    await api('ots/users/user1/groups', { method: 'POST', body: { group: 'ZUG_1', direction: 'IN', remove: true } });
+    assert.deepEqual(mock.groupsOf('user1'), []);
+    // Gruppen
+    assert.equal((await api('ots/groups', { method: 'POST', body: { name: 'ZUG_2' } })).status, 200);
+    assert.ok((await api('ots/groups')).data.groups.some(g => g.name === 'ZUG_2'));
+    assert.equal((await api('ots/groups', { method: 'POST', body: { name: 'mit leer' } })).status, 400);
+    assert.equal((await api('ots/groups/ZUG_2', { method: 'DELETE' })).status, 200);
+    // Missionen: Ersteller = bekanntes Gerät (automatisch das erste), Gruppen per Name
+    await api('ots/groups', { method: 'POST', body: { name: 'ZUG_3' } });
+    r = await api('ots/missions', { method: 'POST', body: { name: 'Einsatz Nord', description: 'Test', password: 'pw', groups: ['ZUG_3'] } });
+    assert.equal(r.status, 200, JSON.stringify(r.data));
+    assert.equal(mock.state.missions['Einsatz Nord'].creator_uid, 'ANDROID-1');
+    assert.equal(mock.state.missions['Einsatz Nord'].groups.length, 1);
+    r = await api('ots/missions');
+    assert.equal(r.data.missions[0].password, true);
+    await api('ots/missions/' + encodeURIComponent('Einsatz Nord'), { method: 'DELETE' });
+    assert.equal(mock.state.missions['Einsatz Nord'], undefined);
+    // Video-Feeds
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: 'drohne1', source: 'rtsp://10.0.0.5/live' } })).status, 200);
+    assert.equal(mock.state.videos.drohne1.source, 'rtsp://10.0.0.5/live');
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: '../x', source: '' } })).status, 400);
+    assert.equal((await api('ots/feeds', { method: 'POST', body: { path: 'x', source: 'file:///etc' } })).status, 400);
+    assert.equal((await api('ots/feeds')).data.feeds.length, 1);
+    await api('ots/feeds/drohne1', { method: 'DELETE' });
+    assert.equal(mock.state.videos.drohne1, undefined);
+    // Meshtastic
+    const psk = (await api('ots/mesh/psk')).data.psk;
+    assert.ok(psk);
+    assert.equal((await api('ots/mesh', { method: 'POST', body: { name: 'WebTAK', psk, modemPreset: 'LONG_FAST', region: 'EU_868' } })).status, 200);
+    assert.equal(mock.state.mesh[0].lora_region, 'EU_868');
+    assert.equal((await api('ots/mesh', { method: 'POST', body: { name: 'viel zu lang!' } })).status, 400);
+    const ch = (await api('ots/mesh')).data.channels[0];
+    await api('ots/mesh?url=' + encodeURIComponent(ch.url), { method: 'DELETE' });
+    assert.equal(mock.state.mesh.length, 0);
+    // Löschen (auch aus der WebTAK-Verwaltung)
+    await api('ots/users/bravo_2', { method: 'DELETE' });
+    assert.equal(mock.state.users.bravo_2, undefined);
+    assert.equal((await api('takusers/state')).data.users.some(u => u.username === 'bravo_2'), false);
+    const st = await api('takusers/state');
+    for (const u of st.data.users) await api('takusers/user/' + u.id, { method: 'DELETE' });
+  } finally {
+    mock.close();
+  }
+});
+
 test('WebTAK-Video: HLS-Feeds über den eigenen Server (Playlist umgeschrieben, Segmente, nur Video, Ziel geprüft)', async () => {
   const up = http.createServer((req, res) => {
     if (req.url === '/live/cam/index.m3u8') { res.writeHead(200, { 'Content-Type': 'application/vnd.apple.mpegurl' }); return res.end('#EXTM3U\n#EXT-X-MAP:URI="init.mp4"\n#EXTINF:2,\nseg1.ts\n#EXTINF:2,\nhttp://other.example/x.ts\n'); }

@@ -421,6 +421,170 @@ async function handleAccessApi(req, res, route) {
   return json(res, 404, { error: 'Unknown request.' });
 }
 
+// ======================================================================
+// TAK-Server verwalten (wie die OTS-Oberfläche): Benutzer, Rollen, Gruppen, Missionen, Feeds, Meshtastic
+// ======================================================================
+
+async function handleOtsAdmin(req, res, route) {
+  if (!takUsers.otsConfigured()) return json(res, 400, { error: 'OpenTAKServer ist nicht verbunden (OpenTAKServer & Registrierung).' });
+  const ots = takUsers.ots();
+  const method = req.method;
+  const body = method === 'GET' || method === 'DELETE' ? {} : await readJson(req);
+  const seg = route.split('/').map(decodeURIComponent);
+
+  if (route === 'users' && method === 'GET') {
+    const [users, groups] = await Promise.all([ots.allUsers(), ots.allGroups().catch(() => [])]);
+    return json(res, 200, {
+      groups: groups.map(g => ({ id: g.id, name: g.name, description: g.description || '' })),
+      users: users.map(u => {
+        const m = takUsers.byUsername(u.username);
+        return {
+          username: u.username, active: u.active !== false, lastLogin: u.current_login_at || u.last_login_at || null,
+          roles: (u.roles || []).map(r => r.name || r).filter(Boolean),
+          memberships: (u.group_memberships || []).map(g => ({ group: g.group_name || (g.group && g.group.name) || g.name, direction: g.direction, enabled: g.enabled !== false })),
+          euds: (u.euds || []).map(e => ({ uid: e.uid, callsign: e.callsign, device: e.device || e.platform || '', lastStatus: e.last_status || '' })),
+          managed: m ? { id: m.id, callsign: m.callsign, status: m.status } : null,
+        };
+      }).sort((a, b) => a.username.localeCompare(b.username)),
+    });
+  }
+  if (route === 'users' && method === 'POST') {
+    const u = await takUsers.createDirect(body);
+    log('Admin: TAK-Benutzer angelegt', u.username);
+    return json(res, 200, { ok: true, user: takUsers.adminView(u), password: u.password, link: accessLink(req, u) });
+  }
+  if (seg[0] === 'users' && seg[1]) {
+    const name = seg[1];
+    const action = seg[2] || '';
+    if (action === 'import' && method === 'POST') {
+      const u = await takUsers.importOts(name, body);
+      return json(res, 200, { ok: true, user: takUsers.adminView(u), link: accessLink(req, u) });
+    }
+    if (action === 'active' && method === 'POST') {
+      if (body.on) await ots.activateUser(name).catch(e => { if (!/already/i.test(e.message)) throw e; });
+      else await ots.deactivateUser(name).catch(e => { if (!/already/i.test(e.message)) throw e; });
+      const m = takUsers.byUsername(name);
+      if (m && m.status !== 'rejected') { m.status = body.on ? 'active' : 'blocked'; takUsers.save(); }
+      return json(res, 200, { ok: true });
+    }
+    if (action === 'password' && method === 'POST') {
+      const pw = String(body.password || '').trim() || takUsers.newUserPassword();
+      takUsers.checkPassword(pw);
+      await ots.resetPassword(name, pw);
+      await takUsers.checkLogin(name, pw);
+      const m = takUsers.byUsername(name);
+      if (m) { m.password = pw; takUsers.save(); }
+      return json(res, 200, { ok: true, password: pw });
+    }
+    if (action === 'role' && method === 'POST') {
+      await ots.setRoles(name, body.admin ? ['administrator'] : ['user']);
+      return json(res, 200, { ok: true });
+    }
+    if (action === 'groups' && method === 'POST') {
+      const group = String(body.group || '').trim();
+      const direction = body.direction === 'OUT' ? 'OUT' : 'IN';
+      if (!group) return json(res, 400, { error: 'Gruppe fehlt.' });
+      if (body.remove) await ots.removeFromGroup(name, group, direction);
+      else { await ots.ensureGroup(group); await ots.addToGroup(name, group, direction); }
+      return json(res, 200, { ok: true });
+    }
+    if (!action && method === 'DELETE') {
+      const m = takUsers.byUsername(name);
+      if (m) await takUsers.remove(m.id); else await ots.deleteUser(name);
+      log('Admin: TAK-Benutzer gelöscht', name);
+      return json(res, 200, { ok: true });
+    }
+  }
+
+  if (route === 'groups' && method === 'GET') return json(res, 200, { groups: await ots.allGroups() });
+  if (route === 'groups' && method === 'POST') {
+    const name = String(body.name || '').trim();
+    if (!/^[\w.-]{1,60}$/.test(name)) return json(res, 400, { error: 'Gruppenname: 1–60 Zeichen, Buchstaben, Ziffern, _ . -' });
+    await ots.createGroup(name, String(body.description || '').slice(0, 200));
+    return json(res, 200, { ok: true });
+  }
+  if (seg[0] === 'groups' && seg[1] && method === 'DELETE') {
+    if (seg[1] === '__ANON__') return json(res, 400, { error: '__ANON__ ist die Standardgruppe von OTS und bleibt.' });
+    await ots.deleteGroup(seg[1]);
+    return json(res, 200, { ok: true });
+  }
+
+  if (route === 'euds' && method === 'GET') {
+    const euds = await ots.allEuds();
+    return json(res, 200, { euds: euds.map(e => ({ uid: e.uid, callsign: e.callsign, username: e.username || '', lastStatus: e.last_status || '' })) });
+  }
+
+  if (route === 'missions' && method === 'GET') {
+    const list = await ots.missions();
+    return json(res, 200, { missions: list.map(m => ({ name: m.name, description: m.description || '', creator: m.creator_uid || m.creatorUid || '',
+      created: m.create_time || m.createTime || '', password: !!(m.password_protected || m.passwordProtected), group: m.group || '',
+      items: (m.uids || []).length, files: (m.contents || []).length })) });
+  }
+  if (route === 'missions' && method === 'POST') {
+    const name = String(body.name || '').trim();
+    if (!name || name.length > 100) return json(res, 400, { error: 'Bitte einen Missionsnamen eingeben.' });
+    let creatorUid = String(body.creatorUid || '').trim();
+    if (!creatorUid) {
+      const euds = await ots.allEuds();
+      if (!euds.length) return json(res, 400, { error: 'OTS braucht ein bekanntes Gerät als Ersteller – es war noch keins verbunden.' });
+      creatorUid = euds[0].uid;
+    }
+    let groupIds = [];
+    if (Array.isArray(body.groups) && body.groups.length) {
+      const all = await ots.allGroups();
+      groupIds = body.groups.map(n => (all.find(g => g.name === n) || {}).id).filter(x => x != null);
+    }
+    await ots.createMission({ name, description: String(body.description || '').slice(0, 500), password: String(body.password || ''), creatorUid, groups: groupIds });
+    log('Admin: Mission angelegt', name);
+    return json(res, 200, { ok: true });
+  }
+  if (seg[0] === 'missions' && seg[1] && method === 'DELETE') {
+    await ots.deleteMission(seg[1]);
+    return json(res, 200, { ok: true });
+  }
+
+  // Video-Feeds im TAK-Server (MediaMTX): alle Pfade, Feed anlegen (Quelle wird bei Bedarf geholt), löschen
+  if (route === 'feeds' && method === 'GET') return json(res, 200, { feeds: await ots.videoStreams(), rtspHost: takUsers.takHost() });
+  if (route === 'feeds' && method === 'POST') {
+    const p = String(body.path || '').trim().replace(/^\/+|\/+$/g, '');
+    const source = String(body.source || '').trim();
+    if (!TakVideo.validPath(p)) return json(res, 400, { error: 'Pfad: nur Buchstaben, Ziffern, - _ . und /' });
+    if (source && !/^(rtsp|rtsps|rtmp|rtmps|http|https|srt|udp):\/\//i.test(source)) return json(res, 400, { error: 'Quelle: rtsp://, rtmp://, http(s):// (HLS), srt:// oder udp://' });
+    await ots.addStream(p, source);
+    return json(res, 200, { ok: true });
+  }
+  if (seg[0] === 'feeds' && seg[1] && method === 'DELETE') {
+    await ots.deleteStream(seg.slice(1).join('/'));
+    return json(res, 200, { ok: true });
+  }
+
+  // Meshtastic-Kanäle
+  if (route === 'mesh' && method === 'GET') return json(res, 200, { channels: await ots.meshChannels() });
+  if (route === 'mesh/psk' && method === 'GET') return json(res, 200, { psk: await ots.meshPsk() });
+  if (route === 'mesh' && method === 'POST') {
+    const b = {};
+    if (body.url) b.url = String(body.url).trim();
+    else {
+      const name = String(body.name || '').trim();
+      if (!name || name.length > 11) return json(res, 400, { error: 'Kanalname: 1–11 Zeichen (Meshtastic-Grenze).' });
+      Object.assign(b, {
+        name, psk: String(body.psk || ''), modem_preset: String(body.modemPreset || 'LONG_FAST'), lora_region: String(body.region || 'EU_868'),
+        uplink_enabled: body.uplink !== false, downlink_enabled: body.downlink !== false, lora_tx_enabled: true, lora_hop_limit: 3,
+        position_precision: Number(body.positionPrecision) || 32,
+      });
+    }
+    await ots.createMeshChannel(b);
+    return json(res, 200, { ok: true });
+  }
+  if (route === 'mesh' && method === 'DELETE') {
+    const u = new URL(req.url, 'http://x').searchParams.get('url');
+    if (!u) return json(res, 400, { error: 'Kanal fehlt.' });
+    await ots.deleteMeshChannel(u);
+    return json(res, 200, { ok: true });
+  }
+  return json(res, 404, { error: 'Unbekannte Anfrage.' });
+}
+
 async function handleTakAdmin(req, res, route) {
   const method = req.method;
   if (route === 'state' && method === 'GET') {
@@ -671,6 +835,7 @@ async function handleAdminApi(req, res, route) {
     });
   }
   if (route.startsWith('takusers/')) return await handleTakAdmin(req, res, route.slice(9));
+  if (route.startsWith('ots/')) return await handleOtsAdmin(req, res, route.slice(4));
   if (route === 'takvideo' && method === 'GET') return json(res, 200, takVideo.state());
   if (route === 'takvideo/settings' && method === 'POST') { takVideo.setSettings(await readJson(req)); return json(res, 200, takVideo.state()); }
   if (route === 'takvideo/sync' && method === 'POST') { const r = await takVideo.syncAll(); return json(res, 200, { ...r, ...takVideo.state() }); }

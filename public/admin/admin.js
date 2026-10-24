@@ -228,6 +228,7 @@ function showView(view) {
     $('takTitle').textContent = VIEW_TITLES[view];
   }
   if (view === 'system') renderSystem();
+  document.dispatchEvent(new CustomEvent('admin-view', { detail: view }));
   if (location.hash.slice(1) !== view) history.replaceState(null, '', '#' + view);
   document.body.classList.remove('navopen');
   try { localStorage.setItem('webtak.adminView', view); } catch (e) { /* privat */ }

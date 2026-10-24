@@ -92,6 +92,12 @@
     <a href="#users" data-nav="users"><span class="ic">👥</span>Benutzer &amp; Anfragen <span class="badge nb" id="navPending"></span></a>
     <a href="#teams" data-nav="teams"><span class="ic">⬢</span>Teams &amp; Sichtbarkeit</a>
     <a href="#ots" data-nav="ots"><span class="ic">🛰</span>OpenTAKServer &amp; Registrierung</a>
+    <div class="side-h">TAK-Server</div>
+    <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS-Benutzer</a>
+    <a href="#otsgroups" data-nav="otsgroups"><span class="ic">◫</span>Gruppen</a>
+    <a href="#missions" data-nav="missions"><span class="ic">⟳</span>Missionen (Data Sync)</a>
+    <a href="#feeds" data-nav="feeds"><span class="ic">📡</span>Video-Feeds (OTS)</a>
+    <a href="#mesh" data-nav="mesh"><span class="ic">⌁</span>Meshtastic</a>
     <div class="side-h">Video</div>
     <a href="#video" data-nav="video"><span class="ic">🎥</span>Video-Streams <span class="badge nb live" id="navLive"></span></a>
     <a href="#camera" data-nav="camera"><span class="ic">📷</span>Kamera-Anmeldung</a>
@@ -117,7 +123,7 @@
         <div class="row">
           <input id="takFilter" class="filter" placeholder="Suchen …">
           <select id="takStatus" style="width:auto">
-            <option value="">Alle</option><option value="pending" selected>Offen</option><option value="active">Aktiv</option>
+            <option value="" selected>Alle</option><option value="pending">Offen</option><option value="active">Aktiv</option>
             <option value="blocked">Gesperrt</option><option value="rejected">Abgelehnt</option><option value="unconfirmed">E-Mail unbestätigt</option>
           </select>
           <button class="sm" type="button" id="takSync" title="Gruppen und Rufnamen/Teams nach OTS übertragen">⟳ Mit OTS abgleichen</button>
@@ -299,6 +305,67 @@
     </section>
 
     <section class="card" data-view="system" id="systemCard"></section>
+
+    <!-- TAK-Server verwalten (ots.js) -->
+    <section class="card" data-view="otsusers">
+      <div class="row between"><h2>OTS-Benutzer <span class="mut small">(alle Konten im TAK-Server)</span></h2>
+        <div class="row"><input id="ouFilter" class="filter" placeholder="Suchen …"><button class="pri" id="ouNew" type="button">+ Neuer Benutzer</button><button id="ouReload" type="button">⟳</button></div></div>
+      <p class="mut small">Alle Benutzer aus OpenTAKServer – auch die, die direkt in OTS angelegt wurden. „Übernehmen“ verwaltet einen Benutzer
+        zusätzlich in WebTAK (Rufname, Team, Zugangsseite mit QR-Codes).</p>
+      <p class="msg" id="ouMsg"></p>
+      <div class="table-wrap"><table class="streams" id="ouTable"><thead><tr><th>Benutzer</th><th>Rolle</th><th>Aktiv</th><th>Gruppen</th><th>Geräte</th><th>Letzte Anmeldung</th><th>WebTAK</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="card" data-view="otsgroups">
+      <div class="row between"><h2>Gruppen <span class="mut small">(OTS-Kanäle)</span></h2><button id="ogReload" type="button">⟳</button></div>
+      <p class="mut small">Wer in einer Gruppe <b>IN</b> ist, sendet in diese Gruppe; wer <b>OUT</b> ist, empfängt sie. Benutzer ohne Gruppe sind in <b>__ANON__</b>.
+        Mitgliedschaften pflegst du unter „OTS-Benutzer“ → Gruppen.</p>
+      <form class="row" id="ogForm"><div class="grow"><input name="name" placeholder="Neue Gruppe, z. B. ZUG_1" required></div><div class="grow"><input name="description" placeholder="Beschreibung (optional)"></div><button class="pri" type="submit">Anlegen</button></form>
+      <p class="msg" id="ogMsg"></p>
+      <div class="table-wrap"><table class="streams" id="ogTable"><thead><tr><th>Gruppe</th><th>Beschreibung</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="card" data-view="missions">
+      <div class="row between"><h2>Missionen <span class="mut small">(Data Sync)</span></h2><button id="omReload" type="button">⟳</button></div>
+      <form id="omForm">
+        <div class="row"><div class="grow"><label>Name</label><input name="name" required maxlength="100"></div><div class="grow"><label>Passwort (optional)</label><input name="password" autocomplete="off"></div></div>
+        <label>Beschreibung</label><input name="description" maxlength="500">
+        <div class="row"><div class="grow"><label>Ersteller (Gerät, OTS verlangt ein bekanntes Gerät)</label><select name="creatorUid" id="omCreator"></select></div></div>
+        <label>Gruppen (leer = alle)</label><div id="omGroups" class="row"></div>
+        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Mission anlegen</button></div>
+      </form>
+      <p class="msg" id="omMsg"></p>
+      <div class="table-wrap"><table class="streams" id="omTable"><thead><tr><th>Mission</th><th>Beschreibung</th><th>Inhalt</th><th>Erstellt</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="card" data-view="feeds">
+      <div class="row between"><h2>Video-Feeds <span class="mut small">(MediaMTX im TAK-Server)</span></h2><button id="ofReload" type="button">⟳</button></div>
+      <p class="mut small">Feed anlegen: OTS/MediaMTX holt das Bild bei Bedarf von der Quelle (Kamera, Drohne, anderer Server) und stellt es
+        allen als <b>rtsp://&lt;TAK-Server&gt;:8554/&lt;Pfad&gt;</b> bereit – ATAK/iTAK/WinTAK finden es unter „Video“. Ohne Quelle wartet der Pfad
+        auf eine Kamera, die selbst dorthin sendet (RTSP/RTMP/SRT/WebRTC).</p>
+      <form class="row" id="ofForm"><div class="grow"><label>Pfad</label><input name="path" placeholder="z. B. drohne1" required></div>
+        <div class="grow"><label>Quelle (optional)</label><input name="source" placeholder="rtsp://kamera/stream, https://…/index.m3u8"></div>
+        <div class="actions-end"><button class="pri" type="submit">Feed anlegen</button></div></form>
+      <p class="msg" id="ofMsg"></p>
+      <div class="table-wrap"><table class="streams" id="ofTable"><thead><tr><th>Pfad</th><th>Quelle</th><th>Für ATAK</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
+    <section class="card" data-view="mesh">
+      <div class="row between"><h2>Meshtastic-Kanäle</h2><button id="omeReload" type="button">⟳</button></div>
+      <form id="omeForm">
+        <div class="row">
+          <div class="grow"><label>Kanalname (max. 11 Zeichen)</label><input name="name" maxlength="11"></div>
+          <div class="grow"><label>Funk-Voreinstellung</label><select name="modemPreset">
+            <option>LONG_FAST</option><option>LONG_SLOW</option><option>VERY_LONG_SLOW</option><option>MEDIUM_SLOW</option><option>MEDIUM_FAST</option>
+            <option>SHORT_SLOW</option><option>SHORT_FAST</option><option>LONG_MODERATE</option><option>SHORT_TURBO</option></select></div>
+          <div class="grow"><label>Region</label><select name="region"><option>EU_868</option><option>EU_433</option><option>US</option><option>UA_868</option><option>ANZ</option><option>JP</option><option>CN</option><option>KR</option><option>TW</option><option>RU</option><option>IN</option><option>NZ_865</option><option>TH</option><option>LORA_24</option></select></div>
+        </div>
+        <div class="row"><div class="grow"><label>Schlüssel (PSK, leer = unverschlüsselt)</label><input name="psk" autocomplete="off"></div>
+          <div class="actions-end"><button type="button" id="omePsk">🔑 Schlüssel erzeugen</button></div></div>
+        <label class="check"><input type="checkbox" name="uplink" checked> Uplink (Funk → TAK)</label>
+        <label class="check"><input type="checkbox" name="downlink" checked> Downlink (TAK → Funk)</label>
+        <label>… oder vorhandenen Kanal übernehmen (Meshtastic-Link https://meshtastic.org/e/#…)</label><input name="url" placeholder="https://meshtastic.org/e/#…">
+        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Kanal anlegen</button></div>
+      </form>
+      <p class="msg" id="omeMsg"></p>
+      <div class="table-wrap"><table class="streams" id="omeTable"><thead><tr><th>Kanal</th><th>Funk</th><th>Up/Down</th><th>Link</th><th></th></tr></thead><tbody></tbody></table></div>
+    </section>
   </main>
   </div>
 </div>
@@ -363,5 +430,6 @@
 
 <script src="admin.js"></script>
 <script src="takusers.js"></script>
+<script src="ots.js"></script>
 </body>
 </html>

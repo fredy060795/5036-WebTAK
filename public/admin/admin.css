@@ -150,3 +150,8 @@ details.fold[open] > summary { margin-bottom: 12px; }
 .takvideo input.sm-input { width: 90px; }
 input.filter { width: 220px; }
 @media (max-width: 900px) { input.filter { width: 100%; } }
+/* TAK-Server: Gruppen-Schildchen */
+.tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag { font-size: 11px; padding: 1px 6px; border-radius: 3px; background: #23303d; border: 1px solid #2c4256; white-space: nowrap; }
+.tag.off { opacity: .5; }
+.secret { font-family: ui-monospace, monospace; }
