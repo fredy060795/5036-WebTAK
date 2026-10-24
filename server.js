@@ -609,7 +609,7 @@ async function handleTakAdmin(req, res, route) {
     const r = await takUsers.syncProfiles();
     return json(res, 200, { ok: true, updated: r.updated, errors: [...groupErrors, ...r.errors] });
   }
-  const m = /^user\/([a-f0-9]+)(?:\/([a-z]+))?$/.exec(route);
+  const m = /^user\/([a-f0-9]+)(?:\/([a-z]*))?$/.exec(route);
   if (!m) return json(res, 404, { error: 'Unbekannte Anfrage.' });
   const [, id, action] = m;
   if (method === 'DELETE' && !action) { await takUsers.remove(id); return json(res, 200, { ok: true }); }
