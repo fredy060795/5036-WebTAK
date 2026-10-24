@@ -107,8 +107,9 @@ sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anle
      Info → Zertifikatsvertrauenseinstellungen „volles Vertrauen“ einschalten
 6. Danach den QR-Code für alle Nutzer scannen → anmelden → Kamera wählen → Stream starten.
 
-Lädt die Seite am Handy nicht: Handy im selben WLAN (kein Gäste-WLAN, keine mobilen Daten)? start.bat legt eine
-Windows-Firewall-Regel für Port 5036 an (fragt einmal nach Administrator-Rechten); zeigt das Fenster weitere
+Lädt die Seite am Handy nicht: Handy im selben WLAN (kein Gäste-WLAN, keine mobilen Daten)? start.bat gibt Port 5036 und
+Node.js in der Windows-Firewall frei und entfernt Sperr-Regeln für Node.js (fragt einmal nach Administrator-Rechten).
+Klappt das nicht, **firewall.bat** doppelklicken und „Ja“ wählen (Details in `firewall.log`); zeigt das Fenster weitere
 Adressen des PCs an, eine davon probieren.
 
 Die Test-CA bleibt erhalten; ändert sich die IP des PCs, wird nur das Server-Zertifikat neu erzeugt (Handys müssen
