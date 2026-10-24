@@ -60,13 +60,17 @@ function newServer(fields) {
 // ======================================================================
 
 const view = store.get('eud.view', [51.1, 10.4, 6]);
-const map = L.map('map', { zoomControl: false, attributionControl: true, worldCopyJump: true }).setView([view[0], view[1]], view[2]);
-map.attributionControl.setPosition('topright');
+// Drehbare Karte (leaflet-rotate): Kompass schaltet zwischen Nord oben und Blickrichtung oben
+const map = L.map('map', {
+  zoomControl: false, attributionControl: true, worldCopyJump: true,
+  rotate: true, bearing: 0, touchRotate: false, shiftKeyRotate: false, rotateControl: false, compassBearing: false,
+}).setView([view[0], view[1]], view[2]);
+map.attributionControl.setPosition('bottomleft');
 // Kartenquellen: über den eigenen Server (gleiche Herkunft, dort zwischengespeichert) oder eigene URL
 const SOURCES = {
   osm: { name: 'OpenStreetMap', maxZoom: 19, attribution: '© OpenStreetMap' },
   topo: { name: 'OpenTopoMap', maxZoom: 17, attribution: '© OpenTopoMap, © OpenStreetMap' },
-  sat: { name: 'Esri Satellit', maxZoom: 19, attribution: '© Esri' },
+  sat: { name: 'Esri Satellite', maxZoom: 19, attribution: '© Esri' },
   esritopo: { name: 'Esri Topo', maxZoom: 19, attribution: '© Esri' },
 };
 const TILE_BASE = new URL('tiles/', location.href).pathname; // /eud/tiles/
@@ -101,8 +105,6 @@ setTiles(profile.tiles);
 map.on('moveend', () => { const c = map.getCenter(); store.set('eud.view', [c.lat, c.lng, map.getZoom()]); });
 const shapesLayer = L.layerGroup().addTo(map);
 const pointsLayer = L.layerGroup().addTo(map);
-$('zoomIn').addEventListener('click', () => map.zoomIn());
-$('zoomOut').addEventListener('click', () => map.zoomOut());
 
 // ======================================================================
 // Hilfen
@@ -137,12 +139,12 @@ function bearing(a, b) {
 const fmtDist = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1) + ' km';
 function ago(ts) {
   const s = Math.round((Date.now() - ts) / 1000);
-  if (s < 60) return 'vor ' + Math.max(s, 0) + ' s';
-  if (s < 3600) return 'vor ' + Math.round(s / 60) + ' min';
-  if (s < 86400) return 'vor ' + Math.round(s / 3600) + ' h';
+  if (s < 60) return Math.max(s, 0) + ' s ago';
+  if (s < 3600) return Math.round(s / 60) + ' min ago';
+  if (s < 86400) return Math.round(s / 3600) + ' h ago';
   return new Date(ts).toLocaleString();
 }
-const hhmm = d => d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+const hhmm = d => d.toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' });
 
 // ARGB-Zahl aus ATAK (-1 = weiß) -> CSS-Farbe
 function argb(v, fallback) {
@@ -161,7 +163,7 @@ function sidcFor(type) {
   const fn = p.slice(3).join('').slice(0, 6).padEnd(6, '-');
   return 'S' + aff + dim + 'P' + fn + '-----';
 }
-const AFF_NAMES = { f: 'Freund', h: 'Feind', n: 'Neutral', u: 'Unbekannt', a: 'Vermutl. Freund', s: 'Verdächtig', p: 'Ausstehend' };
+const AFF_NAMES = { f: 'Friendly', h: 'Hostile', n: 'Neutral', u: 'Unknown', a: 'Assumed friend', s: 'Suspect', p: 'Pending' };
 
 const symCache = new Map();
 function symbolSvg(sidc, size = 26) {
@@ -183,29 +185,22 @@ let battery = null;
 function tick() { $('clock').textContent = hhmm(new Date()); }
 tick();
 setInterval(tick, 10000);
+// Akku nur für die eigene Position (ATAK zeigt ihn beim Kontakt)
 if (navigator.getBattery) navigator.getBattery().then(b => {
-  const upd = () => {
-    battery = Math.round(b.level * 100);
-    $('battText').textContent = battery + '%';
-    $('battFill').setAttribute('width', String(Math.max(1, 13 * b.level)));
-    $('battFill').setAttribute('fill', b.level < 0.2 ? '#e74c3c' : b.level < 0.5 ? '#f39c12' : '#2ecc71');
-  };
+  const upd = () => { battery = Math.round(b.level * 100); };
   upd();
   b.addEventListener('levelchange', upd);
 }).catch(() => {});
-else $('batt').classList.add('hidden');
 
 function showMe() {
-  $('meName').textContent = profile.callsign || '---';
-  $('meTeam').textContent = profile.callsign ? `${profile.team} · ${profile.role}` : '';
-  $('meTeam').style.color = TEAMS[profile.team] || '';
+  document.title = profile.callsign ? `TAK EUD – ${profile.callsign}` : 'TAK EUD';
 }
 
 // ======================================================================
 // Menü und Fenster
 // ======================================================================
 
-const TITLES = { server: 'Server', edit: 'Server', me: 'Rufname', video: 'Videostream', contacts: 'Kontakte', map: 'Karte', data: 'TAK-Daten' };
+const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts', map: 'Map', data: 'TAK Data' };
 let popupSec = null;
 function openPopup(sec, title) {
   closeSidebar();
@@ -312,7 +307,7 @@ function iconFor(c, stale) {
     const light = ['White', 'Yellow', 'Cyan', 'Green', 'Orange', 'Magenta'].includes(c.team);
     const short = esc((c.callsign || '?').slice(0, 4));
     const arrow = Number.isFinite(c.course) && c.speed > 0.5
-      ? `<path d="M16 0 L21 7 L11 7 Z" fill="${col}" stroke="#000" stroke-width="1" transform="rotate(${c.course} 16 16)"/>` : '';
+      ? `<path d="M16 0 L21 7 L11 7 Z" fill="${col}" stroke="#000" stroke-width="1" transform="rotate(${c.course + northAngle()} 16 16)"/>` : '';
     const html = `<svg width="32" height="32" viewBox="0 0 32 32">${arrow}<circle cx="16" cy="16" r="11" fill="${col}" stroke="#333" stroke-width="1.5"/>`
       + `<text x="16" y="16" font-size="8" font-family="Courier New, monospace" font-weight="bold" fill="${light ? '#1a1a1a' : '#fff'}" text-anchor="middle" dominant-baseline="central">${short}</text></svg>${label.replace('{T}', 32)}`;
     return L.divIcon({ className: cls, html, iconSize: [32, 32], iconAnchor: [16, 16], popupAnchor: [0, -14] });
@@ -331,19 +326,50 @@ function popupHtml(it) {
   const c = it.c;
   const rows = [];
   const kind = c.type.startsWith('a-')
-    ? (AFF_NAMES[c.type.split('-')[1]] || 'Objekt') + (c.team ? ` · ${esc(c.team)} · ${esc(c.role || '')}` : '')
-    : c.type.startsWith('b-m-p') ? 'Punkt' : c.type.startsWith('u-d') ? 'Zeichnung' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
+    ? (AFF_NAMES[c.type.split('-')[1]] || 'Object') + (c.team ? ` · ${esc(c.team)} · ${esc(c.role || '')}` : '')
+    : c.type.startsWith('b-m-p') ? 'Point' : c.type.startsWith('u-d') ? 'Drawing' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
   rows.push(`<div class="t">${esc(c.callsign || c.uid)}</div><div class="k">${kind}</div>`);
   if (Number.isFinite(c.lat)) rows.push(`<div>${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}${Number.isFinite(c.hae) && c.hae < 9e6 ? ` · ${Math.round(c.hae)} m` : ''}</div>`);
   if (me && Number.isFinite(c.lat)) rows.push(`<div class="k">${fmtDist(distance(me, c))} · ${Math.round(bearing(me, c))}°</div>`);
   if (c.speed > 0.5) rows.push(`<div class="k">${(c.speed * 3.6).toFixed(0)} km/h</div>`);
-  if (c.battery) rows.push(`<div class="k">Akku ${esc(c.battery)} %</div>`);
-  rows.push(`<div class="k">${ago(c.time)}${Date.now() > c.stale ? ' · veraltet' : ''}</div>`);
+  if (c.battery) rows.push(`<div class="k">Battery ${esc(c.battery)} %</div>`);
+  rows.push(`<div class="k">${ago(c.time)}${Date.now() > c.stale ? ' · stale' : ''}</div>`);
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
-  if (it.own) rows.push(`<button type="button" data-del="${esc(c.uid)}">LÖSCHEN</button>`);
+  if (it.own) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
+  if (it.own && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
+}
+
+const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c';
+
+// Eigenen Marker ändern (Position und/oder Name) und an alle Server senden
+function updateOwn(it, { lat, lon, name }) {
+  const doc = new DOMParser().parseFromString(it.xml, 'application/xml');
+  const ev = doc.documentElement;
+  const now = new Date();
+  ev.setAttribute('time', cotTime(now));
+  ev.setAttribute('start', cotTime(now));
+  if (Date.parse(ev.getAttribute('stale')) < +now + 86400000) ev.setAttribute('stale', cotTime(new Date(+now + 30 * 86400000)));
+  ev.setAttribute('how', 'h-g-i-g-o');
+  if (lat != null) {
+    const pt = ev.querySelector(':scope > point');
+    pt.setAttribute('lat', lat.toFixed(7));
+    pt.setAttribute('lon', lon.toFixed(7));
+  }
+  if (name != null) {
+    let detail = ev.querySelector(':scope > detail');
+    if (!detail) { detail = doc.createElement('detail'); ev.append(detail); }
+    let contact = detail.querySelector(':scope > contact');
+    if (!contact) { contact = doc.createElement('contact'); detail.prepend(contact); }
+    contact.setAttribute('callsign', name);
+  }
+  const xml = new XMLSerializer().serializeToString(ev);
+  handleCot(xml, { own: true, local: true });
+  persistSoon();
+  const sent = sendCot(xml, true);
+  toast((name != null ? 'Renamed' : 'Moved') + (sent ? ' – sent.' : ' – will be sent once connected.'));
 }
 
 function removeItem(uid) {
@@ -371,13 +397,15 @@ function drawItem(it) {
       || (pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]);
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
-    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0 }).addTo(pointsLayer);
+    // Eigene Marker lassen sich verschieben (Drag & Drop), Änderung geht wie bei ATAK mit gleicher UID raus
+    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: !!it.own, autoPan: true }).addTo(pointsLayer);
+    if (it.own) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
 }
 
-function handleCot(xml, { local = false, own = false } = {}) {
+function handleCot(xml, { local = false, own = false, srv = null } = {}) {
   const c = parseCot(xml);
   if (!c || !c.uid) return;
   if (c.type.startsWith('t-x-c-t')) return; // Ping/Pong
@@ -386,7 +414,10 @@ function handleCot(xml, { local = false, own = false } = {}) {
     return;
   }
   if (c.type === 'b-t-f') return receiveChat(c, local);
-  if (c.type.startsWith('t-x-m-')) { document.dispatchEvent(new CustomEvent('eud-mission-change')); return; }
+  // Vom TAK-Server geschickt (wie bei ATAK automatisch übernehmen): Datei/Paket, Missions-Einladung, Missions-Änderung
+  if (c.type === 'b-f-t-r') { if (!local) document.dispatchEvent(new CustomEvent('eud-file-push', { detail: { xml, srv } })); return; }
+  if (c.type === 't-x-m-i') { if (!local) document.dispatchEvent(new CustomEvent('eud-mission-invite', { detail: { xml, srv } })); return; }
+  if (c.type.startsWith('t-x-m-')) { document.dispatchEvent(new CustomEvent('eud-mission-change', { detail: { xml, srv } })); return; }
   if (c.uid === profile.uid) return; // eigenes Echo
   const prev = items.get(c.uid);
   if (prev && prev.c.time > c.time && !local) return; // älter als bekannt (z. B. über zweiten Server)
@@ -458,7 +489,7 @@ function renderChat() {
   if (!chat.length) {
     const e = document.createElement('div');
     e.className = 'chat-empty';
-    e.textContent = 'Keine Nachrichten';
+    e.textContent = 'No messages';
     log.append(e);
   }
   for (const m of chat) {
@@ -501,7 +532,7 @@ function openChat() {
   unread = 0;
   updateBadge();
   renderChat();
-  $('chatWin').classList.remove('hidden');
+  $('chatWin').classList.remove('hidden', 'min');
   $('btnChat').classList.add('active');
 }
 function closeChat() {
@@ -510,6 +541,8 @@ function closeChat() {
 }
 $('btnChat').addEventListener('click', () => ($('chatWin').classList.contains('hidden') ? openChat() : closeChat()));
 $('chatClose').addEventListener('click', closeChat);
+$('chatMin').addEventListener('click', e => { e.stopPropagation(); $('chatWin').classList.toggle('min'); });
+document.querySelector('.chat-head').addEventListener('click', e => { if (e.target.closest('button')) return; $('chatWin').classList.remove('min'); });
 $('chatForm').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('chatIn').value.trim();
@@ -537,16 +570,18 @@ function updateStatus() {
   const active = servers.filter(s => s.auto);
   const ok = active.filter(s => connOf(s).state === 'connected').length;
   const anyErr = active.some(s => ['error', 'untrusted'].includes(connOf(s).state));
+  // Kopfzeile: grün = alle verbunden, orange = nur ein Teil, rot = offline/getrennt/Fehler
   let kind = '', text = 'OFFLINE';
-  if (!servers.length) text = 'EINRICHTEN';
-  else if (!active.length) text = 'GETRENNT';
-  else if (!navigator.onLine) { kind = 'warn'; text = 'OFFLINE'; }
+  if (!servers.length) text = 'SETUP';
+  else if (!active.length) text = 'DISCONNECTED';
+  else if (!navigator.onLine) text = 'OFFLINE';
   else if (ok === active.length) { kind = 'ok'; text = active.length > 1 ? `ONLINE ${ok}/${active.length}` : 'ONLINE'; }
   else if (ok) { kind = 'warn'; text = `ONLINE ${ok}/${active.length}`; }
-  else if (anyErr) { kind = 'err'; text = 'FEHLER'; }
-  else { kind = 'warn'; text = 'VERBINDE'; }
+  else if (anyErr) text = 'ERROR';
+  else text = 'CONNECTING';
   $('dot').className = 'dot ' + kind;
   $('statusText').textContent = text;
+  $('connBtn').title = 'Servers: ' + text;
   if (popupSec === 'server') renderServers();
 }
 
@@ -597,12 +632,12 @@ function openConn(srv) {
   sock.onmessage = ev => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.type === 'cot') return handleCot(msg.xml);
+    if (msg.type === 'cot') return handleCot(msg.xml, { srv });
     if (msg.type !== 'status') return;
     const was = c.state;
     c.state = msg.state;
     c.message = msg.message || '';
-    if (msg.state === 'connected' && was !== 'connected') { toast('Verbunden: ' + (srv.name || srv.host)); sendSelfTo(srv); }
+    if (msg.state === 'connected' && was !== 'connected') { toast('Connected: ' + (srv.name || srv.host)); sendSelfTo(srv); }
     if (msg.state === 'untrusted') {
       askTrust(`${srv.host}:${srv.port}`, msg.fingerprint, msg.subject).then(ok => {
         if (!ok) return disconnectServer(srv);
@@ -712,14 +747,14 @@ window.eudSendSelf = sendSelf;
 function drawMe() {
   const ll = [me.lat, me.lon];
   const col = TEAMS[profile.team] || '#00FFFF';
-  const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : 0;
+  const rot = (Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0)) + northAngle();
   const html = `<svg width="32" height="32" viewBox="0 0 32 32"><g transform="rotate(${rot} 16 16)">`
     + `<path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></g></svg>`;
   const icon = L.divIcon({ className: 'cot-icon', html, iconSize: [32, 32], iconAnchor: [16, 16] });
   if (!meMarker) {
     meCircle = L.circle(ll, { radius: me.acc || 0, color: '#007bff', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
     meMarker = L.marker(ll, { icon, zIndexOffset: 1000 }).addTo(map).bindPopup(() =>
-      `<div class="t">${esc(profile.callsign || 'Ich')}</div><div>${me.lat.toFixed(5)}, ${me.lon.toFixed(5)}</div><div class="k">± ${Math.round(me.acc)} m</div>`);
+      `<div class="t">${esc(profile.callsign || 'Me')}</div><div>${me.lat.toFixed(5)}, ${me.lon.toFixed(5)}</div><div class="k">± ${Math.round(me.acc)} m</div>`);
     map.setView(ll, Math.max(map.getZoom(), 15));
   } else {
     meMarker.setLatLng(ll).setIcon(icon);
@@ -736,25 +771,25 @@ if ('geolocation' in navigator) {
     const moved = sentAt ? distance(sentAt, me) : Infinity;
     if (Date.now() - lastSent > 30000 || (moved > 10 && Date.now() - lastSent > 3000)) sendSelf();
   }, err => {
-    if (err.code === 1) toast('Standort nicht erlaubt – deine Position wird nicht gesendet.', 6000);
+    if (err.code === 1) toast('Location not allowed – your position is not sent.', 6000);
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 }
 setInterval(() => { if (Date.now() - lastSent > 30000) sendSelf(); }, 10000);
 
-map.on('dragstart', () => { follow = false; $('btnCenter').classList.remove('active'); });
-$('btnCenter').addEventListener('click', () => {
+map.on('dragstart', () => { follow = false; $('btnLocate').classList.remove('active'); });
+$('btnLocate').addEventListener('click', () => {
   follow = true;
-  $('btnCenter').classList.add('active');
+  $('btnLocate').classList.add('active');
   if (me) map.setView([me.lat, me.lon], Math.max(map.getZoom(), 16));
-  else toast('Noch keine Position.');
+  else toast('No position yet.');
 });
-$('btnCenter').classList.add('active');
+$('btnLocate').classList.add('active');
 
 // ======================================================================
 // Marker setzen: Symbol wählen -> Fadenkreuz -> PUNKT SETZEN
 // ======================================================================
 
-const TOOL_NAMES = { 'a-h-G': 'Feind', 'a-f-G': 'Freund', 'a-n-G': 'Neutral', 'a-u-G': 'Unbekannt', 'b-m-p-s-p-i': 'Punkt' };
+const TOOL_NAMES = { 'a-h-G': 'Hostile', 'a-f-G': 'Friendly', 'a-n-G': 'Neutral', 'a-u-G': 'Unknown', 'b-m-p-s-p-i': 'Point' };
 let tool = null;
 for (const b of document.querySelectorAll('[data-tool]')) {
   const sidc = sidcFor(b.dataset.tool + '-U');
@@ -764,9 +799,9 @@ for (const b of document.querySelectorAll('[data-tool]')) {
 function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
-  $('crosshair').classList.toggle('hidden', !t);
-  $('setBtn').classList.toggle('hidden', !t);
-  if (t) { follow = false; $('btnCenter').classList.remove('active'); }
+  $('placeHint').classList.toggle('hidden', !t);
+  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing); // Antippen trifft die Karte
+  if (t) { follow = false; $('btnLocate').classList.remove('active'); setPitch(0); }
 }
 
 function placeMarker(latlng) {
@@ -782,14 +817,22 @@ function placeMarker(latlng) {
   handleCot(xml, { own: true });
   const sent = sendCot(xml, true);
   setTool(null);
-  toast(sent ? `${name} gesendet.` : `${name} gespeichert – wird gesendet, sobald eine Verbindung steht.`);
+  toast(sent ? `${name} sent.` : `${name} saved – will be sent once connected.`);
 }
-$('setBtn').addEventListener('click', () => placeMarker(map.getCenter()));
-map.on('contextmenu', e => { if (tool) placeMarker(e.latlng); }); // langes Drücken setzt direkt dort
+
 
 map.on('popupopen', e => {
   const play = e.popup.getElement().querySelector('[data-play]');
   if (play) play.addEventListener('click', () => { map.closePopup(); window.eudPlay(play.dataset.name, play.dataset.play); });
+  const ren = e.popup.getElement().querySelector('[data-ren]');
+  if (ren) ren.addEventListener('click', () => {
+    const it = items.get(ren.getAttribute('data-ren'));
+    if (!it) return;
+    const name = prompt('New name:', it.c.callsign || '');
+    if (name == null || !name.trim()) return;
+    map.closePopup();
+    updateOwn(it, { name: name.trim().slice(0, 40) });
+  });
   const btn = e.popup.getElement().querySelector('[data-del]');
   if (!btn) return;
   btn.addEventListener('click', () => {
@@ -815,7 +858,7 @@ function renderList() {
   if (!list.length) {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'Noch keine Kontakte.';
+    e.textContent = 'No contacts yet.';
     box.append(e);
   }
   for (const it of list) {
@@ -834,7 +877,7 @@ function renderList() {
     row.addEventListener('click', () => {
       closePopup();
       follow = false;
-      $('btnCenter').classList.remove('active');
+      $('btnLocate').classList.remove('active');
       map.setView([it.c.lat, it.c.lon], Math.max(map.getZoom(), 15));
       if (it.layer) it.layer.openPopup();
     });
@@ -871,7 +914,7 @@ $('meSave').addEventListener('click', () => {
 // Server: Liste, Bearbeiten, Zertifikat, Dateien, QR
 // ======================================================================
 
-const STATE_TEXT = { connected: 'verbunden', connecting: 'verbinde …', offline: 'Durchreiche nicht erreichbar', idle: 'getrennt' };
+const STATE_TEXT = { connected: 'connected', connecting: 'connecting …', offline: 'relay not reachable', idle: 'disconnected' };
 
 function renderServers() {
   const box = $('srvList');
@@ -879,7 +922,7 @@ function renderServers() {
   if (!servers.length) {
     const e = document.createElement('div');
     e.className = 'empty';
-    e.textContent = 'Noch kein Server eingerichtet.';
+    e.textContent = 'No server set up yet.';
     box.append(e);
   }
   for (const srv of servers) {
@@ -887,27 +930,27 @@ function renderServers() {
     const el = document.createElement('div');
     el.className = 'srv';
     const dotKind = !srv.auto ? '' : c.state === 'connected' ? 'ok' : ['error', 'untrusted'].includes(c.state) ? 'err' : 'warn';
-    el.innerHTML = `<div class="srv-h"><span class="dot ${dotKind}"></span><span class="srv-name"></span><span class="srv-proto"></span><button type="button" class="srv-del" aria-label="Entfernen">×</button></div>`
-      + `<div class="srv-url"></div><div class="srv-info"></div><div class="srv-acts"><button type="button" class="act"></button><button type="button" class="edit">BEARBEITEN</button></div>`;
+    el.innerHTML = `<div class="srv-h"><span class="dot ${dotKind}"></span><span class="srv-name"></span><span class="srv-proto"></span><button type="button" class="srv-del" aria-label="Remove">×</button></div>`
+      + `<div class="srv-url"></div><div class="srv-info"></div><div class="srv-acts"><button type="button" class="act"></button><button type="button" class="edit">EDIT</button></div>`;
     el.querySelector('.srv-name').textContent = srv.name || srv.host;
     el.querySelector('.srv-proto').textContent = srv.proto.toUpperCase();
-    el.querySelector('.srv-url').textContent = `${srv.host}:${srv.port}` + (srv.proto === 'ssl' ? (srv.certPem ? ' · Zertifikat ✓' : ' · kein Zertifikat') : '');
+    el.querySelector('.srv-url').textContent = `${srv.host}:${srv.port}` + (srv.proto === 'ssl' ? (srv.certPem ? ' · certificate ✓' : ' · no certificate') : '');
     const info = el.querySelector('.srv-info');
-    info.textContent = !srv.auto ? 'getrennt' : (c.state === 'error' || c.state === 'untrusted' ? c.message : STATE_TEXT[c.state] || c.state);
+    info.textContent = !srv.auto ? 'disconnected' : (c.state === 'error' || c.state === 'untrusted' ? c.message : STATE_TEXT[c.state] || c.state);
     info.classList.toggle('err', srv.auto && ['error', 'untrusted'].includes(c.state));
     const act = el.querySelector('.act');
-    act.textContent = srv.auto ? 'TRENNEN' : 'VERBINDEN';
+    act.textContent = srv.auto ? 'DISCONNECT' : 'CONNECT';
     act.className = srv.auto ? 'dis' : 'con';
     act.onclick = () => (srv.auto ? disconnectServer(srv) : (profile.callsign ? connectServer(srv) : askCallsign()));
     el.querySelector('.edit').onclick = () => openEdit(srv);
-    el.querySelector('.srv-del').onclick = () => { if (confirm(`Server „${srv.name || srv.host}“ entfernen?`)) removeServer(srv); };
+    el.querySelector('.srv-del').onclick = () => { if (confirm(`Remove server "${srv.name || srv.host}"?`)) removeServer(srv); };
     box.append(el);
   }
 }
 
 function askCallsign() {
   openPopup('me');
-  toast('Bitte zuerst einen Rufnamen eintragen.');
+  toast('Please enter a callsign first.');
   $('fCallsign').focus();
 }
 
@@ -918,7 +961,7 @@ let draftOrig = null;
 function openEdit(srv) {
   draftOrig = srv;
   draft = srv ? JSON.parse(JSON.stringify(srv)) : newServer();
-  openPopup('edit', srv ? 'Server bearbeiten' : 'Server hinzufügen');
+  openPopup('edit', srv ? 'Edit server' : 'Add server');
   fillEdit();
   setMsg($('setupMsg'), '');
   $('fPass').value = '';
@@ -954,11 +997,11 @@ function updateCertState() {
   const st = $('certState');
   const i = draft.certInfo;
   if (draft.certPem) {
-    st.textContent = '✓ ' + (i ? `${i.subject}${i.validTo ? ' · bis ' + new Date(i.validTo).toLocaleDateString() : ''}` : 'Zertifikat vorhanden')
+    st.textContent = '✓ ' + (i ? `${i.subject}${i.validTo ? ' · until ' + new Date(i.validTo).toLocaleDateString('en-GB') : ''}` : 'Certificate present')
       + (draft.caPems.length ? ` · ${draft.caPems.length} CA` : '');
     st.className = 'state ok';
   } else {
-    st.textContent = draft.caPems.length ? `Truststore geladen (${draft.caPems.length} CA) – noch kein eigenes Zertifikat` : 'Kein Zertifikat – anfordern oder .p12 / Datenpaket laden';
+    st.textContent = draft.caPems.length ? `Truststore loaded (${draft.caPems.length} CA) – no client certificate yet` : 'No certificate – request one or import .p12 / data package';
     st.className = 'state';
   }
 }
@@ -970,12 +1013,12 @@ $('fProto').addEventListener('change', () => {
 // 127.0.0.1 / localhost = dieses Handy (z. B. TAK-Server in der Meshtastic-App). Eine Web-App kann
 // keine TCP/TLS-Verbindungen öffnen, und die Durchreiche erreicht das Handy nicht.
 const LOCAL_HOST = /^(localhost|127\.\d+\.\d+\.\d+|::1|0\.0\.0\.0)$/i;
-const LOCAL_MSG = 'Adresse auf dem Handy selbst (z. B. Meshtastic-App): Das kann die Web-App nicht erreichen – dafür braucht es die EUD als installierte App.';
+const LOCAL_MSG = 'This address is the phone itself (e.g. Meshtastic app): a web app cannot reach it – this needs the EUD as an installed app.';
 
 $('editSave').addEventListener('click', () => {
   readEdit();
   const msg = $('setupMsg');
-  if (!draft.host) return setMsg(msg, 'Bitte Adresse eintragen.');
+  if (!draft.host) return setMsg(msg, 'Please enter an address.');
   if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
   saveDraft();
   if (!profile.callsign) return askCallsign();
@@ -1002,11 +1045,11 @@ async function postJson(path, body) {
   try {
     res = await fetch(path, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
   } catch (e) {
-    throw new Error('Server nicht erreichbar – dafür wird eine Verbindung gebraucht.');
+    throw new Error('Server not reachable – this needs a connection.');
   }
   let data = {};
   try { data = await res.json(); } catch (e) { /* leer */ }
-  if (!res.ok) { const err = new Error(data.error || 'Fehler ' + res.status); Object.assign(err, data, { status: res.status }); throw err; }
+  if (!res.ok) { const err = new Error(data.error || 'Error ' + res.status); Object.assign(err, data, { status: res.status }); throw err; }
   return data;
 }
 
@@ -1017,9 +1060,9 @@ function addCas(srv, pems) {
 async function requestCert(password) {
   readEdit();
   const msg = $('setupMsg');
-  if (!draft.host) return setMsg(msg, 'Bitte Adresse eintragen.');
-  if (!draft.username || !password) return setMsg(msg, 'Bitte Benutzer und Passwort eintragen.');
-  setMsg(msg, 'Fordere Zertifikat an …', true);
+  if (!draft.host) return setMsg(msg, 'Please enter an address.');
+  if (!draft.username || !password) return setMsg(msg, 'Please enter user and password.');
+  setMsg(msg, 'Requesting certificate …', true);
   $('enrollBtn').disabled = true;
   try {
     for (let i = 0; i < 2; i++) {
@@ -1033,13 +1076,13 @@ async function requestCert(password) {
         draft.certInfo = r.info;
         addCas(draft, r.caPems);
         $('fPass').value = '';
-        setMsg(msg, 'Zertifikat erhalten.', true);
+        setMsg(msg, 'Certificate received.', true);
         updateCertState();
         return true;
       } catch (e) {
         if (e.code !== 'UNTRUSTED' || i) throw e;
         const ok = await askTrust(`${draft.host}:${draft.enrollPort}`, e.fingerprint, e.subject);
-        if (!ok) { setMsg(msg, 'Abgebrochen.'); return false; }
+        if (!ok) { setMsg(msg, 'Cancelled.'); return false; }
         draft.fingerprint = e.fingerprint;
       }
     }
@@ -1075,7 +1118,7 @@ function fileBase64(file) {
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result).replace(/^data:[^,]*,/, ''));
-    r.onerror = () => reject(new Error('Datei lässt sich nicht lesen.'));
+    r.onerror = () => reject(new Error('Cannot read file.'));
     r.readAsDataURL(file);
   });
 }
@@ -1096,24 +1139,24 @@ async function loadFile(file) {
       addCas(draft, r.caPems);
       fillEdit();
       if (LOCAL_HOST.test(draft.host)) return setMsg(msg, LOCAL_MSG);
-      setMsg(msg, 'Datenpaket geladen' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – Benutzer/Passwort eintragen und Zertifikat anfordern.' : '.'), true);
+      setMsg(msg, 'Data package loaded' + (r.server ? ': ' + r.server.host : '') + (r.enroll && !r.certPem ? ' – enter user/password and request a certificate.' : '.'), true);
     } else if (/\.(p12|pfx)$/.test(name)) {
       const data = await fileBase64(file);
       let r = null;
       for (const pw of ['atakatak', null]) {
-        const password = pw != null ? pw : prompt('Passwort der Datei ' + file.name + ':');
+        const password = pw != null ? pw : prompt('Password for ' + file.name + ':');
         if (password == null) return;
         try { r = await postJson('/api/eud/p12', { data, password }); break; } catch (e) { if (pw == null) throw e; }
       }
       if (r.kind === 'client') Object.assign(draft, { certPem: r.certPem, keyPem: r.keyPem, certInfo: r.info });
       addCas(draft, r.caPems);
       updateCertState();
-      setMsg(msg, r.kind === 'client' ? 'Zertifikat geladen.' : `Truststore geladen (${r.caPems.length} CA).`, true);
+      setMsg(msg, r.kind === 'client' ? 'Certificate loaded.' : `Truststore loaded (${r.caPems.length} CA).`, true);
     } else {
       const r = await postJson('/api/eud/pem', { data: await file.text() });
       addCas(draft, r.caPems);
       updateCertState();
-      setMsg(msg, `Truststore geladen (${r.caPems.length} CA).`, true);
+      setMsg(msg, `Truststore loaded (${r.caPems.length} CA).`, true);
     }
   } catch (e) {
     setMsg(msg, e.message);
@@ -1143,7 +1186,7 @@ function parseQr(text) {
   };
   if (/^tak:\/\//i.test(text)) {
     const u = new URL(text.replace(/^tak:/i, 'https:'));
-    if (!/enroll/i.test(u.pathname)) throw new Error('Dieser TAK-Code wird nicht unterstützt (nur Enrollment).');
+    if (!/enroll/i.test(u.pathname)) throw new Error('This TAK code is not supported (enrollment only).');
     fromParams(u.searchParams);
     if (out.host && out.host.includes(':')) { const [h, p] = out.host.split(':'); out.host = h; out.enrollPort = Number(p) || out.enrollPort; }
     out.proto = 'ssl';
@@ -1161,10 +1204,10 @@ function parseQr(text) {
     const [host, port, proto] = text.split(':');
     Object.assign(out, { host, port: Number(port), proto: (proto || 'ssl').toLowerCase() });
   } else {
-    throw new Error('Unbekannter QR-Code.');
+    throw new Error('Unknown QR code.');
   }
   if (out.proto && !['ssl', 'tcp', 'udp'].includes(out.proto)) out.proto = 'ssl';
-  if (!out.host) throw new Error('Im QR-Code steht kein Server.');
+  if (!out.host) throw new Error('The QR code contains no server.');
   return out;
 }
 
@@ -1188,7 +1231,7 @@ async function applyConfig(cfg, auto) {
   fillEdit();
   if (cfg.password) $('fPass').value = cfg.password;
   if (LOCAL_HOST.test(cfg.host)) return setMsg($('setupMsg'), LOCAL_MSG);
-  setMsg($('setupMsg'), 'Serverdaten übernommen.', true);
+  setMsg($('setupMsg'), 'Server settings applied.', true);
   if (auto && cfg.username && cfg.password && draft.proto === 'ssl') {
     const ok = await requestCert(cfg.password);
     if (ok) {
@@ -1221,7 +1264,7 @@ function onQr(text) {
 }
 async function startScan() {
   $('scanner').classList.remove('hidden');
-  $('scanMsg').textContent = 'QR-Code in den Rahmen halten';
+  $('scanMsg').textContent = 'Hold the QR code inside the frame';
   const video = $('scanVideo');
   try {
     scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' }, audio: false });
@@ -1237,7 +1280,7 @@ async function startScan() {
     };
     step();
   } catch (e) {
-    $('scanMsg').textContent = 'Kamera nicht verfügbar – „Foto wählen“ nutzen.';
+    $('scanMsg').textContent = 'Camera not available – use "Pick photo".';
   }
 }
 function stopScan() {
@@ -1258,7 +1301,7 @@ $('scanFile').addEventListener('change', e => {
     const text = decodeImage(img, img.naturalWidth, img.naturalHeight);
     URL.revokeObjectURL(img.src);
     if (text) onQr(text);
-    else $('scanMsg').textContent = 'Kein QR-Code im Foto gefunden.';
+    else $('scanMsg').textContent = 'No QR code found in the photo.';
   };
   img.src = URL.createObjectURL(f);
 });
@@ -1285,10 +1328,10 @@ $('clearPicBtn').addEventListener('click', () => {
   chat = [];
   store.set('eud.chat', chat);
   renderChat();
-  toast('Lagebild geleert.');
+  toast('Map data cleared.');
 });
 $('resetBtn').addEventListener('click', () => {
-  if (!confirm('Alle Daten auf diesem Gerät löschen (Server, Zertifikate, Lagebild)?')) return;
+  if (!confirm('Delete all data on this device (servers, certificates, map data)?')) return;
   for (const srv of servers) closeSock(srv);
   for (const k of ['eud.profile', 'eud.servers', 'eud.picture', 'eud.chat', 'eud.outbox', 'eud.outbox2', 'eud.view', 'eud.video', 'eud.areas']) store.del(k);
   location.reload();
@@ -1297,7 +1340,7 @@ $('resetBtn').addEventListener('click', () => {
 // ---------------- Kartenquelle ----------------
 
 for (const [id, src] of Object.entries(SOURCES)) $('fTiles').append(new Option(src.name, id));
-$('fTiles').append(new Option('Eigene Quelle (URL) …', 'custom'));
+$('fTiles').append(new Option('Custom source (URL) …', 'custom'));
 function fillMap() {
   $('fTiles').value = profile.tiles;
   $('fCustom').value = profile.customUrl || '';
@@ -1317,11 +1360,11 @@ $('fTiles').addEventListener('change', () => {
 });
 $('customSave').addEventListener('click', () => {
   const u = $('fCustom').value.trim();
-  if (!/^https?:\/\/.+\{z\}.+\{x\}.+\{y\}|^https?:\/\/.+\{z\}.+\{y\}.+\{x\}/i.test(u)) return toast('URL braucht {z}, {x} und {y}.');
+  if (!/^https?:\/\/.+\{z\}.+\{x\}.+\{y\}|^https?:\/\/.+\{z\}.+\{y\}.+\{x\}/i.test(u)) return toast('The URL needs {z}, {x} and {y}.');
   profile.customUrl = u;
   saveProfile();
   setTiles('custom');
-  toast('Kartenquelle übernommen.');
+  toast('Map source applied.');
 });
 
 // ---------------- Offline speichern: Ausschnitt oder Korridor ----------------
@@ -1411,10 +1454,10 @@ function zoomRange() {
 function updateEstimate() {
   if (popupSec !== 'map') return;
   const area = currentArea();
-  if (!area) { $('estimate').textContent = 'Korridor zeichnen, dann Zoomstufen wählen.'; return; }
+  if (!area) { $('estimate').textContent = 'Draw a corridor, then choose zoom levels.'; return; }
   const [a, b] = zoomRange();
   const list = areaTiles(area, a, b, 20000);
-  $('estimate').textContent = list ? `≈ ${list.length} Kacheln, ca. ${Math.max(1, Math.round(list.length * 0.02))} MB` : 'Zu viele Kacheln (über 20 000) – Zoom bis kleiner wählen oder Bereich verkleinern.';
+  $('estimate').textContent = list ? `≈ ${list.length} tiles, approx. ${Math.max(1, Math.round(list.length * 0.02))} MB` : 'Too many tiles (over 20,000) – lower "zoom to" or use a smaller area.';
 }
 map.on('moveend', updateEstimate);
 
@@ -1426,13 +1469,15 @@ function tileUrl(src, key) {
 // Korridor zeichnen: Punkte antippen
 function startDraw() {
   drawing = true;
+  setPitch(0);
+  if (measuring) toggleMeasure();
   map.getContainer().classList.add('drawing'); // Antippen trifft die Karte, nicht Marker/Overlays
   corridor = [];
   drawCorridor();
   closePopup();
   setTool(null);
   $('drawBar').classList.remove('hidden');
-  $('drawHint').textContent = 'Punkte der Strecke auf der Karte antippen';
+  $('drawHint').textContent = 'Tap the points of the route on the map';
 }
 function drawCorridor() {
   if (corridorLine) corridorLine.remove();
@@ -1448,23 +1493,25 @@ function drawCorridor() {
   ]).addTo(map);
 }
 map.on('click', e => {
+  if (tool) return placeMarker(e.latlng); // Symbol gewählt: Antippen setzt den Marker (wie ATAK)
+  if (measuring) return addMeasurePoint(e.latlng);
   if (!drawing) return;
   corridor.push([e.latlng.lat, e.latlng.lng]);
   drawCorridor();
-  $('drawHint').textContent = `${corridor.length} Punkt(e) – weiter antippen oder FERTIG`;
+  $('drawHint').textContent = `${corridor.length} point(s) – keep tapping or DONE`;
 });
 map.on('zoomend', () => { if (corridor.length) drawCorridor(); });
 $('drawUndo').addEventListener('click', () => { corridor.pop(); drawCorridor(); });
 $('drawCancel').addEventListener('click', () => { drawing = false; map.getContainer().classList.remove('drawing'); corridor = []; drawCorridor(); $('drawBar').classList.add('hidden'); openPopup('map'); });
 $('drawDone').addEventListener('click', () => {
-  if (corridor.length < 2) return toast('Mindestens zwei Punkte antippen.');
+  if (corridor.length < 2) return toast('Tap at least two points.');
   drawing = false;
   map.getContainer().classList.remove('drawing');
   $('drawBar').classList.add('hidden');
   let len = 0;
   for (let i = 1; i < corridor.length; i++) len += distance({ lat: corridor[i - 1][0], lon: corridor[i - 1][1] }, { lat: corridor[i][0], lon: corridor[i][1] });
   openPopup('map');
-  $('corridorInfo').textContent = `Korridor: ${corridor.length} Punkte, ${fmtDist(len)} lang.`;
+  $('corridorInfo').textContent = `Corridor: ${corridor.length} points, ${fmtDist(len)} long.`;
   updateEstimate();
 });
 $('drawBtn').addEventListener('click', startDraw);
@@ -1478,14 +1525,14 @@ async function swReady() {
 $('prefetchBtn').addEventListener('click', async () => {
   const msg = $('prefetchMsg');
   const area = currentArea();
-  if (!area) return setMsg(msg, 'Bitte zuerst einen Korridor zeichnen.');
-  if (profile.tiles === 'custom' && !profile.customUrl) return setMsg(msg, 'Bitte zuerst eine eigene Quelle eintragen.');
+  if (!area) return setMsg(msg, 'Please draw a corridor first.');
+  if (profile.tiles === 'custom' && !profile.customUrl) return setMsg(msg, 'Please enter a custom source first.');
   const [zmin, zmax] = zoomRange();
   const keys = areaTiles(area, zmin, zmax, 20000);
-  if (!keys) return setMsg(msg, 'Zu viele Kacheln – Zoom bis kleiner wählen oder Bereich verkleinern.');
+  if (!keys) return setMsg(msg, 'Too many tiles – lower "zoom to" or use a smaller area.');
   const sw = await swReady();
-  if (!sw) return setMsg(msg, 'Offline-Speicher nicht verfügbar (nur über HTTPS).');
-  const rec = { id: rnd(4), kind: area.kind, src: profile.tiles, srcName: profile.tiles === 'custom' ? 'Eigene Quelle' : SOURCES[profile.tiles].name,
+  if (!sw) return setMsg(msg, 'Offline storage not available (HTTPS only).');
+  const rec = { id: rnd(4), kind: area.kind, src: profile.tiles, srcName: profile.tiles === 'custom' ? 'Custom source' : SOURCES[profile.tiles].name,
     zmin, zmax, count: keys.length, date: Date.now(), area, template: sourceTemplate(profile.tiles) };
   const ch = new MessageChannel();
   prefetchPort = ch.port1;
@@ -1493,11 +1540,11 @@ $('prefetchBtn').addEventListener('click', async () => {
   $('prefetchStop').classList.remove('hidden');
   ch.port1.onmessage = e => {
     const d = e.data;
-    if (!d.finished) return setMsg(msg, `Speichere … ${d.done} / ${d.total}`, true);
+    if (!d.finished) return setMsg(msg, `Saving … ${d.done} / ${d.total}`, true);
     $('prefetchBtn').disabled = false;
     $('prefetchStop').classList.add('hidden');
     prefetchPort = null;
-    setMsg(msg, `${d.stopped ? 'Gestoppt' : 'Fertig'}: ${d.done - d.failed} Kacheln gespeichert${d.failed ? `, ${d.failed} fehlgeschlagen` : ''}.`, !d.failed);
+    setMsg(msg, `${d.stopped ? 'Stopped' : 'Done'}: ${d.done - d.failed} tiles saved${d.failed ? `, ${d.failed} failed` : ''}.`, !d.failed);
     if (d.done - d.failed > 0) {
       rec.count = d.done - d.failed;
       areas.unshift(rec);
@@ -1506,7 +1553,7 @@ $('prefetchBtn').addEventListener('click', async () => {
       renderAreas();
     }
   };
-  setMsg(msg, `Speichere … 0 / ${keys.length}`, true);
+  setMsg(msg, `Saving … 0 / ${keys.length}`, true);
   sw.postMessage({ type: 'prefetch', urls: keys.map(k => tileUrl(profile.tiles, k)) }, [ch.port2]);
 });
 $('prefetchStop').addEventListener('click', async () => {
@@ -1521,24 +1568,24 @@ function renderAreas() {
     const row = document.createElement('div');
     row.className = 'area';
     const t = document.createElement('span');
-    t.textContent = `${a.kind === 'corridor' ? 'Korridor' : 'Ausschnitt'} · ${a.srcName}`;
+    t.textContent = `${a.kind === 'corridor' ? 'Corridor' : 'Area'} · ${a.srcName}`;
     const s = document.createElement('small');
-    s.textContent = `Zoom ${a.zmin}–${a.zmax} · ${a.count} Kacheln · ${new Date(a.date).toLocaleDateString()}`;
+    s.textContent = `Zoom ${a.zmin}–${a.zmax} · ${a.count} tiles · ${new Date(a.date).toLocaleDateString('en-GB')}`;
     t.append(s);
     t.style.cursor = 'pointer';
     t.onclick = () => {
       closePopup();
       const pts = a.kind === 'rect' ? [[a.area.s, a.area.w], [a.area.n, a.area.e]] : a.area.points;
       follow = false;
-      $('btnCenter').classList.remove('active');
+      $('btnLocate').classList.remove('active');
       map.fitBounds(pts);
     };
     const del = document.createElement('button');
     del.type = 'button';
     del.textContent = '×';
-    del.setAttribute('aria-label', 'Löschen');
+    del.setAttribute('aria-label', 'Delete');
     del.onclick = async () => {
-      if (!confirm('Gespeicherten Bereich löschen?')) return;
+      if (!confirm('Delete saved area?')) return;
       const keys = areaTiles(a.area, a.zmin, a.zmax, 50000) || [];
       const tpl = a.template;
       const urls = keys.map(k => { const [z, x, y] = k.split('/'); return new URL(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), location.href).href; });
@@ -1552,6 +1599,180 @@ function renderAreas() {
     box.append(row);
   }
 }
+
+// ======================================================================
+// Kompass, Karte drehen und kippen, Entfernung messen, Symbolleiste
+// ======================================================================
+
+// Winkel (Grad, im Uhrzeigersinn), in dem Norden gerade auf dem Bildschirm liegt (= Drehung der Karte)
+function northAngle() {
+  const b = map.getBearing ? map.getBearing() : 0;
+  return ((b % 360) + 360) % 360;
+}
+// Karte so drehen, dass die Richtung "deg" oben liegt
+function headingUp(deg) { map.setBearing(-deg); }
+
+let compassMode = 'north'; // 'north' = Nord oben (wie ATAK Standard), 'heading' = Blickrichtung oben
+let heading = null;        // Gerätekompass in Grad
+let lastTurn = 0;
+
+let needleAngle = 0; // fortlaufend, damit die Nadel immer den kurzen Weg dreht
+function updateCompass() {
+  const n = northAngle();
+  needleAngle += ((n - needleAngle) % 360 + 540) % 360 - 180;
+  $('needle').style.transform = `rotate(${Math.round(needleAngle * 10) / 10}deg)`;
+  const shown = compassMode === 'heading' && heading != null ? heading : (360 - n) % 360;
+  $('compassText').textContent = String(Math.round(shown) % 360).padStart(3, '0') + '°';
+  $('compassMode').textContent = compassMode === 'heading' ? 'HDG-UP' : 'N-UP';
+  $('compass').classList.toggle('heading', compassMode === 'heading');
+}
+
+function onOrientation(e) {
+  let h = null;
+  if (typeof e.webkitCompassHeading === 'number') h = e.webkitCompassHeading; // iPhone
+  else if (e.absolute && typeof e.alpha === 'number') h = 360 - e.alpha;    // Android
+  if (h == null) return;
+  const sc = screen.orientation ? screen.orientation.angle || 0 : (window.orientation || 0);
+  heading = (h + sc + 360) % 360;
+  if (compassMode !== 'heading') return;
+  const now = Date.now();
+  if (now - lastTurn < 120) return; // ruhig drehen, Akku schonen
+  lastTurn = now;
+  headingUp(heading);
+  updateCompass();
+}
+
+function startHeading() {
+  window.addEventListener('deviceorientationabsolute', onOrientation);
+  window.addEventListener('deviceorientation', onOrientation);
+  // iPhone (und neuere Chrome) fragen beim Antippen nach Erlaubnis – nicht darauf warten
+  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+    DeviceOrientationEvent.requestPermission()
+      .then(r => { if (r !== 'granted') throw new Error('denied'); })
+      .catch(() => toast('Compass not allowed – using GPS course while moving.'));
+  }
+}
+function stopHeading() {
+  window.removeEventListener('deviceorientationabsolute', onOrientation);
+  window.removeEventListener('deviceorientation', onOrientation);
+}
+
+$('compass').addEventListener('click', () => {
+  if (compassMode === 'north') {
+    compassMode = 'heading';
+    startHeading();
+    if (heading != null) headingUp(heading);
+    else if (me && Number.isFinite(me.course) && me.speed > 0.5) headingUp(me.course);
+    setTimeout(() => { if (compassMode === 'heading' && heading == null && !(me && me.speed > 0.5)) toast('No compass sensor – map turns with GPS course while moving.'); }, 2500);
+  } else {
+    compassMode = 'north';
+    stopHeading();
+    map.setBearing(0);
+  }
+  updateCompass();
+});
+// Ohne Kompass-Sensor: beim Gehen/Fahren nach GPS-Kurs drehen
+setInterval(() => {
+  if (compassMode === 'heading' && heading == null && me && Number.isFinite(me.course) && me.speed > 0.5) headingUp(me.course);
+}, 2000);
+
+// Pfeile der Kontakte und des eigenen Symbols folgen der Kartendrehung
+let rotateTimer = null;
+map.on('rotate', () => {
+  updateCompass();
+  if (rotateTimer) return;
+  rotateTimer = setTimeout(() => {
+    rotateTimer = null;
+    if (me) drawMe();
+    for (const it of items.values()) if (it.c.team && it.c.speed > 0.5) drawItem(it);
+  }, 300);
+});
+map.on('moveend zoomend', updateCompass);
+updateCompass();
+
+// ---------------- Kippen (0–60°) ----------------
+
+let pitch = 0;
+const PITCH_MAX = 60;
+function setPitch(p) {
+  p = Math.max(0, Math.min(PITCH_MAX, Math.round(p)));
+  const was = pitch;
+  pitch = p;
+  const el = $('map');
+  if ((was > 0) !== (p > 0)) {
+    el.classList.toggle('tilted', p > 0); // Karte größer, damit der hintere Teil gefüllt ist
+    map.invalidateSize({ pan: true, animate: false });
+  }
+  el.style.transform = p ? `rotateX(${p}deg)` : '';
+  const box = $('pitchBox').clientHeight || 96;
+  $('pitchThumb').style.top = (4 + (1 - p / PITCH_MAX) * (box - 14)) + 'px';
+  $('pitchText').textContent = p + '°';
+  $('pitchFill').setAttribute('points', `12,2 22,2 32,86 2,86`);
+  $('pitchFill').style.opacity = String(0.3 + 0.7 * p / PITCH_MAX);
+}
+(() => {
+  const box = $('pitchBox');
+  let dragging = false;
+  const fromEvent = e => {
+    const r = box.getBoundingClientRect();
+    const y = (e.touches ? e.touches[0].clientY : e.clientY) - r.top;
+    setPitch((1 - y / r.height) * PITCH_MAX);
+  };
+  box.addEventListener('pointerdown', e => { dragging = true; box.setPointerCapture(e.pointerId); fromEvent(e); });
+  box.addEventListener('pointermove', e => { if (dragging) fromEvent(e); });
+  box.addEventListener('pointerup', () => { dragging = false; });
+  box.addEventListener('pointercancel', () => { dragging = false; });
+  box.addEventListener('dblclick', () => setPitch(0));
+})();
+setPitch(0);
+
+// ---------------- Entfernung messen ----------------
+
+let measuring = false;
+let measurePts = [];
+const measureLayer = L.layerGroup().addTo(map);
+
+function drawMeasure() {
+  measureLayer.clearLayers();
+  if (!measurePts.length) return;
+  L.polyline(measurePts, { color: '#ffd700', weight: 3, dashArray: '8 6', interactive: false }).addTo(measureLayer);
+  let total = 0;
+  measurePts.forEach((p, i) => {
+    L.circleMarker(p, { radius: 5, color: '#000', weight: 1.5, fillColor: '#ffd700', fillOpacity: 1, interactive: false }).addTo(measureLayer);
+    if (i > 0) total += distance({ lat: measurePts[i - 1].lat, lon: measurePts[i - 1].lng }, { lat: p.lat, lon: p.lng });
+  });
+  const last = measurePts[measurePts.length - 1];
+  if (measurePts.length > 1) {
+    const prev = measurePts[measurePts.length - 2];
+    const brg = Math.round(bearing({ lat: prev.lat, lon: prev.lng }, { lat: last.lat, lon: last.lng }));
+    L.tooltip({ permanent: true, direction: 'right', offset: [10, 0], className: 'measure-label' })
+      .setLatLng(last).setContent(`${fmtDist(total)} · ${String(brg).padStart(3, '0')}°`).addTo(measureLayer);
+  }
+}
+function addMeasurePoint(ll) {
+  measurePts.push(ll);
+  drawMeasure();
+}
+function toggleMeasure() {
+  measuring = !measuring;
+  $('btnMeasure').classList.toggle('active', measuring);
+  $('measureHint').classList.toggle('hidden', !measuring);
+  map.getContainer().classList.toggle('drawing', measuring);
+  if (measuring) { setTool(null); setPitch(0); measurePts = []; } else { measurePts = []; drawMeasure(); }
+}
+$('btnMeasure').addEventListener('click', toggleMeasure);
+
+// ---------------- Symbolleiste ein/aus (Pin) ----------------
+
+function showTools(on) {
+  profile.showTools = !!on;
+  saveProfile();
+  $('toolbar').classList.toggle('hidden', !on);
+  $('btnPin').classList.toggle('pinned', !!on);
+  if (!on) { setTool(null); if (measuring) toggleMeasure(); }
+}
+$('btnPin').addEventListener('click', () => showTools(!profile.showTools));
+showTools(profile.showTools);
 
 // ======================================================================
 // Start

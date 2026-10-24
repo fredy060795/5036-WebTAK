@@ -192,14 +192,15 @@ function registrationEnabled() {
 }
 
 async function handleRegister(req, res) {
+  const body = await readJson(req);
+  const en = body.source === 'eud'; // TAK-EUD ist englisch
   if (!registrationEnabled()) {
-    return json(res, 403, { error: 'Die Anmeldung ist gerade gesperrt. Bitte beim Admin melden.' });
+    return json(res, 403, { error: en ? 'Streaming sign-up is currently disabled. Please contact the admin.' : 'Die Anmeldung ist gerade gesperrt. Bitte beim Admin melden.' });
   }
   const ip = clientIp(req);
   const now = Date.now();
   const list = (registrations.get(ip) || []).filter(t => now - t < 3600 * 1000);
-  if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: 'Zu viele Anmeldungen. Bitte später erneut versuchen.' });
-  const body = await readJson(req);
+  if (list.length >= MAX_REG_PER_HOUR) return json(res, 429, { error: en ? 'Too many sign-ups. Please try again later.' : 'Zu viele Anmeldungen. Bitte später erneut versuchen.' });
   const entry = hub.register(body.name, body.unit, body.source === 'eud');
   list.push(now);
   registrations.set(ip, list);
@@ -220,6 +221,7 @@ const VENDOR = {
   'images/layers.png': 'leaflet/dist/images/layers.png',
   'images/layers-2x.png': 'leaflet/dist/images/layers-2x.png',
   'images/marker-icon-2x.png': 'leaflet/dist/images/marker-icon-2x.png',
+  'leaflet-rotate.js': 'leaflet-rotate/dist/leaflet-rotate.js',
   'milsymbol.js': 'milsymbol/dist/milsymbol.js',
   'jsQR.js': 'jsqr/dist/jsQR.js',
 };
@@ -262,7 +264,7 @@ async function handleEudApi(req, res, route) {
     const t = takSettings();
     return json(res, 200, { preset: t.preset, restricted: !!t.allowedHosts.trim() });
   }
-  if (req.method !== 'POST') return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  if (req.method !== 'POST') return json(res, 404, { error: 'Unknown request.' });
   if (route === 'p12') {
     const body = await readJson(req, 512 * 1024);
     const r = tak.readP12(String(body.data || ''), String(body.password || ''));
@@ -277,28 +279,29 @@ async function handleEudApi(req, res, route) {
     // Truststore als PEM-Datei (eine oder mehrere CAs)
     const body = await readJson(req, 512 * 1024);
     const pems = String(body.data || '').match(/-----BEGIN CERTIFICATE-----[\s\S]+?-----END CERTIFICATE-----/g) || [];
-    if (!pems.length) throw new Error('Keine Zertifikate in der Datei gefunden.');
+    if (!pems.length) throw new Error('No certificates found in file.');
     return json(res, 200, { kind: 'truststore', caPems: pems.map(p => p + '\n'), caInfo: pems.map(p => tak.certInfo(p)) });
   }
   if (route === 'extract') {
     // Eigene Datei (KML/KMZ/Datenpaket) als Overlay laden
-    const body = await readJson(req, 25 * 1024 * 1024);
+    const body = await readJson(req, 120 * 1024 * 1024);
     return json(res, 200, tak.extractContent(String(body.name || ''), Buffer.from(String(body.data || ''), 'base64')));
   }
   if (route === 'marti') {
     const ip = clientIp(req);
     const now = Date.now();
     const list = (martiLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
-    if (list.length >= 600) return json(res, 429, { error: 'Zu viele Anfragen. Bitte später erneut versuchen.' });
+    if (list.length >= 600) return json(res, 429, { error: 'Too many requests. Please try again later.' });
     list.push(now);
     martiLimits.set(ip, list);
     const body = await readJson(req, 512 * 1024);
     const conn = body.server || {};
     const host = String(conn.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK-Server ${host} ist auf diesem Server nicht freigegeben.` });
+    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
     try {
       return json(res, 200, await tak.marti({ ...conn, host }, String(body.action || ''), body.args || {}));
     } catch (e) {
+      log('EUD TAK-API', host, String(body.action || ''), 'Fehler:', e.message);
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
       throw e;
     }
@@ -307,12 +310,12 @@ async function handleEudApi(req, res, route) {
     const ip = clientIp(req);
     const now = Date.now();
     const list = (eudLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
-    if (list.length >= 30) return json(res, 429, { error: 'Zu viele Anfragen. Bitte später erneut versuchen.' });
+    if (list.length >= 30) return json(res, 429, { error: 'Too many requests. Please try again later.' });
     list.push(now);
     eudLimits.set(ip, list);
     const body = await readJson(req, 512 * 1024);
     const host = String(body.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK-Server ${host} ist auf diesem Server nicht freigegeben.` });
+    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
     try {
       const r = await tak.enroll({
         host, port: Number(body.port) || tak.ENROLL_PORT, username: body.username, password: body.password,
@@ -326,7 +329,7 @@ async function handleEudApi(req, res, route) {
       throw e;
     }
   }
-  return json(res, 404, { error: 'Unbekannte Anfrage.' });
+  return json(res, 404, { error: 'Unknown request.' });
 }
 
 // ======================================================================
@@ -705,7 +708,7 @@ function handleTakSocket(ws, req) {
   const ip = clientIp(req);
   const perIp = [...takLinks.values()].filter(l => l.ip === ip).length;
   if (perIp >= MAX_TAK_PER_IP) {
-    ws.send(JSON.stringify({ type: 'status', state: 'error', message: 'Zu viele Verbindungen von diesem Gerät.' }));
+    ws.send(JSON.stringify({ type: 'status', state: 'error', message: 'Too many connections from this device.' }));
     return ws.close(4002, 'limit');
   }
   let link = null;
@@ -725,8 +728,8 @@ function handleTakSocket(ws, req) {
     if (msg.type === 'connect') {
       stop();
       const host = String(msg.host || '').trim();
-      if (!host) return say('error', 'Kein TAK-Server angegeben.');
-      if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return say('error', `TAK-Server ${host} ist auf diesem Server nicht freigegeben.`);
+      if (!host) return say('error', 'No TAK server given.');
+      if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return say('error', `TAK server ${host} is not allowed on this server.`);
       if (ws.readyState !== 1) return;
       stop();
       entry.host = `${host}:${msg.port}`;
@@ -743,7 +746,7 @@ function handleTakSocket(ws, req) {
       if (/^\s*<event[\s>]/.test(msg.xml)) link.send(msg.xml);
     } else if (msg.type === 'disconnect') {
       stop();
-      say('closed', 'Getrennt.');
+      say('closed', 'Disconnected.');
     }
   });
   ws.on('close', () => { stop(); takLinks.delete(ws); });

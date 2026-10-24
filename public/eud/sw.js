@@ -1,13 +1,13 @@
 // Service Worker: App, Bibliotheken und Kartenkacheln bleiben auf dem Gerät,
 // damit der EUD auch ohne Internet startet und die Karte zeigt.
 
-const SHELL_CACHE = 'eud-shell-v2';
+const SHELL_CACHE = 'eud-shell-v3';
 const TILE_CACHE = 'eud-tiles';
 const MAX_TILES = 40000; // gespeicherte Bereiche + zuletzt angesehene Kacheln
 const SHELL = [
   './', 'index.html', 'eud.css', 'eud.js', 'video.js', 'data.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
-  'vendor/leaflet.js', 'vendor/leaflet.css', 'vendor/milsymbol.js', 'vendor/jsQR.js',
+  'vendor/leaflet.js', 'vendor/leaflet-rotate.js', 'vendor/leaflet.css', 'vendor/milsymbol.js', 'vendor/jsQR.js',
   'vendor/images/layers.png', 'vendor/images/layers-2x.png',
   'vendor/images/marker-icon.png', 'vendor/images/marker-icon-2x.png', 'vendor/images/marker-shadow.png',
 ];

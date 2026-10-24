@@ -103,30 +103,43 @@ sperren. Optional lassen sich Streams weiterhin manuell mit eigenem QR-Code anle
 
 ## TAK-EUD (Karte + Lagebild auf dem Handy)
 
-Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau.
-Läuft auf Android und iPhone (Safari → Teilen → „Zum Home-Bildschirm“). Bedienung wie die LPU5-EUD:
-Statusleiste oben (Uhr, Akku, Verbindung, Rufname, Chat, Video, Menü), Symbolleiste unten.
+Unter `https://<server>/eud/` gibt es einen schlanken TAK-Client als Web-App (PWA) auf ATAK-CoT-Niveau,
+Oberfläche auf **Englisch** (multinational). Läuft auf Android und iPhone (Safari → Teilen → „Zum
+Home-Bildschirm“). Aufbau wie die LPU5-EUD:
+
+- **Kopfzeile:** Uhrzeit, Server-Status als Punkt (grün = verbunden, orange = nur ein Teil der Server,
+  rot = offline), Pin (Markerleiste unten ein-/ausklappen), Chat, Video, Menü.
+- **Links unter der Kopfzeile:** Kompass. Antippen = Karte dreht mit der Blickrichtung (HDG-UP),
+  erneut antippen = Nord oben (N-UP, Standard wie ATAK). Ohne Kompass-Sensor dreht die Karte beim
+  Gehen/Fahren nach dem GPS-Kurs.
+- **Rechts:** Schieberegler zum Kippen der Karte (0–60°, Doppeltippen = flach).
+- **Unten (über den Pin):** Feind, Freund, Neutral, Unbekannt und Entfernungsmesser. Symbol wählen,
+  dann die Stelle auf der Karte antippen. Rechts unten: auf eigene Position zentrieren.
 
 **Kernfunktionen**
 
-1. **Marker setzen** – Symbol unten antippen (Feind, Freund, Neutral, Unbekannt, Punkt) → Fadenkreuz →
-   „PUNKT SETZEN“ (oder lange auf die Karte drücken). Geht an alle verbundenen Server.
-2. **Server verbinden** – Menü → Server. **Mehrere TAK-Server gleichzeitig**, alles auf einer Karte.
+1. **Marker** setzen (s. o.). Eigene Marker per **Drag & Drop verschieben**, im Popup **umbenennen**
+   oder löschen – die Änderung geht wie bei ATAK mit gleicher UID an alle Server.
+2. **Server verbinden** – Menü → Servers. **Mehrere TAK-Server gleichzeitig**, alles auf einer Karte.
    Je Server: QR-Code (ATAK-Enrollment `tak://…/enroll?…`, iTAK `Name,Host,Port,ssl`), Datenpaket (.zip),
    Zertifikat (.p12), Truststore oder von Hand (Adresse, Port, SSL/TCP/UDP, Benutzer + Passwort →
-   „Zertifikat anfordern“, Port 8446). Unbekannte Server-Zertifikate erst nach Bestätigung des Fingerabdrucks.
-3. **Chat** – Chat „Alle“ (GeoChat), Hinweis bei neuen Nachrichten.
-4. **Videostream** – „Handy-Kamera“ oder „Helmkamera (Bluetooth, Android/Chrome)“ antippen: der Stream
+   „Request certificate“, Port 8446). Unbekannte Server-Zertifikate erst nach Bestätigung des Fingerabdrucks.
+3. **Chat** – Chat „All“ (GeoChat); Fenster lässt sich minimieren und schließen.
+4. **Videostream** – „Phone camera“ oder „Helmet camera (Bluetooth, Android/Chrome)“ antippen: der Stream
    startet sofort (auch wenn im Admin „Admin schaltet live“ eingestellt ist – der Admin bekommt einen
-   Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt.
-   **Streams ansehen:** alle Streams im Lagebild und die Feeds des TAK-Servers im Video-Fenster
-   (MJPEG/HLS im Browser; RTSP wird zum Öffnen in VLC kopiert).
+   Hinweis). Der Link steht in der eigenen Position, ATAK-Nutzer sehen ihn beim Kontakt. Eigene Vorschau
+   minimieren oder ausblenden (Stream läuft weiter). **Streams ansehen:** alle Streams im Lagebild und die
+   Feeds des TAK-Servers im Viewer (minimieren, Vollbild, schließen; MJPEG/HLS; RTSP wird kopiert).
 
-**TAK-Daten** (Menü → TAK-Daten, über den API-Port 8443 mit dem Client-Zertifikat):
-Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren, Inhalte werden automatisch
-aktualisiert), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom Gerät; bleiben offline gespeichert).
+**TAK-Daten** (Menü → TAK Data, über den API-Port 8443 mit dem Client-Zertifikat):
+Datenpakete vom Server laden, **Data Sync** (Missionen abonnieren – auch passwortgeschützte –, Inhalte
+werden bei Änderungen automatisch aktualisiert), **Overlays** (KML/KMZ aus Paketen, Missionen oder vom
+Gerät, auch Rasterkarten mit mehreren Detailstufen; bleiben offline gespeichert).
+**Auto-Push wie bei ATAK:** schickt der TAK-Server ein Datenpaket an das Gerät oder lädt es in eine
+Mission ein, wird beides automatisch geladen bzw. abonniert. Fehler beim Abruf stehen im Server-Log
+(„EUD TAK-API … Fehler“).
 
-**Karte** (Menü → Karte): Quelle wählen (OpenStreetMap, OpenTopoMap, Esri Satellit/Topo oder eigene
+**Karte** (Menü → Map): Quelle wählen (OpenStreetMap, OpenTopoMap, Esri Satellit/Topo oder eigene
 URL mit `{z}/{x}/{y}`). Kacheln laufen über diesen Server und werden dort unter `DATA_DIR/tiles`
 zwischengespeichert. **Offline speichern:** sichtbaren Ausschnitt oder einen gezeichneten **Korridor**
 (Breite in m) mit Zoom von/bis; gespeicherte Bereiche lassen sich anzeigen und löschen. Bitte nur

@@ -24,6 +24,7 @@
   let framesize = 1, rotate = 0, mirror = false, fit = 'fill';
   let sent = [], busy = false, lastPreview = 0, wakeLock = null;
   let streamUrl = '';
+  let previewHidden = false;
 
   const msg = (text, ok) => setMsg($('vidMsg'), text, ok);
 
@@ -32,11 +33,13 @@
     $('vidStart').classList.toggle('hidden', active);
     $('vidRun').classList.toggle('hidden', !active);
     $('livePreview').classList.toggle('hidden', !active);
+    $('livePreview').classList.toggle('gone', active && previewHidden);
+    $('lpShow').classList.toggle('hidden', !previewHidden);
     const live = active && onAir && ws && ws.readyState === 1;
     $('livePreview').classList.toggle('ready', active && !live);
-    $('liveTag').textContent = live ? '● LIVE' : 'VERBINDE';
+    $('liveTag').textContent = live ? '● LIVE' : 'CONNECTING';
     $('vidBanner').className = 'nw-banner ' + (live ? 'ok' : 'wait');
-    $('vidState').textContent = live ? 'LIVE – wird gesendet' : (ws && ws.readyState === 1 ? 'Warte auf Freigabe …' : 'Verbinde mit Server …');
+    $('vidState').textContent = live ? 'LIVE – streaming' : (ws && ws.readyState === 1 ? 'Waiting for release …' : 'Connecting to server …');
     $('btnVideo').classList.toggle('live', live);
     $('bleBtn').disabled = !navigator.bluetooth;
     $('camPickRow').classList.toggle('hidden', source !== 'phone' || $('camSelect').options.length < 2);
@@ -58,7 +61,7 @@
       body: JSON.stringify({ name: profile.callsign || 'EUD', unit: profile.team, source: 'eud' }),
     });
     const data = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(data.error || 'Anmeldung beim Server fehlgeschlagen.');
+    if (!res.ok) throw new Error(data.error || 'Sign-up at the server failed.');
     link = { u: data.u, s: data.s, k: data.k };
     store.set('eud.video', link);
     return link;
@@ -83,7 +86,7 @@
       } else if (m.type === 'live') {
         const was = onAir;
         onAir = m.mode === 'user' || !!m.on;
-        if (was && !onAir && m.mode !== 'user') { msg('Der Admin hat den Stream beendet.'); toast('Videostream vom Admin beendet.'); stop(); return; }
+        if (was && !onAir && m.mode !== 'user') { msg('The admin ended the stream.'); toast('Video stream ended by admin.'); stop(); return; }
       } else if (m.type === 'config') {
         rotate = m.rotate || 0;
         mirror = !!m.mirror;
@@ -96,19 +99,19 @@
       } else if (m.type === 'stats') {
         $('vidViewers').textContent = m.viewers;
       } else if (m.type === 'stopped') {
-        msg(m.message || 'Stream wurde vom Admin gestoppt.');
-        toast('Videostream vom Admin gestoppt.');
+        msg('The admin stopped the stream.');
+        toast('Video stream stopped by admin.');
         stop();
         return;
       } else if (m.type === 'removed' || m.type === 'invalid' || m.type === 'revoked') {
         // Zugang gibt es nicht mehr: beim nächsten Start neu anmelden
         link = null;
         store.del('eud.video');
-        if (m.type === 'revoked') { msg(m.message || 'Zugang wurde vom Admin entzogen.'); stop(); return; }
+        if (m.type === 'revoked') { msg('Access was revoked by the admin.'); stop(); return; }
         if (running) ensureLink().then(connectServer).catch(e => { msg(e.message); stop(); });
         return;
       } else if (m.type === 'replaced') {
-        msg('Ein anderes Gerät sendet jetzt auf diesem Stream.');
+        msg('Another device is now streaming on this stream.');
         stop();
         return;
       }
@@ -191,7 +194,7 @@
 
   async function openPhoneCamera(deviceId) {
     if (!window.isSecureContext || !navigator.mediaDevices || !navigator.mediaDevices.getUserMedia) {
-      throw new Error('Die Kamera geht nur über HTTPS.');
+      throw new Error('The camera only works over HTTPS.');
     }
     const attempts = deviceId
       ? [{ video: { deviceId: { exact: deviceId }, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: false }]
@@ -208,10 +211,10 @@
       }
     }
     if (last && (last.name === 'NotAllowedError' || last.name === 'SecurityError')) {
-      throw new Error(isIOS ? 'Kamera nicht erlaubt: Einstellungen → Safari → Kamera → „Erlauben“.' : 'Kamera-Zugriff verweigert – in den Seiteneinstellungen erlauben.');
+      throw new Error(isIOS ? 'Camera not allowed: Settings → Safari → Camera → Allow.' : 'Camera access denied – allow it in the site settings.');
     }
-    if (last && last.name === 'NotReadableError') throw new Error('Die Kamera wird gerade von einer anderen App benutzt.');
-    throw new Error('Kamera konnte nicht gestartet werden' + (last ? ` (${last.name})` : '') + '.');
+    if (last && last.name === 'NotReadableError') throw new Error('The camera is in use by another app.');
+    throw new Error('Camera could not be started' + (last ? ` (${last.name})` : '') + '.');
   }
 
   async function attach(stream) {
@@ -223,7 +226,7 @@
     v.srcObject = stream;
     await v.play().catch(() => {});
     const track = stream.getVideoTracks()[0];
-    $('vidCam').textContent = (track && track.label) || 'Handy-Kamera';
+    $('vidCam').textContent = (track && track.label) || 'Phone camera';
     await listCameras();
   }
 
@@ -233,7 +236,7 @@
     const track = mediaStream && mediaStream.getVideoTracks()[0];
     const current = track ? track.getSettings().deviceId : '';
     const sel = $('camSelect');
-    sel.replaceChildren(...cams.map((c, i) => new Option(c.label || 'Kamera ' + (i + 1), c.deviceId)));
+    sel.replaceChildren(...cams.map((c, i) => new Option(c.label || 'Camera ' + (i + 1), c.deviceId)));
     if (current) sel.value = current;
     render();
   }
@@ -280,18 +283,19 @@
 
   async function onBleLost() {
     if (!device || source !== 'ble') return;
-    toast('Helmkamera getrennt – verbinde neu …');
+    toast('Helmet camera lost – reconnecting …');
     for (let i = 0; i < 30 && device && running; i++) {
-      try { await setupGatt(); toast('Helmkamera wieder verbunden.'); return; } catch (e) { await new Promise(r => setTimeout(r, 2000)); }
+      try { await setupGatt(); toast('Helmet camera reconnected.'); return; } catch (e) { await new Promise(r => setTimeout(r, 2000)); }
     }
-    if (running) { msg('Helmkamera nicht erreichbar.'); stop(); }
+    if (running) { msg('Helmet camera not reachable.'); stop(); }
   }
 
   // ---------------- Start / Stopp ----------------
 
   async function start(kind) {
-    if (!profile.callsign) { openPopup('me'); toast('Bitte zuerst einen Rufnamen eintragen.'); return; }
+    if (!profile.callsign) { openPopup('me'); toast('Please enter a callsign first.'); return; }
     msg('');
+    previewHidden = false;
     $('phoneBtn').disabled = $('bleBtn').disabled = true;
     try {
       if (kind === 'phone') {
@@ -304,13 +308,13 @@
         clearInterval(captureTimer);
         captureTimer = setInterval(captureFrame, 1000 / PHONE_FPS);
       } else {
-        if (!navigator.bluetooth) throw new Error(isIOS ? 'Bluetooth geht am iPhone nur in der App „Bluefy“ – Handy-Kamera nutzen.' : 'Dieser Browser kann kein Bluetooth (Chrome verwenden).');
+        if (!navigator.bluetooth) throw new Error(isIOS ? 'On iPhone, Bluetooth only works in the "Bluefy" app – use the phone camera.' : 'This browser has no Bluetooth (use Chrome).');
         device = await navigator.bluetooth.requestDevice({ filters: [{ services: [SVC] }, { namePrefix: 'Helm' }], optionalServices: [SVC] });
         device.addEventListener('gattserverdisconnected', onBleLost);
-        msg('Verbinde mit ' + (device.name || 'Helmkamera') + ' …', true);
+        msg('Connecting to ' + (device.name || 'helmet camera') + ' …', true);
         source = 'ble';
         await setupGatt();
-        $('vidCam').textContent = (device.name || 'Helmkamera') + ' (Bluetooth)';
+        $('vidCam').textContent = (device.name || 'Helmet camera') + ' (Bluetooth)';
         $('camVideo').classList.add('hidden');
         $('camImg').classList.remove('hidden');
       }
@@ -351,7 +355,7 @@
     }
     if (wakeLock) wakeLock.release().catch(() => {});
     wakeLock = null;
-    if (!quiet) toast('Videostream beendet.');
+    if (!quiet) toast('Video stream stopped.');
     render();
   }
 
@@ -363,11 +367,12 @@
     const img = $('vwImg'), vid = $('vwVideo');
     const say = t => { $('vwMsg').textContent = t || ''; };
     stopViewer();
+    $('viewer').classList.remove('min');
     $('vwTitle').textContent = name || 'Stream';
     $('viewer').classList.remove('hidden');
-    say('Lade …');
+    say('Loading …');
     if (!/^https?:\/\//i.test(url)) {
-      say('Dieses Format (' + url.split(':')[0].toUpperCase() + ') kann der Browser nicht abspielen. Adresse wurde kopiert – z. B. in VLC öffnen.');
+      say('The browser cannot play ' + url.split(':')[0].toUpperCase() + '. Address copied – open it e.g. in VLC.');
       if (navigator.clipboard) navigator.clipboard.writeText(url).catch(() => {});
       return;
     }
@@ -379,7 +384,7 @@
       img.classList.add('hidden');
       vid.classList.remove('hidden');
       vid.onloadeddata = () => say('');
-      vid.onerror = () => say('Stream lässt sich nicht abspielen (Format oder nicht erreichbar).');
+      vid.onerror = () => say('Stream cannot be played (format or not reachable).');
       vid.src = url;
       vid.play().catch(() => {});
     };
@@ -404,15 +409,17 @@
     vid.classList.add('hidden');
   }
   window.eudPlay = play;
-  $('vwClose').addEventListener('click', () => { stopViewer(); $('viewer').classList.add('hidden'); $('viewer').classList.remove('full'); });
+  $('vwClose').addEventListener('click', () => { stopViewer(); $('viewer').classList.add('hidden'); $('viewer').classList.remove('full', 'min'); });
+  $('vwMin').addEventListener('click', () => { $('viewer').classList.remove('full'); $('viewer').classList.toggle('min'); });
+  document.querySelector('.vw-head').addEventListener('click', e => { if (!e.target.closest('button')) $('viewer').classList.remove('min'); });
   $('vwFull').addEventListener('click', () => $('viewer').classList.toggle('full'));
 
   function renderStreams() {
     const box = $('streamList');
     box.textContent = '';
     const list = window.eud.videoItems();
-    if (streamUrl && running) list.unshift({ name: 'Mein Stream', url: streamUrl, own: true });
-    if (!list.length) box.innerHTML = '<div class="empty">Gerade sendet niemand im Lagebild ein Video.</div>';
+    if (streamUrl && running) list.unshift({ name: 'My stream', url: streamUrl, own: true });
+    if (!list.length) box.innerHTML = '<div class="empty">Nobody on the map is streaming video right now.</div>';
     for (const v of list) {
       const row = document.createElement('div');
       row.className = 'item';
@@ -435,8 +442,11 @@
   $('bleBtn').addEventListener('click', () => start('ble'));
   $('vidStop').addEventListener('click', () => stop());
   $('btnVideo').addEventListener('click', () => openPopup('video'));
-  $('livePreview').addEventListener('click', () => openPopup('video'));
-  if (!navigator.bluetooth) $('bleBtn').title = isIOS ? 'Am iPhone nur mit der App „Bluefy“' : 'Browser ohne Bluetooth';
+  $('livePreview').addEventListener('click', e => { if (!e.target.closest('button')) openPopup('video'); });
+  $('lpMin').addEventListener('click', () => $('livePreview').classList.toggle('min'));
+  $('lpClose').addEventListener('click', () => { previewHidden = true; toast('Preview hidden – the stream keeps running.'); render(); });
+  $('lpShow').addEventListener('click', () => { previewHidden = false; $('livePreview').classList.remove('min'); render(); });
+  if (!navigator.bluetooth) $('bleBtn').title = isIOS ? 'On iPhone only with the "Bluefy" app' : 'Browser without Bluetooth';
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible' && running && 'wakeLock' in navigator) navigator.wakeLock.request('screen').then(w => { wakeLock = w; }).catch(() => {});
   });
