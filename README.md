@@ -229,8 +229,9 @@ Users request real TAK access here; after approval the app creates the account o
 > **No OpenTAKServer yet?** [WebTAK Server](https://github.com/fredy060795/5040-WebTAK_Server) is a TAK server in a single
 > file for Windows and Raspberry Pi (installs in one step, links several servers via federation) and speaks the same
 > OTS web API. Enter `https://<server>:8443` as OTS address with its admin login and allow the self-signed certificate.
-> Users, groups, roles, ATAK QR codes, truststore, device profiles and missions work; video feeds (MediaMTX) and
-> Meshtastic are not part of it.
+> Users, groups, roles, ATAK QR codes, truststore, device profiles, missions and video feeds (built-in MediaMTX, the
+> camera streams are registered automatically like with OTS) work; Meshtastic is not part of it. WebTAK Server can also
+> link to an existing OpenTAKServer (bridge), so both share devices and video.
 
 **Workflow**
 
