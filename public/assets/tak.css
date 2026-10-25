@@ -67,3 +67,6 @@ ol.timeline small { display: block; font-weight: 400; color: var(--mut); }
 @media print { body { background: #fff; color: #000; } .card { border-color: #999; background: #fff; } button, .tabs { display: none; } }
 ol.steps.big li { margin: 14px 0; }
 ol.steps.big .btn { margin-top: 4px; }
+
+/* version next to the name: shows whether the current page was loaded after an update */
+.ver { font-size: 11px; font-weight: 400; opacity: .6; letter-spacing: 0; vertical-align: middle; }

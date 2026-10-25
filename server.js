@@ -12,6 +12,7 @@
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { WebSocketServer } = require('ws');
@@ -63,6 +64,20 @@ const TYPES = {
   '.json': 'application/json', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
+
+// Version shown in the headers: package version + short code of the program files,
+// changes by itself with every update (shows whether the browser loaded the current page)
+const VERSION = (() => {
+  const hash = crypto.createHash('sha1');
+  const walk = f => {
+    const st = fs.statSync(f);
+    if (st.isDirectory()) { for (const n of fs.readdirSync(f).sort()) walk(path.join(f, n)); return; }
+    hash.update(path.relative(__dirname, f)).update(fs.readFileSync(f));
+  };
+  for (const f of ['server.js', 'package.json', 'lib', 'public']) { try { walk(path.join(__dirname, f)); } catch (e) { /* missing */ } }
+  return `${require('./package.json').version}-${hash.digest('hex').slice(0, 6)}`;
+})();
+const VERSION_TAG = '__WEBTAK_VERSION__';
 
 // ======================================================================
 // Helpers
@@ -181,6 +196,8 @@ function serveStatic(res, dir, rel) {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   });
+  // pages and the service worker carry the version (new version -> the phone renews its offline copy)
+  if (/\.html$/.test(file) || path.basename(file) === 'sw.js') return res.end(fs.readFileSync(file, 'utf8').split(VERSION_TAG).join(VERSION));
   fs.createReadStream(file).pipe(res);
 }
 
@@ -1168,6 +1185,7 @@ async function handle(req, res) {
 
   try {
     if (p === '/health') return send(res, 200, 'ok');
+    if (p === '/version') return json(res, 200, { version: VERSION });
     if (p === '/ca.crt' && config.testCa) {
       return send(res, 200, fs.readFileSync(config.testCa), 'application/x-x509-ca-cert',
         { 'Content-Disposition': 'attachment; filename="helm-camera-test-ca.crt"' });
@@ -1417,6 +1435,7 @@ server.on('error', e => {
 
 server.listen(config.port, config.bind, () => {
   log(`WebTAK running on ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
+  log(`Version ${VERSION}`);
   log(`Public address: ${config.publicUrl || '(from request)'}${config.adminHost ? ', admin domain: ' + config.adminHost : ''}`);
   log(ffmpegOk ? 'ffmpeg found: HLS and MPEG-TS available' : 'ffmpeg not found: MJPEG only');
   if (store.data.admin.mustChange) log('First start: admin login admin / admin123 – the password is changed at the first login.');
