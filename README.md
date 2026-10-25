@@ -85,7 +85,8 @@ user (`drone-<callsign>`). The password is kept on the device only after the TAK
   ATAK – e.g. ATAK UAS Tool, other WebTAK users), in 2D and 3D.
 - **Own stream:** while the phone or helmet camera is live, the own position carries the view direction, angle
   (60°/66°) and 100 m range – ATAK and WebTAK show the cone. Phone camera: direction of the back of the phone (compass,
-  also in north-up mode); helmet camera: the phone is not on the helmet, so the GPS course while moving.
+  also in north-up mode); helmet camera: the GPS course while moving, standing still the phone's compass (fits when
+  the phone is carried facing forward). Cones are at least ~70 px long on the screen at any zoom.
 - **Drone telemetry (KLV, MISB ST 0601):** when a drone feed carries KLV (professional drones, ATAK UAS Tool, QGroundControl,
   STANAG 4609 encoders), WebTAK shows while watching it: **the drone** (position, height, view direction and cone),
   **the image area on the ground** (corners from KLV or computed from height, angle and field of view) and **the image
@@ -165,8 +166,20 @@ At `https://<server>/eud/` there is **WebTAK**, a lean TAK client as a web app (
 with an **English** user interface (multinational). Runs on Android and iPhone (Safari → Share → "Add to
 Home Screen"). Laid out like ATAK:
 
-- **Top bar:** maps (layers), markers, chat, video, tools (menu as a tile grid like ATAK:
-  Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
+- **Top bar like ATAK, put together by the user:** by default maps, markers, draw, chat and video, plus the menu
+  (tile grid: Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, Meshtastic,
+  R&B Line, Draw, Bloodhound, Markers, Screen Rotation, Chat, Settings). Menu → **✎**: tap tools to put them on top
+  (★, up to 8, in the order tapped), DEFAULT resets. Stored on the device in the profile – survives every update.
+- **Draw** (top bar, circle-and-square icon like ATAK): opens **Line, Rectangle, Polygon, Circle** and 9 colors.
+  Line/polygon: tap the points, then DONE; rectangle: two opposite corners; circle: center and a point on the edge.
+  The shapes are ATAK CoT (`u-d-f`, `u-d-r`, `u-d-c-c` with stroke/fill colors) – they show in ATAK/WinTAK/iTAK,
+  go to all servers and over Meshtastic, and can be renamed and deleted; the window shows radius/length.
+- **Bloodhound:** in the window of a marker, user or drawing → BLOODHOUND, or the Bloodhound tool and tap a target
+  (marker, user or a point on the map). A line from the own position to the target with distance, bearing and – while
+  moving – time of arrival, updated every second (red, < 500 m yellow, < 100 m green). STOP ends it.
+- **Screen rotation:** tool **Screen Rotation** – portrait or landscape locked (the screen then no longer tips over when the phone is turned), or auto. Stored.
+  Android: works in the installed app; in the browser WebTAK switches to full screen for it. iPhone/iPad do not allow
+  web apps to lock it – use the rotation lock in the Control Center there.
 - **Contacts & Markers** split by type like the ATAK overlay manager: **Contacts** (users), markers
   **Friendly / Hostile / Neutral / Unknown** (by 2525 affiliation), other points, drawings & routes –
   every group can be expanded and collapsed and cleared on its own with 🗑. **Clear Content** clears several groups at

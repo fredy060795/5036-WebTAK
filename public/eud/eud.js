@@ -368,6 +368,8 @@ function popupHtml(it) {
     : c.type.startsWith('b-m-p') ? 'Point' : c.type === 'u-rb-a' ? 'R&amp;B line' : c.type.startsWith('u-d') ? 'Drawing' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
   rows.push(`<div class="t">${esc(c.callsign || c.uid)}</div><div class="k">${kind}</div>`);
   if (isRb(c)) rows.push(`<div><b>${esc(rbText(c))}</b></div>`);
+  const size = shapeSize(c);
+  if (size) rows.push(`<div><b>${size}</b></div>`);
   if (Number.isFinite(c.lat)) rows.push(`<div>${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}${Number.isFinite(c.hae) && c.hae < 9e6 ? ` · ${Math.round(c.hae)} m` : ''}</div>`);
   if (me && Number.isFinite(c.lat)) rows.push(`<div class="k">${fmtDist(distance(me, c))} · ${Math.round(bearing(me, c))}°</div>`);
   if (c.speed > 0.5) rows.push(`<div class="k">${(c.speed * 3.6).toFixed(0)} km/h</div>`);
@@ -377,9 +379,21 @@ function popupHtml(it) {
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
   if (c.type.startsWith('a-') && c.team && it.uid !== profile.uid) rows.push(`<button type="button" class="play" data-msg="${esc(c.uid)}">✉ MESSAGE</button>`);
+  if (Number.isFinite(c.lat) && it.uid !== profile.uid && !isRb(c)) rows.push(`<button type="button" class="play" data-hound="${esc(c.uid)}">BLOODHOUND</button>`);
   if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
   if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
+}
+
+// size of a drawing: radius of a circle, length of a line, perimeter of a closed shape
+function shapeSize(c) {
+  if (c.type === 'u-d-c-c' && c.ellipse) return 'Radius ' + fmtDist(Number(c.ellipse.getAttribute('major')) || 0);
+  if (!c.type.startsWith('u-d') || c.linkPoints.length < 2) return '';
+  let len = 0;
+  for (let i = 1; i < c.linkPoints.length; i++) len += distance({ lat: c.linkPoints[i - 1][0], lon: c.linkPoints[i - 1][1] }, { lat: c.linkPoints[i][0], lon: c.linkPoints[i][1] });
+  const p = c.linkPoints, closed = c.type === 'u-d-r' || (p.length > 2 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]);
+  if (c.type === 'u-d-r') len += distance({ lat: p[p.length - 1][0], lon: p[p.length - 1][1] }, { lat: p[0][0], lon: p[0][1] });
+  return (closed ? 'Perimeter ' : 'Length ') + fmtDist(len);
 }
 
 // like ATAK: every marker, point and drawing can be moved, renamed and deleted by anyone –
@@ -445,16 +459,32 @@ function sensorOf(c) {
   return { az, fov: Math.min(fov, 359), range: range > 0 ? Math.min(range, 50000) : 100, color };
 }
 // the cone ("funnel") on the map: tip at the camera, opening in the view direction
+const FOV_MIN_PX = 70; // a cone is at least this long on the screen – 100 m are only a few pixels when zoomed out
 function fovLayer(lat, lon, s, faded) {
+  const mpp = (40075016.686 * Math.cos(lat * Math.PI / 180)) / (256 * 2 ** map.getZoom()); // metres per pixel
+  const range = Math.max(s.range, mpp * FOV_MIN_PX);
   const pts = [[lat, lon]];
   const n = Math.max(6, Math.ceil(s.fov / 5));
   for (let i = 0; i <= n; i++) {
-    const p = destPoint(lat, lon, s.range, s.az - s.fov / 2 + (s.fov * i) / n);
+    const p = destPoint(lat, lon, range, s.az - s.fov / 2 + (s.fov * i) / n);
     pts.push([p.lat, p.lon]);
   }
-  // light overlay: thin edge, almost transparent – the map underneath stays readable
-  return L.polygon(pts, { color: s.color, weight: 1, opacity: faded ? 0.25 : 0.55, fillColor: s.color, fillOpacity: faded ? 0.03 : 0.08, interactive: false });
+  // light overlay: clear edge, translucent fill – the map underneath stays readable
+  const l = L.polygon(pts, { color: s.color, weight: 1.5, opacity: faded ? 0.35 : 0.85, fillColor: s.color, fillOpacity: faded ? 0.04 : 0.12, interactive: false });
+  l._fov = { lat, lon, s, faded };
+  return l;
 }
+// zooming changes the minimum length: draw the cones again
+map.on('zoomend', () => {
+  for (const it of items.values()) {
+    if (!it.fov) continue;
+    const { lat, lon, s, faded } = it.fov._fov;
+    it.fov.remove();
+    it.fov = fovLayer(lat, lon, s, faded).addTo(shapesLayer);
+  }
+  if (meFov) { const az = meFov._az; drawMeFov(); if (meFov) meFov._az = az; }
+  if (window.view3d) view3d.dirty();
+});
 
 function drawItem(it) {
   const c = it.c;
@@ -928,14 +958,16 @@ document.addEventListener('visibilitychange', () => {
 let meMarker = null, meCircle = null, meFov = null, follow = true, lastSent = 0, sentAt = null, sentAz = null;
 
 // own camera while streaming: field of view for ATAK/WebTAK (<sensor>). Phone camera: direction of the
-// back of the phone (compass); helmet camera: the phone is not on the helmet -> GPS course while moving.
+// back of the phone (compass); helmet camera: GPS course while moving, standing still the phone's compass
+// (the phone is not on the helmet – it fits when it is carried facing forward, e.g. on the chest).
 const CAM_FOV = { phone: { fov: 60, vfov: 45, model: 'Phone camera' }, ble: { fov: 66, vfov: 50, model: 'Helmet camera' } };
 const CAM_RANGE = 100;
 function camSensor() {
   const kind = window.eudVideoUrl && CAM_FOV[window.eudVideoSource];
   if (!kind || !me) return null;
   const moving = Number.isFinite(me.course) && me.speed > 0.5;
-  const az = window.eudVideoSource === 'phone' && camHeading != null ? camHeading : moving ? me.course : null;
+  const az = window.eudVideoSource === 'phone' ? (camHeading != null ? camHeading : moving ? me.course : null)
+    : moving ? me.course : heading;
   return az == null ? null : { az: Math.round(az) % 360, fov: kind.fov, vfov: kind.vfov, model: kind.model, range: CAM_RANGE, color: TEAMS[profile.team] || '#00FFFF' };
 }
 
@@ -1008,7 +1040,7 @@ function drawMeFov() {
 // streaming: compass on (also in north-up mode); the view turns -> the cone follows, others see it within seconds
 let camWatch = false;
 setInterval(() => {
-  const want = !!window.eudVideoUrl && window.eudVideoSource === 'phone';
+  const want = !!window.eudVideoUrl && !!CAM_FOV[window.eudVideoSource];
   if (want && !camWatch) { camWatch = true; startHeading(); }
   if (!want && camWatch) { camWatch = false; if (compassMode !== 'heading') stopHeading(); camHeading = null; }
   if (!me) return;
@@ -1110,7 +1142,7 @@ function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
   $('placeHint').classList.toggle('hidden', !t);
-  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing); // a tap hits the map
+  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing || !!(window.eudTools && eudTools.capturing())); // a tap hits the map
   if (t) { follow = false; $('btnLocate').classList.remove('active'); setPitch(0); }
 }
 
@@ -1147,6 +1179,8 @@ function wirePopup(root, close) {
   if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
   const msg = root.querySelector('[data-msg]');
   if (msg) msg.addEventListener('click', () => { close(); openChat('dm:' + msg.getAttribute('data-msg')); });
+  const hound = root.querySelector('[data-hound]');
+  if (hound) hound.addEventListener('click', () => { close(); document.dispatchEvent(new CustomEvent('eud-hound', { detail: { uid: hound.getAttribute('data-hound') } })); });
   const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
@@ -2048,6 +2082,7 @@ function drawCorridor() {
   ]).addTo(map);
 }
 map.on('click', e => {
+  if (window.eudMapTap && window.eudMapTap(e.latlng)) return; // drawing shapes, picking a Bloodhound target (tools.js)
   if (tool) return placeMarker(e.latlng); // symbol selected: a tap places the marker (like ATAK)
   if (measuring) return addMeasurePoint(e.latlng);
   if (!drawing) return;
@@ -2503,7 +2538,8 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, destPoint, serverOnline,
+  sendCot, cotTime, saveProfile, closeSheets, setTool, setPitch, items, stopMeasure: () => { if (measuring) toggleMeasure(); }, getMe: () => me, battery: () => battery };
 
 loadPicture();
 renderChat();
