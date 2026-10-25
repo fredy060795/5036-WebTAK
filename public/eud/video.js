@@ -322,6 +322,8 @@
 
   async function start(kind) {
     if (!profile.callsign) { openPopup('me'); toast('Please enter a callsign first.'); return; }
+    // Meshtastic (mesh.js) releases the Bluetooth radio while a stream runs – before the device dialog
+    document.dispatchEvent(new CustomEvent('eud-video', { detail: { on: true } }));
     msg('');
     previewHidden = false;
     $('phoneBtn').disabled = $('bleBtn').disabled = $('screenBtn').disabled = true;
@@ -395,6 +397,7 @@
     wakeLock = null;
     if (!quiet) toast('Video stream stopped.');
     render();
+    document.dispatchEvent(new CustomEvent('eud-video', { detail: { on: false } })); // Meshtastic reconnects
   }
 
   // ---------------- Watching streams (own and others') ----------------

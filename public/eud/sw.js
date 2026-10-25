@@ -5,7 +5,7 @@ const SHELL_CACHE = 'eud-shell-__WEBTAK_VERSION__'; // filled in by the server: 
 const TILE_CACHE = 'eud-tiles';
 const MAX_TILES = 40000; // saved areas + recently viewed tiles
 const SHELL = [
-  './', 'index.html', 'eud.css', 'eud.js', 'view3d.js', 'video.js', 'data.js', 'manifest.webmanifest',
+  './', 'index.html', 'eud.css', 'eud.js', 'view3d.js', 'video.js', 'data.js', 'meshproto.js', 'mesh.js', 'manifest.webmanifest',
   'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
   'vendor/leaflet.js', 'vendor/leaflet-rotate.js', 'vendor/leaflet.css', 'vendor/milsymbol.js', 'vendor/jsQR.js', 'vendor/hls.min.js',
   'vendor/maplibre-gl.mjs', 'vendor/maplibre-gl-worker.mjs', 'vendor/maplibre-gl.css',

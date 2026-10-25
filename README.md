@@ -211,6 +211,20 @@ areas you need – the free map services do not allow bulk downloading.
 **Without internet:** the app, saved tiles, situational picture and overlays stay on the device. GPS keeps
 running, markers and chats wait in the outbox and go out as soon as the connection is back.
 
+**Meshtastic (LoRa, without internet)** – Menu → **Meshtastic**: WebTAK connects directly to a Meshtastic radio
+over Bluetooth (Android: Chrome; iPhone: only in the "Bluefy" app – Safari has no Bluetooth). Positions and chat go
+over LoRa as TAK packets (port 72, like the Meshtastic ATAK plugin), so WebTAK users and ATAK users with the plugin
+see each other without internet. Players with only the Meshtastic app appear on the map as points, their text
+messages in the chat; WebTAK chat is also sent as Meshtastic text (can be switched off).
+- **Sending:** by default only while no TAK server is connected (offline) – online the TAK server carries everything.
+  "Always" sends over LoRa as well. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
+- **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
+- If the connection is lost, WebTAK keeps reconnecting; after reloading the page it reconnects by itself where the browser
+  allows it, otherwise tap RECONNECT. The icon above the server status shows the state (green = connected, yellow = connecting or paused for
+  video, red = not connected).
+- A radio accepts only one Bluetooth connection: disconnect the Meshtastic app first. Keep the screen on.
+- TAK packets compressed on the radio by older firmware cannot be read; current firmware passes them through unchanged.
+
 **Limits of a web app:** a TAK server on the phone itself (e.g. in the Meshtastic app,
 `127.0.0.1:8088`) cannot be reached by a web app – browsers cannot open TCP/TLS connections.
 That needs the EUD as an installed app. iOS pauses web apps in the background;

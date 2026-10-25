@@ -96,6 +96,12 @@ svg { display: block; }
 #connBtn .dot { position: absolute; right: -4px; bottom: -4px; width: 11px; height: 11px; border-radius: 50%; background: var(--red); border: 1px solid #000; }
 #connBtn.ok, #connBtn.ok .dot { background: var(--green); }
 #connBtn.warn, #connBtn.warn .dot { background: var(--yellow); }
+/* Meshtastic radio, above the server status: green = connected, yellow = connecting/paused, red = lost */
+#meshBtn { position: fixed; z-index: 6004; right: max(6px, var(--right)); bottom: calc(156px + var(--bottom)); width: 30px; height: 30px; padding: 3px; border: none; border-radius: 3px;
+  background: rgba(0, 0, 0, 0.6); box-shadow: inset 0 0 0 2px var(--red); }
+#meshBtn svg { width: 24px; height: 24px; }
+#meshBtn.ok { box-shadow: inset 0 0 0 2px var(--green); }
+#meshBtn.wait { box-shadow: inset 0 0 0 2px var(--yellow); }
 #selfInfo { position: fixed; z-index: 6004; right: max(4px, var(--right)); bottom: calc(18px + var(--bottom)); min-width: 150px; padding: 3px 6px;
   background: rgba(0, 0, 0, 0.55); color: var(--cyan); font-size: 12px; line-height: 1.3; cursor: pointer; }
 #selfInfo .row { display: flex; justify-content: space-between; gap: 10px; }
@@ -120,12 +126,15 @@ svg { display: block; }
 #sidebar { position: fixed; inset: 0; z-index: 7000; }
 .sb-overlay { position: absolute; inset: 0; background: transparent; }
 .sb-grid { display: grid; grid-template-columns: repeat(4, 1fr); overflow-y: auto; }
-.tile { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 92px; padding: 10px 4px; background: var(--tile);
+.tile { position: relative; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px; min-height: 92px; padding: 10px 4px; background: var(--tile);
   border: none; border-right: 1px solid var(--line); border-bottom: 1px solid var(--line); color: #fff; }
 .tile:nth-child(4n) { border-right: none; }
 .tile:active, .tile.active { background: #2b313a; }
 .tile svg { width: 36px; height: 36px; }
 .tile span { font-size: 13px; text-align: center; line-height: 1.15; }
+.tile-dot { position: absolute; top: 10px; right: 14px; width: 10px; height: 10px; border-radius: 50%; background: var(--red); border: 1px solid #000; }
+.tile-dot.ok { background: var(--green); }
+.tile-dot.wait { background: var(--yellow); }
 
 /* Marker-Sheet */
 #toolbar { max-height: 50vh; }
@@ -223,6 +232,11 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 .nw-banner { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 3px; margin-bottom: 8px; font-size: 14px; font-weight: 500; }
 .nw-banner.ok { background: rgba(229, 57, 53, 0.2); border: 1px solid rgba(229, 57, 53, 0.6); color: #ff8a80; }
 .nw-banner.wait { background: rgba(246, 195, 68, 0.15); border: 1px solid rgba(246, 195, 68, 0.5); color: var(--yellow); }
+.nw-banner.good { background: rgba(67, 160, 71, 0.18); border: 1px solid rgba(67, 160, 71, 0.6); color: #8be28f; }
+.nw-banner.good .dot { background: var(--green); }
+.nw-banner.wait .dot { background: var(--yellow); }
+.nw-banner.off { background: rgba(255, 255, 255, 0.05); border: 1px solid var(--line); color: var(--mut); }
+.nw-banner.off .dot { background: #777; }
 .kv { display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--line); font-size: 14px; }
 .kv span { color: var(--mut); }
 .kv select { max-width: 60%; }
