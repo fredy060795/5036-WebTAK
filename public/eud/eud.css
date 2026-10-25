@@ -142,6 +142,13 @@ svg { display: block; }
 .mk-fns .tool { height: 74px; flex-direction: column; gap: 3px; padding: 4px 2px; }
 .mk-fns .tool svg { max-height: 40px; }
 .mk-fns .tool span { font-size: 10px; line-height: 1.1; color: #dfe6ee; text-align: center; }
+@media (orientation: landscape) and (min-width: 640px) {
+  /* landscape: full height down to the bottom; on low screens the whole sheet scrolls (AIR/SEA … and all symbols reachable) */
+  #toolbar { max-height: none; overflow-y: auto; }
+  #toolbar > * { flex-shrink: 0; }
+  #toolbar > .sheet-head { position: sticky; top: 0; z-index: 1; }
+  #toolbar > .mk-fns { flex: none; overflow: visible; }
+}
 
 /* Menu items (same sheet) */
 .modal { position: fixed; inset: auto 0 0 0; z-index: 7100; }
@@ -241,7 +248,9 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 #dock > #chatWin.min, #dock > #viewer.min { flex: none; height: auto; }
 #dock > .hidden { display: none !important; }
 @media (orientation: landscape) and (min-width: 640px) {
-  #dock { left: auto; top: calc(52px + var(--top)); width: min(46vw, 460px); max-height: none; border-left: 1px solid var(--line); }
+  /* the line on the open window, not on the (empty) dock – otherwise a line through the map in landscape */
+  #dock { left: auto; top: calc(52px + var(--top)); width: min(46vw, 460px); max-height: none; }
+  #dock > section { border-left: 1px solid var(--line); }
   #dock > #chatWin { max-height: none; height: auto; }
 }
 #viewer { flex: none; }
