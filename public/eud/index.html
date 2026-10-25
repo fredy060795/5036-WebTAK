@@ -75,7 +75,7 @@
 </button>
 <!-- Meshtastic radio (Bluetooth): only while switched on -->
 <button type="button" id="meshBtn" class="hidden" title="Meshtastic" aria-label="Meshtastic">
-  <svg viewBox="0 0 24 24" fill="none" stroke="#67ea94" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 18.5 8.5 6.5"/><path d="M9.5 18.5 15.5 6.5l6 12"/></svg>
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linejoin="miter" stroke-miterlimit="10"><clipPath id="meshClip1"><rect x="0" y="4.5" width="24" height="14.9"/></clipPath><g clip-path="url(#meshClip1)"><path d="M3.8 21 10.5 3"/><path d="M9.6 21 15.8 4.4 21.6 21"/></g></svg>
 </button>
 <div id="selfInfo">
   <div><span class="k">Callsign:</span> <span id="siCall">---</span></div>
@@ -187,7 +187,7 @@
       <button type="button" class="tile" data-open="video">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="6" width="14" height="12" rx="1"/><path d="M16 10l6-3v10l-6-3"/></svg><span>Video</span></button>
       <button type="button" class="tile" data-open="mesh">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#67ea94" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M2.5 18.5 8.5 6.5"/><path d="M9.5 18.5 15.5 6.5l6 12"/></svg><span>Meshtastic</span><i id="meshTileDot" class="tile-dot hidden"></i></button>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linejoin="miter" stroke-miterlimit="10"><clipPath id="meshClip2"><rect x="0" y="4.5" width="24" height="14.9"/></clipPath><g clip-path="url(#meshClip2)"><path d="M3.8 21 10.5 3"/><path d="M9.6 21 15.8 4.4 21.6 21"/></g></svg><span>Meshtastic</span><i id="meshTileDot" class="tile-dot hidden"></i></button>
       <button type="button" class="tile" id="btnMeasure">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span>R&amp;B Line</span></button>
       <button type="button" class="tile" data-open="chat">
