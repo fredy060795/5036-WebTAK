@@ -366,3 +366,51 @@ details.drone summary { cursor: pointer; font-size: 14px; font-weight: 500; }
 /* name and version in the top bar: shows whether the current page was loaded after an update */
 #tsbName { color: #fff; font-size: 13px; font-weight: 600; padding-left: 4px; white-space: nowrap; text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8); }
 #tsbName .ver { font-size: 10px; font-weight: 400; opacity: .75; }
+
+/* Top bar: chosen by the user (tools.js) – the name gives way on narrow phones */
+#tsbName { min-width: 0; overflow: hidden; text-overflow: ellipsis; flex-shrink: 1; }
+#tsb .grow { flex: 1 1 0; }
+#tsb .tsb-btn { flex-shrink: 0; color: #fff; }
+@media (max-width: 420px) { .tsb-btn { width: 42px; } #tsbName .ver { display: none; } }
+.tb-edit { background: none; border: 1px solid var(--line); border-radius: 3px; color: #fff; font: 500 14px var(--font); padding: 4px 10px; min-width: 40px; }
+#tbCount { font-size: 12px; color: var(--mut); font-weight: 400; }
+.tb-foot { display: none; align-items: center; gap: 10px; padding: 10px 14px; font-size: 13px; color: var(--mut); border-top: 1px solid var(--line); }
+.tb-foot span { flex: 1; }
+.tb-foot .mbtn { width: auto; margin: 0; padding: 6px 12px; }
+.tb-editing .tb-foot { display: flex; }
+.tb-editing .sb-grid .tile { outline: 1px dashed rgba(255, 255, 255, 0.18); outline-offset: -4px; }
+.tb-editing .sb-grid .tile::after { content: '☆'; position: absolute; top: 6px; right: 8px; font-size: 18px; color: var(--mut); }
+.tb-editing .sb-grid .tile.on-bar::after { content: '★'; color: #ffcc00; }
+.tb-editing .sb-grid .tile.on-bar { background: #26303b; }
+
+/* Drop-down menus of the top bar (drawing, rotation) */
+.tmenu { position: fixed; z-index: 6020; top: calc(54px + var(--top)); left: 50%; transform: translateX(-50%); width: min(380px, calc(100vw - 16px));
+  background: var(--sheet); border: 1px solid var(--line); border-radius: 6px; box-shadow: 0 4px 16px rgba(0, 0, 0, 0.6); padding: 6px; }
+.dm-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 4px; }
+.dm-btn { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 2px; background: var(--tile); border: 1px solid var(--line); border-radius: 4px; color: #fff; font: 12px var(--font); }
+.dm-btn svg { width: 30px; height: 30px; }
+.dm-btn.active, .dm-btn:active { background: #2b313a; border-color: var(--blue); }
+.dm-colors { grid-template-columns: repeat(9, 1fr); margin-top: 6px; }
+.dm-color { height: 28px; border: 2px solid #555; border-radius: 50%; padding: 0; aspect-ratio: 1; justify-self: center; }
+.dm-color.active { border-color: #fff; box-shadow: 0 0 0 2px var(--blue); }
+.dm-title { font-size: 13px; color: var(--mut); padding: 4px 6px 6px; }
+.dm-item { display: block; width: 100%; text-align: left; padding: 11px 12px; background: none; border: none; border-top: 1px solid var(--line); color: #fff; font: 15px var(--font); }
+.dm-item.active::after { content: '✓'; float: right; color: var(--blue); }
+
+#shapeBar { position: fixed; z-index: 7200; left: 0; right: 0; bottom: 0; padding: 8px 10px calc(8px + var(--bottom)); background: var(--sheet); border-top: 1px solid var(--line); }
+
+/* Bloodhound */
+#houndHint { position: fixed; z-index: 6008; top: calc(56px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
+  background: rgba(0, 0, 0, 0.75); color: #fff; padding: 6px 8px 6px 12px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
+#houndHint.hidden { display: none; }
+#houndHint button { background: none; border: none; color: #fff; font-size: 15px; padding: 0 4px; }
+#houndBar { position: fixed; z-index: 6008; top: calc(54px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
+  display: flex; align-items: center; gap: 10px; background: rgba(20, 22, 26, 0.92); border: 1px solid #ff3b30; border-radius: 6px; padding: 5px 6px 5px 10px; }
+#houndBar.hidden { display: none; }
+.hb-icon { color: #ff3b30; font-size: 18px; }
+.hb-text { display: flex; flex-direction: column; font-size: 13px; line-height: 1.25; min-width: 0; }
+.hb-text b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#houndBar button { background: #5a1d1a; border: 1px solid #ff3b30; color: #fff; border-radius: 3px; padding: 6px 10px; font: 500 13px var(--font); }
+.hound-label { color: #fff !important; border-color: #ff3b30 !important; }
+body:has(#houndBar:not(.hidden)) #toast, body:has(#houndHint:not(.hidden)) #toast { top: calc(108px + var(--top)); }
+body:has(.tmenu:not(.hidden)) #toast { top: calc(190px + var(--top)); }

@@ -368,6 +368,8 @@ function popupHtml(it) {
     : c.type.startsWith('b-m-p') ? 'Point' : c.type === 'u-rb-a' ? 'R&amp;B line' : c.type.startsWith('u-d') ? 'Drawing' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
   rows.push(`<div class="t">${esc(c.callsign || c.uid)}</div><div class="k">${kind}</div>`);
   if (isRb(c)) rows.push(`<div><b>${esc(rbText(c))}</b></div>`);
+  const size = shapeSize(c);
+  if (size) rows.push(`<div><b>${size}</b></div>`);
   if (Number.isFinite(c.lat)) rows.push(`<div>${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}${Number.isFinite(c.hae) && c.hae < 9e6 ? ` · ${Math.round(c.hae)} m` : ''}</div>`);
   if (me && Number.isFinite(c.lat)) rows.push(`<div class="k">${fmtDist(distance(me, c))} · ${Math.round(bearing(me, c))}°</div>`);
   if (c.speed > 0.5) rows.push(`<div class="k">${(c.speed * 3.6).toFixed(0)} km/h</div>`);
@@ -377,9 +379,21 @@ function popupHtml(it) {
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
   if (c.type.startsWith('a-') && c.team && it.uid !== profile.uid) rows.push(`<button type="button" class="play" data-msg="${esc(c.uid)}">✉ MESSAGE</button>`);
+  if (Number.isFinite(c.lat) && it.uid !== profile.uid && !isRb(c)) rows.push(`<button type="button" class="play" data-hound="${esc(c.uid)}">BLOODHOUND</button>`);
   if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
   if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
+}
+
+// size of a drawing: radius of a circle, length of a line, perimeter of a closed shape
+function shapeSize(c) {
+  if (c.type === 'u-d-c-c' && c.ellipse) return 'Radius ' + fmtDist(Number(c.ellipse.getAttribute('major')) || 0);
+  if (!c.type.startsWith('u-d') || c.linkPoints.length < 2) return '';
+  let len = 0;
+  for (let i = 1; i < c.linkPoints.length; i++) len += distance({ lat: c.linkPoints[i - 1][0], lon: c.linkPoints[i - 1][1] }, { lat: c.linkPoints[i][0], lon: c.linkPoints[i][1] });
+  const p = c.linkPoints, closed = c.type === 'u-d-r' || (p.length > 2 && p[0][0] === p[p.length - 1][0] && p[0][1] === p[p.length - 1][1]);
+  if (c.type === 'u-d-r') len += distance({ lat: p[p.length - 1][0], lon: p[p.length - 1][1] }, { lat: p[0][0], lon: p[0][1] });
+  return (closed ? 'Perimeter ' : 'Length ') + fmtDist(len);
 }
 
 // like ATAK: every marker, point and drawing can be moved, renamed and deleted by anyone –
@@ -1128,7 +1142,7 @@ function setTool(t) {
   tool = t;
   for (const b of document.querySelectorAll('[data-tool]')) b.classList.toggle('active', b.dataset.tool === t);
   $('placeHint').classList.toggle('hidden', !t);
-  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing); // a tap hits the map
+  map.getContainer().classList.toggle('drawing', !!t || measuring || drawing || !!(window.eudTools && eudTools.capturing())); // a tap hits the map
   if (t) { follow = false; $('btnLocate').classList.remove('active'); setPitch(0); }
 }
 
@@ -1165,6 +1179,8 @@ function wirePopup(root, close) {
   if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
   const msg = root.querySelector('[data-msg]');
   if (msg) msg.addEventListener('click', () => { close(); openChat('dm:' + msg.getAttribute('data-msg')); });
+  const hound = root.querySelector('[data-hound]');
+  if (hound) hound.addEventListener('click', () => { close(); document.dispatchEvent(new CustomEvent('eud-hound', { detail: { uid: hound.getAttribute('data-hound') } })); });
   const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
@@ -2066,6 +2082,7 @@ function drawCorridor() {
   ]).addTo(map);
 }
 map.on('click', e => {
+  if (window.eudMapTap && window.eudMapTap(e.latlng)) return; // drawing shapes, picking a Bloodhound target (tools.js)
   if (tool) return placeMarker(e.latlng); // symbol selected: a tap places the marker (like ATAK)
   if (measuring) return addMeasurePoint(e.latlng);
   if (!drawing) return;
@@ -2521,7 +2538,8 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, destPoint, serverOnline,
+  sendCot, cotTime, saveProfile, closeSheets, setTool, setPitch, items, stopMeasure: () => { if (measuring) toggleMeasure(); }, getMe: () => me, battery: () => battery };
 
 loadPicture();
 renderChat();

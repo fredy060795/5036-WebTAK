@@ -86,6 +86,31 @@
 
 <div id="measureHint" class="hidden">Tap start and end point · tap R&amp;B again to finish</div>
 <div id="placeHint" class="hidden">Tap the map to place the marker</div>
+<div id="houndHint" class="hidden">Bloodhound: tap the target – a marker, a user or a point on the map <button type="button" id="houndPickCancel" aria-label="Cancel">✕</button></div>
+
+<!-- Drawing (drop-down from the top bar, like ATAK) -->
+<div id="drawMenu" class="tmenu hidden">
+  <div class="dm-row" id="drawShapes"></div>
+  <div class="dm-row dm-colors" id="drawColors"></div>
+</div>
+<div id="rotMenu" class="tmenu hidden">
+  <div class="dm-title">Screen rotation</div>
+  <button type="button" class="dm-item" data-rot="auto">Auto rotate</button>
+  <button type="button" class="dm-item" data-rot="portrait">Portrait (locked)</button>
+  <button type="button" class="dm-item" data-rot="landscape">Landscape (locked)</button>
+</div>
+<div id="shapeBar" class="hidden">
+  <div class="draw-hint" id="shapeHint"></div>
+  <div class="draw-btns">
+    <button type="button" class="mbtn" id="shapeUndo">UNDO</button>
+    <button type="button" class="mbtn red" id="shapeCancel">CANCEL</button>
+    <button type="button" class="mbtn pri" id="shapeDone">DONE</button>
+  </div>
+</div>
+<div id="houndBar" class="hidden">
+  <span class="hb-icon">⟶</span><span class="hb-text"><b id="houndName"></b><span id="houndInfo"></span></span>
+  <button type="button" id="houndStop">STOP</button>
+</div>
 
 <!-- Markers (drop-down sheet, opened with the marker button) -->
 <section id="toolbar" class="sheet hidden">
@@ -169,33 +194,42 @@
 <div id="sidebar" class="hidden">
   <div class="sb-overlay" data-sbclose></div>
   <section class="sheet tools">
-    <div class="sheet-head"><span>Tools</span><button type="button" class="sheet-x" data-sbclose aria-label="Close">✕</button></div>
+    <div class="sheet-head"><span id="sbTitle">Tools</span><span id="tbCount" class="hidden"></span><button type="button" class="tb-edit" id="tbEdit" title="Customize the top bar">✎</button><button type="button" class="sheet-x" data-sbclose aria-label="Close">✕</button></div>
     <div class="sb-grid">
-      <button type="button" class="tile" data-open="server">
+      <button type="button" class="tile" data-open="server" data-tb="server">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="3" y="3" width="18" height="7" rx="1"/><rect x="3" y="14" width="18" height="7" rx="1"/><circle cx="7" cy="6.5" r="0.9" fill="#fff"/><circle cx="7" cy="17.5" r="0.9" fill="#fff"/></svg><span>Servers</span></button>
-      <button type="button" class="tile" data-open="contacts">
+      <button type="button" class="tile" data-open="contacts" data-tb="contacts">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="8" cy="8" r="3"/><circle cx="16" cy="8" r="3"/><path d="M2 20a6 6 0 0 1 12 0M10 20a6 6 0 0 1 12 0"/></svg><span>Contacts &amp; Markers</span></button>
-      <button type="button" class="tile" data-open="clear">
+      <button type="button" class="tile" data-open="clear" data-tb="clear">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13M10 11v6M14 11v6"/></svg><span>Clear Content</span></button>
-      <button type="button" class="tile" data-open="data">
+      <button type="button" class="tile" data-open="data" data-tb="data">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="4" y="3" width="16" height="18" rx="1"/><path d="M4 13h16M9 17h6M9 3v5l3-2 3 2V3"/></svg><span>Data Packages</span></button>
-      <button type="button" class="tile" data-open="map">
+      <button type="button" class="tile" data-open="map" data-tb="map">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M2 6l7-3 6 3 7-3v15l-7 3-6-3-7 3z"/><path d="M9 3v15M15 6v15"/></svg><span>Maps</span></button>
-      <button type="button" class="tile" data-open="overlays">
+      <button type="button" class="tile" data-open="overlays" data-tb="overlays">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M12 3 2 8l10 5 10-5-10-5z"/><path d="m2 12 10 5 10-5"/><path d="m2 16 10 5 10-5"/></svg><span>Overlays</span></button>
-      <button type="button" class="tile" data-open="sync">
+      <button type="button" class="tile" data-open="sync" data-tb="sync">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M20 7A9 9 0 0 0 4.6 6.4L3 8M4 17a9 9 0 0 0 15.4.6L21 16"/><path d="M3 3v5h5M21 21v-5h-5"/></svg><span>Data Sync</span></button>
-      <button type="button" class="tile" data-open="video">
+      <button type="button" class="tile" data-open="video" data-tb="video">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="6" width="14" height="12" rx="1"/><path d="M16 10l6-3v10l-6-3"/></svg><span>Video</span></button>
-      <button type="button" class="tile" data-open="mesh">
+      <button type="button" class="tile" data-open="mesh" data-tb="mesh">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linejoin="miter" stroke-miterlimit="10"><clipPath id="meshClip2"><rect x="0" y="4.5" width="24" height="14.9"/></clipPath><g clip-path="url(#meshClip2)"><path d="M3.8 21 10.5 3"/><path d="M9.6 21 15.8 4.4 21.6 21"/></g></svg><span>Meshtastic</span><i id="meshTileDot" class="tile-dot hidden"></i></button>
-      <button type="button" class="tile" id="btnMeasure">
+      <button type="button" class="tile" id="btnMeasure" data-tb="rb">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span>R&amp;B Line</span></button>
-      <button type="button" class="tile" data-open="chat">
+      <button type="button" class="tile" data-tb="draw">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="9" cy="9" r="6"/><rect x="10" y="10" width="11" height="11"/></svg><span>Draw</span></button>
+      <button type="button" class="tile" data-tb="hound">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="5" cy="19" r="2.2"/><path d="M6.8 17.2 17 7" stroke-dasharray="2.5 2"/><circle cx="18.5" cy="5.5" r="3"/><circle cx="18.5" cy="5.5" r="0.9" fill="#fff"/></svg><span>Bloodhound</span></button>
+      <button type="button" class="tile" data-tb="markers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><path d="M11 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 1.1-.3 2.3-.8 3.4"/><circle cx="11" cy="10" r="2.2"/><path d="M18 15v6M15 18h6"/></svg><span>Markers</span></button>
+      <button type="button" class="tile" data-tb="rotate">
+        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="8" y="3" width="8" height="14" rx="1.5"/><path d="M11 14.5h2"/><path d="M4 12a8 8 0 0 0 7 8.5M20 12a8 8 0 0 0-3-6.3"/><path d="m9 19 2 1.5-1.5 2M15.6 4.4l1.4 1.3-1.8 1"/></svg><span>Screen Rotation</span></button>
+      <button type="button" class="tile" data-open="chat" data-tb="chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Chat</span></button>
-      <button type="button" class="tile" data-open="me">
+      <button type="button" class="tile" data-open="me" data-tb="me">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.7 1.7 0 0 0 .3 1.8l.1.1a2 2 0 1 1-2.8 2.8l-.1-.1a1.7 1.7 0 0 0-1.8-.3 1.7 1.7 0 0 0-1 1.5V21a2 2 0 1 1-4 0v-.1a1.7 1.7 0 0 0-1.1-1.5 1.7 1.7 0 0 0-1.8.3l-.1.1a2 2 0 1 1-2.8-2.8l.1-.1a1.7 1.7 0 0 0 .3-1.8 1.7 1.7 0 0 0-1.5-1H3a2 2 0 1 1 0-4h.1a1.7 1.7 0 0 0 1.5-1.1 1.7 1.7 0 0 0-.3-1.8l-.1-.1a2 2 0 1 1 2.8-2.8l.1.1a1.7 1.7 0 0 0 1.8.3H9a1.7 1.7 0 0 0 1-1.5V3a2 2 0 1 1 4 0v.1a1.7 1.7 0 0 0 1 1.5 1.7 1.7 0 0 0 1.8-.3l.1-.1a2 2 0 1 1 2.8 2.8l-.1.1a1.7 1.7 0 0 0-.3 1.8V9a1.7 1.7 0 0 0 1.5 1H21a2 2 0 1 1 0 4h-.1a1.7 1.7 0 0 0-1.5 1z"/></svg><span>Settings</span></button>
     </div>
+    <div class="tb-foot"><span>Tools marked ★ sit in the top bar, in the order you tap them. Stored on this device.</span><button type="button" class="mbtn" id="tbReset">DEFAULT</button></div>
   </section>
 </div>
 
@@ -475,5 +509,6 @@
 <script src="data.js"></script>
 <script src="meshproto.js"></script>
 <script src="mesh.js"></script>
+<script src="tools.js"></script>
 </body>
 </html>

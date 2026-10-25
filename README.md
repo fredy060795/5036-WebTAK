@@ -166,8 +166,20 @@ At `https://<server>/eud/` there is **WebTAK**, a lean TAK client as a web app (
 with an **English** user interface (multinational). Runs on Android and iPhone (Safari → Share → "Add to
 Home Screen"). Laid out like ATAK:
 
-- **Top bar:** maps (layers), markers, chat, video, tools (menu as a tile grid like ATAK:
-  Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, R&B Line, Chat, Settings).
+- **Top bar like ATAK, put together by the user:** by default maps, markers, draw, chat and video, plus the menu
+  (tile grid: Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, Meshtastic,
+  R&B Line, Draw, Bloodhound, Markers, Screen Rotation, Chat, Settings). Menu → **✎**: tap tools to put them on top
+  (★, up to 8, in the order tapped), DEFAULT resets. Stored on the device in the profile – survives every update.
+- **Draw** (top bar, circle-and-square icon like ATAK): opens **Line, Rectangle, Polygon, Circle** and 9 colors.
+  Line/polygon: tap the points, then DONE; rectangle: two opposite corners; circle: center and a point on the edge.
+  The shapes are ATAK CoT (`u-d-f`, `u-d-r`, `u-d-c-c` with stroke/fill colors) – they show in ATAK/WinTAK/iTAK,
+  go to all servers and over Meshtastic, and can be renamed and deleted; the window shows radius/length.
+- **Bloodhound:** in the window of a marker, user or drawing → BLOODHOUND, or the Bloodhound tool and tap a target
+  (marker, user or a point on the map). A line from the own position to the target with distance, bearing and – while
+  moving – time of arrival, updated every second (red, < 500 m yellow, < 100 m green). STOP ends it.
+- **Screen rotation:** tool **Screen Rotation** – portrait or landscape locked (the screen then no longer tips over when the phone is turned), or auto. Stored.
+  Android: works in the installed app; in the browser WebTAK switches to full screen for it. iPhone/iPad do not allow
+  web apps to lock it – use the rotation lock in the Control Center there.
 - **Contacts & Markers** split by type like the ATAK overlay manager: **Contacts** (users), markers
   **Friendly / Hostile / Neutral / Unknown** (by 2525 affiliation), other points, drawings & routes –
   every group can be expanded and collapsed and cleared on its own with 🗑. **Clear Content** clears several groups at
