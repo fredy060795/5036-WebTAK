@@ -445,16 +445,32 @@ function sensorOf(c) {
   return { az, fov: Math.min(fov, 359), range: range > 0 ? Math.min(range, 50000) : 100, color };
 }
 // the cone ("funnel") on the map: tip at the camera, opening in the view direction
+const FOV_MIN_PX = 70; // a cone is at least this long on the screen – 100 m are only a few pixels when zoomed out
 function fovLayer(lat, lon, s, faded) {
+  const mpp = (40075016.686 * Math.cos(lat * Math.PI / 180)) / (256 * 2 ** map.getZoom()); // metres per pixel
+  const range = Math.max(s.range, mpp * FOV_MIN_PX);
   const pts = [[lat, lon]];
   const n = Math.max(6, Math.ceil(s.fov / 5));
   for (let i = 0; i <= n; i++) {
-    const p = destPoint(lat, lon, s.range, s.az - s.fov / 2 + (s.fov * i) / n);
+    const p = destPoint(lat, lon, range, s.az - s.fov / 2 + (s.fov * i) / n);
     pts.push([p.lat, p.lon]);
   }
-  // light overlay: thin edge, almost transparent – the map underneath stays readable
-  return L.polygon(pts, { color: s.color, weight: 1, opacity: faded ? 0.25 : 0.55, fillColor: s.color, fillOpacity: faded ? 0.03 : 0.08, interactive: false });
+  // light overlay: clear edge, translucent fill – the map underneath stays readable
+  const l = L.polygon(pts, { color: s.color, weight: 1.5, opacity: faded ? 0.35 : 0.85, fillColor: s.color, fillOpacity: faded ? 0.04 : 0.12, interactive: false });
+  l._fov = { lat, lon, s, faded };
+  return l;
 }
+// zooming changes the minimum length: draw the cones again
+map.on('zoomend', () => {
+  for (const it of items.values()) {
+    if (!it.fov) continue;
+    const { lat, lon, s, faded } = it.fov._fov;
+    it.fov.remove();
+    it.fov = fovLayer(lat, lon, s, faded).addTo(shapesLayer);
+  }
+  if (meFov) { const az = meFov._az; drawMeFov(); if (meFov) meFov._az = az; }
+  if (window.view3d) view3d.dirty();
+});
 
 function drawItem(it) {
   const c = it.c;
@@ -928,14 +944,16 @@ document.addEventListener('visibilitychange', () => {
 let meMarker = null, meCircle = null, meFov = null, follow = true, lastSent = 0, sentAt = null, sentAz = null;
 
 // own camera while streaming: field of view for ATAK/WebTAK (<sensor>). Phone camera: direction of the
-// back of the phone (compass); helmet camera: the phone is not on the helmet -> GPS course while moving.
+// back of the phone (compass); helmet camera: GPS course while moving, standing still the phone's compass
+// (the phone is not on the helmet – it fits when it is carried facing forward, e.g. on the chest).
 const CAM_FOV = { phone: { fov: 60, vfov: 45, model: 'Phone camera' }, ble: { fov: 66, vfov: 50, model: 'Helmet camera' } };
 const CAM_RANGE = 100;
 function camSensor() {
   const kind = window.eudVideoUrl && CAM_FOV[window.eudVideoSource];
   if (!kind || !me) return null;
   const moving = Number.isFinite(me.course) && me.speed > 0.5;
-  const az = window.eudVideoSource === 'phone' && camHeading != null ? camHeading : moving ? me.course : null;
+  const az = window.eudVideoSource === 'phone' ? (camHeading != null ? camHeading : moving ? me.course : null)
+    : moving ? me.course : heading;
   return az == null ? null : { az: Math.round(az) % 360, fov: kind.fov, vfov: kind.vfov, model: kind.model, range: CAM_RANGE, color: TEAMS[profile.team] || '#00FFFF' };
 }
 
@@ -1008,7 +1026,7 @@ function drawMeFov() {
 // streaming: compass on (also in north-up mode); the view turns -> the cone follows, others see it within seconds
 let camWatch = false;
 setInterval(() => {
-  const want = !!window.eudVideoUrl && window.eudVideoSource === 'phone';
+  const want = !!window.eudVideoUrl && !!CAM_FOV[window.eudVideoSource];
   if (want && !camWatch) { camWatch = true; startHeading(); }
   if (!want && camWatch) { camWatch = false; if (compassMode !== 'heading') stopHeading(); camHeading = null; }
   if (!me) return;
