@@ -522,6 +522,41 @@
     }
   });
 
+  // ---------------- Device profile of the TAK server (like ATAK) ----------------
+  // After enrolling: the enrollment profile once (map sources, data packages "on enrollment"); on every connection
+  // the connection profile with only what is new since the last sync ("on connection" in OpenTAKServer).
+  const profileBusy = new Set();
+  async function syncProfile(srv) {
+    if (!srv || !srv.certPem || profileBusy.has(srv.id)) return;
+    profileBusy.add(srv.id);
+    const parts = [];
+    try {
+      const steps = srv.enrollProfile ? ['enrollment', 'connection'] : ['connection'];
+      for (const kind of steps) {
+        const secago = kind === 'connection' && srv.profileSync ? Math.ceil((Date.now() - srv.profileSync) / 1000) : -1;
+        const r = await marti('profile', { kind, uid: profile.uid, secago }, srv);
+        if (kind === 'enrollment') srv.enrollProfile = false;
+        else srv.profileSync = Date.now();
+        saveServers();
+        if (r.empty) continue;
+        for (const xml of r.cot || []) handleCot(xml);
+        if ((r.overlays || []).length) await saveOverlays(r.overlays, 'profile:' + srv.host, false);
+        const maps = window.eud.addTakMaps(r.maps);
+        window.eud.applyProfilePrefs(r.prefs);
+        if ((r.overlays || []).length) parts.push(`${r.overlays.length} overlay(s)`);
+        if ((r.cot || []).length) parts.push(`${r.cot.length} item(s)`);
+        if (maps) parts.push(`${maps} map source(s) – Menu → Maps`);
+        if ((r.errors || []).length) parts.push(`${r.errors.length} part(s) failed`);
+      }
+      if (parts.length) toast(`From ${srv.name || srv.host}: ${parts.join(', ')}.`, 6000);
+    } catch (err) {
+      if (srv.enrollProfile) toast(`Device profile of ${srv.name || srv.host}: ${err.message}`, 6000);
+    } finally {
+      profileBusy.delete(srv.id);
+    }
+  }
+  document.addEventListener('eud-connected', e => syncProfile(e.detail.srv));
+
   // ---------------- Overlays from the device ----------------
 
   $('ovFile').addEventListener('change', async e => {

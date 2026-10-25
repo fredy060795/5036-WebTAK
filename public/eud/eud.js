@@ -74,11 +74,14 @@ const SOURCES = {
   sat: { name: 'Esri Satellite', maxZoom: 19, attribution: '© Esri' },
   esritopo: { name: 'Esri Topo', maxZoom: 19, attribution: '© Esri' },
 };
+// map sources from the TAK server's device profile (ATAK customMapSource): straight from their tile server
+for (const m of store.get('eud.takMaps', [])) SOURCES[m.id] = { name: m.name + ' (TAK server)', maxZoom: m.maxZoom || 19, attribution: '', url: m.url };
 const TILE_BASE = new URL('tiles/', location.href).pathname; // /eud/tiles/
 if (!SOURCES[profile.tiles] && profile.tiles !== 'custom') profile.tiles = 'osm';
 
 function sourceTemplate(id) {
   if (id === 'custom') return profile.customUrl || '';
+  if (SOURCES[id] && SOURCES[id].url) return SOURCES[id].url;
   return TILE_BASE + id + '/{z}/{x}/{y}.png';
 }
 function sourceMaxZoom(id) { return id === 'custom' ? 20 : SOURCES[id].maxZoom; }
@@ -835,7 +838,11 @@ function openConn(srv) {
     const was = c.state;
     c.state = msg.state;
     c.message = msg.message || '';
-    if (msg.state === 'connected' && was !== 'connected') { toast('Connected: ' + (srv.name || srv.host)); sendSelfTo(srv); }
+    if (msg.state === 'connected' && was !== 'connected') {
+      toast('Connected: ' + (srv.name || srv.host));
+      sendSelfTo(srv);
+      document.dispatchEvent(new CustomEvent('eud-connected', { detail: { srv } })); // device profile (data.js)
+    }
     if (msg.state === 'untrusted') {
       askTrust(`${srv.host}:${srv.port}`, msg.fingerprint, msg.subject).then(ok => {
         if (!ok) return disconnectServer(srv);
@@ -1355,6 +1362,37 @@ function applyAssignment(a) {
   if (changed) { toast(`Assigned by administrator: ${profile.callsign} (${profile.team})`, 5000); sendSelf(); }
 }
 
+// settings from the TAK server's device profile (like ATAK): callsign, team, role – an administrator's
+// assignment (WebTAK) has priority
+function applyProfilePrefs(p) {
+  if (!p || profile.assigned) return;
+  const next = { callsign: p.callsign || profile.callsign, team: TEAMS[p.team] ? p.team : profile.team, role: ROLES.includes(p.role) ? p.role : profile.role };
+  if (next.callsign === profile.callsign && next.team === profile.team && next.role === profile.role) return;
+  Object.assign(profile, next);
+  saveProfile();
+  showMe();
+  if (typeof updateSelfInfo === 'function') updateSelfInfo();
+  if (me) drawMe();
+  toast(`Set by the TAK server: ${profile.callsign} (${profile.team}, ${profile.role})`, 5000);
+  sendSelf();
+}
+// map sources from a device profile: into the map menu (kept on the device)
+function addTakMaps(list) {
+  const known = store.get('eud.takMaps', []);
+  let added = 0;
+  for (const m of list || []) {
+    const id = 'tak-' + (m.name || m.url).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const rec = { id, name: m.name, url: m.url, maxZoom: m.maxZoom };
+    const i = known.findIndex(k => k.id === id);
+    if (i >= 0) known[i] = rec; else { known.push(rec); added++; }
+    const isNew = !SOURCES[id];
+    SOURCES[id] = { name: m.name + ' (TAK server)', maxZoom: m.maxZoom || 19, attribution: '', url: m.url };
+    if (isNew) $('fTiles').insertBefore(new Option(SOURCES[id].name, id), $('fTiles').querySelector('option[value="custom"]'));
+  }
+  store.set('eud.takMaps', known);
+  return added;
+}
+
 function fillMe() {
   $('fCallsign').value = profile.callsign;
   $('fTeam').value = profile.team;
@@ -1548,6 +1586,7 @@ async function requestCert(password) {
         draft.certPem = r.certPem;
         draft.keyPem = r.keyPem;
         draft.certInfo = r.info;
+        draft.enrollProfile = true; // fetch the enrollment profile (maps, data packages) on the next connection, like ATAK
         draft.password = password; // confirmed by the TAK server: the drone/camera address (RTMP/SRT) needs it, like ATAK keeps it
         addCas(draft, r.caPems);
         $('fPass').value = '';
@@ -2464,7 +2503,7 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, forwardCot: xml => sendCot(xml, false), fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
 
 loadPicture();
 renderChat();

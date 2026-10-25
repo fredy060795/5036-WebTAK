@@ -228,6 +228,12 @@ prefixed KML (`kml:Placemark`), Google Earth tracks (`gx:Track`), coordinates wi
 (offline, `http://` on an https page) become dots. A file that only links to data elsewhere (My Maps "Keep data up to
 date") gets a hint to export it with the data.
 
+**Device profile like ATAK (auto-enrollment):** after logging in, WebTAK fetches the TAK server's enrollment profile
+once and on every connection the connection profile (only what is new since the last sync). In OpenTAKServer these
+are the data packages marked "install on enrollment/connection", the map sources (they appear under Menu → Maps as
+"… (TAK server)", also for saving offline and 3D) and device profile settings (callsign, team, role – an
+administrator's assignment in WebTAK has priority).
+
 **Map** (Menu → Map): choose the source (OpenStreetMap, OpenTopoMap, Esri Satellite/Topo or a custom
 URL with `{z}/{x}/{y}`). Tiles go through this server and are cached there under `DATA_DIR/tiles`.
 **Save offline:** the visible area or a drawn **corridor**
