@@ -75,6 +75,27 @@ srt://<TAK server>:8890?streamid=publish:drone-<callsign>:<user>:<password>
 
 Ports 1935 (RTMP), 8554 (RTSP) and 8890/udp (SRT) must be reachable on the TAK server.
 
+**Drone address without a password:** whoever logged in on this device in WebTAK (user + password, QR code with
+login, setup package) or opened it from the access page gets the address under Video → Drone right away – unique per
+user (`drone-<callsign>`). The password is kept on the device only after the TAK server confirmed it (like ATAK).
+
+## Field of view and drone telemetry (UAS in HQ)
+
+- **Cones ("funnels")** show where a camera looks: for every contact or marker with a field of view (`<sensor>` like in
+  ATAK – e.g. ATAK UAS Tool, other WebTAK users), in 2D and 3D.
+- **Own stream:** while the phone or helmet camera is live, the own position carries the view direction, angle
+  (60°/66°) and 100 m range – ATAK and WebTAK show the cone. Phone camera: direction of the back of the phone (compass,
+  also in north-up mode); helmet camera: the phone is not on the helmet, so the GPS course while moving.
+- **Drone telemetry (KLV, MISB ST 0601):** when a drone feed carries KLV (professional drones, ATAK UAS Tool, QGroundControl,
+  STANAG 4609 encoders), WebTAK shows while watching it: **the drone** (position, height, view direction and cone),
+  **the image area on the ground** (corners from KLV or computed from height, angle and field of view) and **the image
+  centre** (SPI). The player shows e.g. `UAS 1050 m · 227° · FOV 60° ⌖` (tap = drone on the map). The viewer also
+  sends the drone to the TAK server, so ATAK in HQ sees it too.
+  - The server reads the KLV track with ffmpeg while someone watches (shared by all viewers). For feeds of the own
+    TAK server it uses RTSP of MediaMTX with the OTS login (RTSP keeps KLV, OTS's HLS usually does not).
+  - **DJI Fly / DJI Pilot 2 (RTMP)** send only the video – no position or direction of the drone. Use a KLV source or
+    ATAK UAS Tool for that.
+
 ## Aligning the image (every helmet is mounted differently)
 
 The user can align on the phone (card "Align") and the admin in the viewer window – both see the same setting.

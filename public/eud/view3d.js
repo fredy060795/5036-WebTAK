@@ -193,6 +193,7 @@
     const shapes = [];
     for (const it of items.values()) {
       if (!it.c) continue;
+      if (it.fov) shapes.push(layerFeature(it.fov)); // field of view (cone)
       if (!isPoint(it.c)) {
         const f = it.layer && layerFeature(it.layer);
         if (f) shapes.push(f);
@@ -230,6 +231,7 @@
       m.on('dragend', () => { const ll = m.getLngLat(); updateOwn(rec.it, { lat: ll.lat, lon: ll.lng }); });
       marks.set(it.uid, rec);
     }
+    if (meFov) shapes.push(layerFeature(meFov)); // own camera while streaming
     for (const [uid, rec] of marks) if (!seen.has(uid)) { rec.m.remove(); marks.delete(uid); }
     ml.getSource('shapes').setData({ type: 'FeatureCollection', features: shapes });
   }

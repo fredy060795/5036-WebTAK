@@ -28,6 +28,7 @@ const { TakUsers, TEAM_COLORS, ROLES, maskEmail } = require('./lib/takusers');
 const { TakVideo } = require('./lib/takvideo');
 const { atakPackage } = require('./lib/datapackage');
 const { proxyMedia } = require('./lib/mediaproxy');
+const { KlvFeeds } = require('./lib/klvfeed');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -715,6 +716,32 @@ function otsMedia(req) {
   };
 }
 
+// drone telemetry (KLV) of a feed: where to read it. The TAK server's MediaMTX via RTSP with the OTS login
+// (RTSP keeps the KLV track, OTS's HLS usually does not), then the feed address itself if it is allowed.
+const klvFeeds = new KlvFeeds({ ffmpeg: ffmpegOk ? config.ffmpeg : null, log });
+async function klvCandidates(req, raw) {
+  let url;
+  try { url = new URL(raw); } catch (e) { return []; }
+  if (!/^(rtsps?|srt|https?):$/.test(url.protocol)) return [];
+  const out = [];
+  const own = ownTak(url.hostname);
+  const o = takUsers.t.ots || {};
+  const linked = [...takLinks.values()].some(l => l.ip === clientIp(req) && l.state === 'connected');
+  if (own && takUsers.otsConfigured() && linked && o.username && o.password) {
+    // path of the feed: rtsp://host:8554/<path>, http://host:8888/<path>/index.m3u8, https://ots/hls/<path>/…
+    let path = url.pathname.replace(/\/(index|stream)\.m3u8$/i, '').replace(/\/[^/]*\.m3u8$/i, '');
+    if (/^https?:$/.test(url.protocol) && path.startsWith('/hls/')) path = path.slice(4);
+    if (/^rtsps?:$/.test(url.protocol) || url.port === '8888' || url.pathname.startsWith('/hls/')) {
+      const host = own.altHost || url.hostname;
+      out.push({ url: `rtsp://${encodeURIComponent(o.username)}:${encodeURIComponent(o.password)}@${host.includes(':') ? `[${host}]` : host}:8554${path}`, label: `rtsp://${host}:8554${path}` });
+    }
+  }
+  if (!url.username && !url.password && (own || await tak.targetAllowed(takSettings().allowedHosts, url.hostname))) {
+    out.push({ url: url.href, label: url.origin + url.pathname });
+  }
+  return out;
+}
+
 async function takProblem(host, port) {
   const ports = takPorts();
   if (ownTak(host) && ports.includes(Number(port))) return '';
@@ -728,6 +755,23 @@ async function handleEudApi(req, res, route) {
   if (route === 'config' && req.method === 'GET') {
     const t = takSettings();
     return json(res, 200, { preset: t.preset, restricted: !!t.allowedHosts.trim() });
+  }
+  // drone telemetry of a feed as server-sent events (CoT for the drone, image area, image centre)
+  if (route === 'klv' && req.method === 'GET') {
+    const q = new URL(req.url, 'http://x').searchParams;
+    const raw = String(q.get('u') || '').slice(0, 2000);
+    const name = String(q.get('n') || '').slice(0, 80);
+    const candidates = await klvCandidates(req, raw);
+    res.writeHead(200, { 'Content-Type': 'text/event-stream; charset=utf-8', 'Cache-Control': 'no-store', 'X-Accel-Buffering': 'no' });
+    const send = (ev, data) => res.write(`event: ${ev}\ndata: ${JSON.stringify(data)}\n\n`);
+    if (!candidates.length) { send('status', { state: 'no-klv', message: 'No telemetry source for this stream.' }); return res.end(); }
+    let path = '';
+    try { path = new URL(raw).pathname; } catch (e) { /* checked above */ }
+    const slug = (path.replace(/\/(index|stream)\.m3u8$/i, '').replace(/^\/(hls\/)?/, '') || name || 'uas').toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '').slice(0, 60);
+    const close = klvFeeds.watch(candidates[0].url, { candidates, uid: 'UAS-' + slug, name, video: raw }, send);
+    const ping = setInterval(() => res.write(': ping\n\n'), 15000);
+    req.on('close', () => { clearInterval(ping); close(); });
+    return;
   }
   // video feeds (HLS) through our own server so the browser may play them
   if (route === 'media' && req.method === 'GET') {

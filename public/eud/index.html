@@ -144,6 +144,7 @@
     <video id="vwVideo" class="hidden" playsinline muted autoplay controls></video>
     <p id="vwMsg"></p>
     <button type="button" id="vwAlt" class="hidden"></button>
+    <button type="button" id="vwTele" class="hidden" title="Drone telemetry (KLV) – tap: show the drone on the map"></button>
   </div>
 </section>
 
@@ -281,7 +282,8 @@
           <p class="hint">DJI Fly / DJI Pilot 2, OBS or a screen app (e.g. Larix Screencaster) send directly to the TAK server – the feed
             appears for everyone under Video.</p>
           <div id="droneAsk">
-            <p class="hint">Enter your TAK password once to get your address (it is not stored).</p>
+            <p class="hint">Logged in on this device with user and password, or opened from the access page: the address appears
+              by itself. Otherwise enter your TAK password once (it is not stored).</p>
             <div id="droneSrvRow"><label for="droneSrv">TAK server</label><select id="droneSrv" class="in"></select></div>
             <label for="dronePw">TAK password</label><input id="dronePw" class="in" type="password" autocomplete="current-password">
             <button type="button" class="mbtn blue" id="droneMake">SHOW RTMP ADDRESS</button>

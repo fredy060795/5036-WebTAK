@@ -45,6 +45,7 @@
     $('camPickRow').classList.toggle('hidden', source !== 'phone' || $('camSelect').options.length < 2);
     // own SA carries the video link while sending (ATAK shows it on the contact)
     const url = live && streamUrl ? streamUrl + '/stream.ts' : null;
+    window.eudVideoSource = live ? source : null; // phone | ble | screen – for the field of view (eud.js)
     if (url !== window.eudVideoUrl) {
       window.eudVideoUrl = url;
       if (window.eudSendSelf) window.eudSendSelf();
@@ -499,6 +500,7 @@
       h.loadSource(via);
       h.attachMedia(vid);
     };
+    startTele(name, url);
     const h = hlsUrl(url);
     if (!isHttp && !h) {
       giveUp('The browser cannot play ' + url.split(':')[0].toUpperCase() + ' directly.');
@@ -522,7 +524,40 @@
       asVideo(url);
     }
   }
+  // drone telemetry (KLV) of a feed: the server reads it while the feed is watched -> drone with field of view,
+  // image area and image centre on the map; also to the TAK server (every 3 s) so ATAK sees the drone
+  let tele = null, teleFwd = 0;
+  function startTele(name, url) {
+    stopTele();
+    if (!window.EventSource || !/^(rtsps?|srt|https?):\/\//i.test(url)) return;
+    try { if (new URL(url).host === location.host) return; } catch (e) { return; } // own streams carry no KLV
+    const es = new EventSource('/api/eud/klv?u=' + encodeURIComponent(url) + '&n=' + encodeURIComponent(name || ''));
+    tele = es;
+    const chip = $('vwTele');
+    es.addEventListener('cot', ev => {
+      if (tele !== es) return;
+      const d = JSON.parse(ev.data), i = d.info;
+      for (const x of d.xml) window.eud.handleCot(x);
+      if (Date.now() - teleFwd > 3000) { teleFwd = Date.now(); for (const x of d.xml) window.eud.forwardCot(x); }
+      chip.textContent = `UAS${i.alt != null ? ' ' + Math.round(i.alt) + ' m' : ''} · ${String(Math.round(i.az) % 360).padStart(3, '0')}°`
+        + (i.hfov ? ` · FOV ${Math.round(i.hfov)}°` : '') + ' ⌖';
+      chip.onclick = () => window.eud.map.setView([i.lat, i.lon], Math.max(window.eud.map.getZoom(), 15));
+      chip.classList.remove('hidden');
+    });
+    es.addEventListener('status', ev => {
+      if (tele !== es) return;
+      const st = JSON.parse(ev.data);
+      if (['no-klv', 'unsupported', 'busy'].includes(st.state)) { es.close(); tele = null; chip.classList.add('hidden'); } // no telemetry: just video
+      else if (st.state === 'connecting' && !chip.classList.contains('hidden')) chip.textContent = 'UAS: ' + st.message;
+    });
+  }
+  function stopTele() {
+    if (tele) { tele.close(); tele = null; }
+    $('vwTele').classList.add('hidden');
+  }
+
   function stopViewer() {
+    stopTele();
     const img = $('vwImg'), vid = $('vwVideo');
     if (hls) { hls.destroy(); hls = null; }
     $('vwAlt').classList.add('hidden');
@@ -598,8 +633,23 @@
     $('droneBox').classList.remove('hidden');
     return true;
   }
-  $('droneBox').addEventListener('toggle', () => { fillDroneServers(); if ($('droneBox').open) droneFromAccess(); });
-  document.addEventListener('eud-popup', e => { if (e.detail === 'video') { fillDroneServers(); droneFromAccess(); } });
+  // logged in on this device (certificate requested with user + password): the address without typing,
+  // unique per user (drone-<callsign>) – MediaMTX in the TAK server checks exactly this login
+  function droneFromLogin() {
+    const list = window.eud.getServers().filter(x => x.host && x.username && x.password);
+    const srv = list.find(x => x.id === $('droneSrv').value) || list.find(x => x.auto) || list[0];
+    if (!srv) return false;
+    droneUrl(srv.host, srv.username, srv.password);
+    $('droneAsk').classList.add('hidden');
+    return true;
+  }
+  async function droneReady() {
+    fillDroneServers();
+    if (!(await droneFromAccess())) droneFromLogin();
+  }
+  $('droneBox').addEventListener('toggle', () => { if ($('droneBox').open) droneReady(); });
+  $('droneSrv').addEventListener('change', droneFromLogin);
+  document.addEventListener('eud-popup', e => { if (e.detail === 'video') droneReady(); });
   $('droneMake').addEventListener('click', () => {
     const srv = window.eud.getServers().find(x => x.id === $('droneSrv').value) || window.eud.getServers().find(x => x.host);
     if (!srv) return toast('Add a TAK server first.');
