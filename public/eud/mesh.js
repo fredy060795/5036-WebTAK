@@ -316,13 +316,18 @@
     return t;
   }
 
+  // TAK packets (V1) know "All Chat Rooms" and direct messages to a UID – like the ATAK plugin; no team/group rooms
   document.addEventListener('eud-chat-out', e => {
     if (!shouldSend()) return;
-    const { text, xml } = e.detail;
+    const { text, xml, conv = { key: 'all' } } = e.detail;
+    const direct = conv.key.startsWith('dm:');
+    if (conv.key !== 'all' && !direct) { toast('Mesh: team and group chats are not sent over LoRa – use All or a direct message.', 5000); return; }
     const m = /messageId="([^"]+)"/.exec(xml || '');
     const body = fit(text);
-    send(P.PORT.ATAK, P.takChat({ callsign: profile.callsign || profile.uid, uid: profile.uid, msgId: m ? m[1] : '', message: body }))
-      .then(() => (cfg.text ? send(P.PORT.TEXT, P.utf8.encode(fit(`${profile.callsign || profile.uid}: ${text}`))) : null))
+    const to = direct ? conv.uid || conv.key.slice(3) : P.ALL_CHAT;
+    send(P.PORT.ATAK, P.takChat({ callsign: profile.callsign || profile.uid, uid: profile.uid, msgId: m ? m[1] : '', message: body, to }))
+      // plain text is public on the channel: only for All
+      .then(() => (cfg.text && !direct ? send(P.PORT.TEXT, P.utf8.encode(fit(`${profile.callsign || profile.uid}: ${text}`))) : null))
       .then(() => { if (body !== text) toast('Mesh: message shortened to fit one LoRa packet.'); })
       .catch(err => toast('Mesh: sending failed – ' + err.message));
   });

@@ -703,7 +703,7 @@ $('chatForm').addEventListener('submit', e => {
   const xml = chatXml(text, x);
   handleCot(xml, { local: true });
   sendCot(xml, true);
-  document.dispatchEvent(new CustomEvent('eud-chat-out', { detail: { text, xml } })); // Meshtastic (mesh.js)
+  document.dispatchEvent(new CustomEvent('eud-chat-out', { detail: { text, xml, conv: x } })); // Meshtastic (mesh.js)
   $('chatIn').value = '';
 });
 $('chatConv').addEventListener('change', e => setChatConv(e.target.value));

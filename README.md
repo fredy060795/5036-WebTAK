@@ -215,7 +215,8 @@ running, markers and chats wait in the outbox and go out as soon as the connecti
 over Bluetooth (Android: Chrome; iPhone: only in the "Bluefy" app – Safari has no Bluetooth). Positions and chat go
 over LoRa as TAK packets (port 72, like the Meshtastic ATAK plugin), so WebTAK users and ATAK users with the plugin
 see each other without internet. Players with only the Meshtastic app appear on the map as points, their text
-messages in the chat; WebTAK chat is also sent as Meshtastic text (can be switched off).
+messages in the chat. Over LoRa go the chat to All (also as Meshtastic text, can be switched off) and direct
+messages; team and group chats stay on the TAK server (the TAK packets of the plugin have no rooms).
 - **Sending:** by default only while no TAK server is connected (offline) – online the TAK server carries everything.
   "Always" sends over LoRa as well. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
 - **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
