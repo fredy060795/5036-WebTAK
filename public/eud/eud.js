@@ -362,14 +362,18 @@ function popupHtml(it) {
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
-  if (it.own) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
-  if (it.own && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
+  if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
+  if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
 }
 
+// like ATAK: every marker, point and drawing can be moved, renamed and deleted by anyone –
+// only the live position of other devices (contacts with a team) not, the device sends it again anyway
+function editable(it) { return !!it.own || !(it.c.type.startsWith('a-') && it.c.team); }
+
 const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c';
 
-// change an own marker (position and/or name) and send it to all servers
+// change a marker (position and/or name) and send it to all servers – with the same UID, so it changes for everyone
 function updateOwn(it, { lat, lon, name }) {
   const doc = new DOMParser().parseFromString(it.xml, 'application/xml');
   const ev = doc.documentElement;
@@ -391,7 +395,7 @@ function updateOwn(it, { lat, lon, name }) {
     contact.setAttribute('callsign', name);
   }
   const xml = new XMLSerializer().serializeToString(ev);
-  handleCot(xml, { own: true, local: true });
+  handleCot(xml, { own: !!it.own, local: true });
   persistSoon();
   const sent = sendCot(xml, true);
   toast((name != null ? 'Renamed' : 'Moved') + (sent ? ' – sent.' : ' – will be sent once connected.'));
@@ -423,9 +427,9 @@ function drawItem(it) {
       || (pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]);
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
-    // own markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
-    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: !!it.own, autoPan: true }).addTo(pointsLayer);
-    if (it.own) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
+    // markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
+    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: editable(it), autoPan: true }).addTo(pointsLayer);
+    if (editable(it)) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
@@ -932,6 +936,8 @@ function wirePopup(root, close) {
   const btn = root.querySelector('[data-del]');
   if (btn) btn.addEventListener('click', () => {
     const uid = btn.getAttribute('data-del');
+    const it = items.get(uid);
+    if (it && !it.own && !confirm(`Delete "${it.c.callsign || toolName(it.c.type) || uid}" for everyone?`)) return;
     removeItem(uid);
     sendCot(deleteXml(uid), true);
     close();

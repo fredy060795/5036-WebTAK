@@ -211,7 +211,7 @@
         mel.style.width = el.style.width;
         mel.style.height = el.style.height;
         mel.classList.toggle('stale', stale);
-        rec.m.setLngLat([it.c.lon, it.c.lat]).setOffset(offset).setDraggable(!!it.own);
+        rec.m.setLngLat([it.c.lon, it.c.lat]).setOffset(offset).setDraggable(editable(it));
         rec.key = key;
         rec.it = it;
         continue;
@@ -219,7 +219,7 @@
       // Symbols stand upright facing the camera (like in WinTAK) but sit on the terrain.
       // They always stay fully visible (like WinTAK). MapLibre would dim markers whose ground
       // point is hidden by terrain to 20 % – at a steep tilt almost all of them.
-      const m = new lib.Marker({ element: el, offset, draggable: !!it.own, pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
+      const m = new lib.Marker({ element: el, offset, draggable: editable(it), pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
         .setLngLat([it.c.lon, it.c.lat]).addTo(ml);
       rec = { m, key, it };
       el.addEventListener('click', e => {
