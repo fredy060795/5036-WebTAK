@@ -1,7 +1,7 @@
 // Service worker: app, libraries and map tiles stay on the device
 // so the EUD starts and shows the map without internet.
 
-const SHELL_CACHE = 'eud-shell-v17';
+const SHELL_CACHE = 'eud-shell-v18';
 const TILE_CACHE = 'eud-tiles';
 const MAX_TILES = 40000; // saved areas + recently viewed tiles
 const SHELL = [
