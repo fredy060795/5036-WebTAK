@@ -318,6 +318,8 @@ test('allowed TAK servers', () => {
   assert.equal(tak.hostAllowed('', 'anything'), true);
   assert.equal(tak.hostAllowed('tak.example.com, 10.0.0.5', 'TAK.example.com'), true);
   assert.equal(tak.hostAllowed('tak.example.com', 'evil.com'), false);
+  assert.equal(tak.hostAllowed('https://TAK.example.com:8443/, 10.0.0.5:8089', 'tak.example.com'), true);
+  assert.equal(tak.hostAllowed('https://tak.example.com:8443/, 10.0.0.5:8089', '10.0.0.5'), true);
 });
 
 test('without a list: own machine and link-local blocked, explicitly listed allowed', async () => {
@@ -328,4 +330,13 @@ test('without a list: own machine and link-local blocked, explicitly listed allo
   assert.equal(await tak.targetAllowed('', '10.0.0.5'), true);
   assert.equal(await tak.targetAllowed('', 'a b'), false);
   assert.equal(await tak.targetAllowed('127.0.0.1', '127.0.0.1'), true);
+});
+
+test('TAK server on this machine: allowed only on the TAK ports, with the reason otherwise', async () => {
+  const local = { localPorts: [8089, 8443, 8446] };
+  assert.equal(await tak.targetProblem('', '127.0.1.1', { ...local, port: 8089 }), '');
+  assert.equal(await tak.targetProblem('', 'localhost', { ...local, port: 8446 }), '');
+  assert.match(await tak.targetProblem('', '127.0.0.1', { ...local, port: 6379 }), /points to this machine \(127\.0\.0\.1\)/);
+  assert.match(await tak.targetProblem('', '169.254.169.254', { ...local, port: 8089 }), /points to this machine/);
+  assert.match(await tak.targetProblem('tak.example.com', 'other.example.com', local), /missing in the list/);
 });

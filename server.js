@@ -663,15 +663,22 @@ function ownTak(host) {
   const o = takUsers.t.ots || {};
   let internal = '';
   try { internal = new URL(o.url).hostname.replace(/^\[|\]$/g, ''); } catch (e) { /* no OTS address */ }
-  const names = [o.host, internal].filter(Boolean).map(x => x.toLowerCase());
+  const names = [o.host, internal, (takSettings().preset || {}).host].filter(Boolean).map(x => x.toLowerCase());
   if (!host || !names.includes(host.toLowerCase())) return null;
-  return { ports: [o.streamPort || 8089, o.enrollPort || tak.ENROLL_PORT, o.apiPort || tak.API_PORT], altHost: internal.toLowerCase() !== host.toLowerCase() ? internal : '' };
+  return { altHost: internal && internal.toLowerCase() !== host.toLowerCase() ? internal : '' };
 }
 
-async function takAllowed(host, port) {
-  const own = ownTak(host);
-  if (own && own.ports.includes(Number(port))) return true;
-  return tak.targetAllowed(takSettings().allowedHosts, host);
+function takPorts() {
+  const o = takUsers.t.ots || {};
+  const p = takSettings().preset || {};
+  return [o.streamPort, o.enrollPort, o.apiPort, p.port, p.enrollPort, 8089, tak.ENROLL_PORT, tak.API_PORT].filter(Boolean).map(Number);
+}
+
+// '' = allowed, otherwise the reason
+async function takProblem(host, port) {
+  const ports = takPorts();
+  if (ownTak(host) && ports.includes(Number(port))) return '';
+  return tak.targetProblem(takSettings().allowedHosts, host, { port, localPorts: ports });
 }
 
 const eudLimits = new Map(); // ip -> [timestamps] for certificate requests
@@ -719,7 +726,8 @@ async function handleEudApi(req, res, route) {
     const body = await readJson(req, 512 * 1024);
     const conn = body.server || {};
     const host = String(conn.host || '').trim();
-    if (!(await takAllowed(host, Number(conn.apiPort) || tak.API_PORT))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    const why = await takProblem(host, Number(conn.apiPort) || tak.API_PORT);
+    if (why) return json(res, 403, { error: why });
     try {
       return json(res, 200, await tak.marti({ ...conn, host, altHost: (ownTak(host) || {}).altHost || '' }, String(body.action || ''), body.args || {}));
     } catch (e) {
@@ -738,7 +746,8 @@ async function handleEudApi(req, res, route) {
     const body = await readJson(req, 512 * 1024);
     const host = String(body.host || '').trim();
     const port = Number(body.port) || tak.ENROLL_PORT;
-    if (!(await takAllowed(host, port))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    const why = await takProblem(host, port);
+    if (why) { log('EUD enrollment refused:', why); return json(res, 403, { error: why }); }
     try {
       const r = await tak.enroll({
         host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
@@ -1251,7 +1260,8 @@ function handleTakSocket(ws, req) {
       stop();
       const host = String(msg.host || '').trim();
       if (!host) return say('error', 'No TAK server given.');
-      if (!(await takAllowed(host, Number(msg.port) || 8089))) return say('error', `TAK server ${host} is not allowed on this server.`);
+      const why = await takProblem(host, Number(msg.port) || 8089);
+      if (why) { log('EUD connection refused:', why); return say('error', why); }
       if (ws.readyState !== 1) return;
       stop();
       entry.host = `${host}:${msg.port}`;
