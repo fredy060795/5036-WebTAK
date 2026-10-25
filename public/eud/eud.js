@@ -672,6 +672,7 @@ function openConn(srv) {
   updateStatus();
   sock.onopen = () => {
     c.retry = 0;
+    c.wsOk = true;
     sock.send(JSON.stringify({
       type: 'connect', host: srv.host, port: srv.port, proto: srv.proto, uid: profile.uid, callsign: profile.callsign,
       certPem: srv.proto === 'ssl' ? srv.certPem : '', keyPem: srv.proto === 'ssl' ? srv.keyPem : '',
@@ -703,7 +704,13 @@ function openConn(srv) {
   sock.onclose = () => {
     if (c.ws !== sock) return;
     c.ws = null;
-    if (c.state !== 'error' && c.state !== 'untrusted') c.state = 'offline';
+    if (c.state !== 'error' && c.state !== 'untrusted') {
+      c.state = 'offline';
+      // the page itself loads, only the WebSocket does not open: usually a reverse proxy (nginx) without WebSocket forwarding
+      c.message = !c.wsOk && navigator.onLine
+        ? 'WebTAK relay not reachable: the WebSocket /ws/tak does not open. If WebTAK runs behind nginx/Apache, the proxy must forward WebSockets (Upgrade/Connection headers).'
+        : '';
+    }
     updateStatus();
     if (srv.auto) c.timer = setTimeout(() => openConn(srv), Math.min(30000, 1000 * 2 ** c.retry++));
   };
@@ -1207,7 +1214,7 @@ function renderServers() {
     el.querySelector('.srv-proto').textContent = srv.proto.toUpperCase();
     el.querySelector('.srv-url').textContent = `${srv.host}:${srv.port}` + (srv.proto === 'ssl' ? (srv.certPem ? ' · certificate ✓' : ' · no certificate') : '');
     const info = el.querySelector('.srv-info');
-    info.textContent = !srv.auto ? 'disconnected' : (c.state === 'error' || c.state === 'untrusted' ? c.message : STATE_TEXT[c.state] || c.state);
+    info.textContent = !srv.auto ? 'disconnected' : (c.state === 'error' || c.state === 'untrusted' || (c.state === 'offline' && c.message) ? c.message : STATE_TEXT[c.state] || c.state);
     info.classList.toggle('err', srv.auto && ['error', 'untrusted'].includes(c.state));
     const act = el.querySelector('.act');
     act.textContent = srv.auto ? 'DISCONNECT' : 'CONNECT';
