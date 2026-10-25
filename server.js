@@ -12,6 +12,7 @@
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const crypto = require('crypto');
 const path = require('path');
 const { spawnSync } = require('child_process');
 const { WebSocketServer } = require('ws');
@@ -63,6 +64,20 @@ const TYPES = {
   '.json': 'application/json', '.mjs': 'text/javascript; charset=utf-8', '.svg': 'image/svg+xml', '.png': 'image/png', '.ico': 'image/x-icon',
   '.webmanifest': 'application/manifest+json',
 };
+
+// Version shown in the headers: package version + short code of the program files,
+// changes by itself with every update (shows whether the browser loaded the current page)
+const VERSION = (() => {
+  const hash = crypto.createHash('sha1');
+  const walk = f => {
+    const st = fs.statSync(f);
+    if (st.isDirectory()) { for (const n of fs.readdirSync(f).sort()) walk(path.join(f, n)); return; }
+    hash.update(path.relative(__dirname, f)).update(fs.readFileSync(f));
+  };
+  for (const f of ['server.js', 'package.json', 'lib', 'public']) { try { walk(path.join(__dirname, f)); } catch (e) { /* missing */ } }
+  return `${require('./package.json').version}-${hash.digest('hex').slice(0, 6)}`;
+})();
+const VERSION_TAG = '__WEBTAK_VERSION__';
 
 // ======================================================================
 // Helpers
@@ -181,6 +196,8 @@ function serveStatic(res, dir, rel) {
     'X-Content-Type-Options': 'nosniff',
     'Referrer-Policy': 'no-referrer',
   });
+  // pages and the service worker carry the version (new version -> the phone renews its offline copy)
+  if (/\.html$/.test(file) || path.basename(file) === 'sw.js') return res.end(fs.readFileSync(file, 'utf8').split(VERSION_TAG).join(VERSION));
   fs.createReadStream(file).pipe(res);
 }
 
@@ -656,6 +673,31 @@ function takSettings() {
   return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
 }
 
+// The TAK server connected in the admin (OTS): allowed on its TAK ports even if it runs on this machine
+// (localhost / 127.0.1.1 in /etc/hosts), and reached over the OTS address set in the admin (often internal)
+// when its public domain does not answer from here (router without NAT loopback, Docker).
+function ownTak(host) {
+  const o = takUsers.t.ots || {};
+  let internal = '';
+  try { internal = new URL(o.url).hostname.replace(/^\[|\]$/g, ''); } catch (e) { /* no OTS address */ }
+  const names = [o.host, internal, (takSettings().preset || {}).host].filter(Boolean).map(x => x.toLowerCase());
+  if (!host || !names.includes(host.toLowerCase())) return null;
+  return { altHost: internal && internal.toLowerCase() !== host.toLowerCase() ? internal : '' };
+}
+
+function takPorts() {
+  const o = takUsers.t.ots || {};
+  const p = takSettings().preset || {};
+  return [o.streamPort, o.enrollPort, o.apiPort, p.port, p.enrollPort, 8089, tak.ENROLL_PORT, tak.API_PORT].filter(Boolean).map(Number);
+}
+
+// '' = allowed, otherwise the reason
+async function takProblem(host, port) {
+  const ports = takPorts();
+  if (ownTak(host) && ports.includes(Number(port))) return '';
+  return tak.targetProblem(takSettings().allowedHosts, host, { port, localPorts: ports });
+}
+
 const eudLimits = new Map(); // ip -> [timestamps] for certificate requests
 const martiLimits = new Map(); // ip -> [timestamps] for TAK server API requests
 
@@ -701,9 +743,10 @@ async function handleEudApi(req, res, route) {
     const body = await readJson(req, 512 * 1024);
     const conn = body.server || {};
     const host = String(conn.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    const why = await takProblem(host, Number(conn.apiPort) || tak.API_PORT);
+    if (why) return json(res, 403, { error: why });
     try {
-      return json(res, 200, await tak.marti({ ...conn, host }, String(body.action || ''), body.args || {}));
+      return json(res, 200, await tak.marti({ ...conn, host, altHost: (ownTak(host) || {}).altHost || '' }, String(body.action || ''), body.args || {}));
     } catch (e) {
       log('EUD TAK-API', host, String(body.action || ''), 'error:', e.message);
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
@@ -719,10 +762,12 @@ async function handleEudApi(req, res, route) {
     eudLimits.set(ip, list);
     const body = await readJson(req, 512 * 1024);
     const host = String(body.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    const port = Number(body.port) || tak.ENROLL_PORT;
+    const why = await takProblem(host, port);
+    if (why) { log('EUD enrollment refused:', why); return json(res, 403, { error: why }); }
     try {
       const r = await tak.enroll({
-        host, port: Number(body.port) || tak.ENROLL_PORT, username: body.username, password: body.password,
+        host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
         uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
         fingerprint: String(body.fingerprint || ''),
       });
@@ -1140,6 +1185,7 @@ async function handle(req, res) {
 
   try {
     if (p === '/health') return send(res, 200, 'ok');
+    if (p === '/version') return json(res, 200, { version: VERSION });
     if (p === '/ca.crt' && config.testCa) {
       return send(res, 200, fs.readFileSync(config.testCa), 'application/x-x509-ca-cert',
         { 'Content-Disposition': 'attachment; filename="helm-camera-test-ca.crt"' });
@@ -1232,7 +1278,8 @@ function handleTakSocket(ws, req) {
       stop();
       const host = String(msg.host || '').trim();
       if (!host) return say('error', 'No TAK server given.');
-      if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return say('error', `TAK server ${host} is not allowed on this server.`);
+      const why = await takProblem(host, Number(msg.port) || 8089);
+      if (why) { log('EUD connection refused:', why); return say('error', why); }
       if (ws.readyState !== 1) return;
       stop();
       entry.host = `${host}:${msg.port}`;
@@ -1249,7 +1296,7 @@ function handleTakSocket(ws, req) {
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign', ...assigned }));
       }
       link = new tak.TakLink({
-        host, port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
+        host, altHost: msg.proto === 'udp' ? '' : (ownTak(host) || {}).altHost || '', port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
         certPem: msg.certPem, keyPem: msg.keyPem, caPems: Array.isArray(msg.caPems) ? msg.caPems : [], fingerprint: msg.fingerprint,
         onStatus: (state, message, extra) => say(state, message, extra),
         onCot: xml => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'cot', xml })); },
@@ -1388,6 +1435,7 @@ server.on('error', e => {
 
 server.listen(config.port, config.bind, () => {
   log(`WebTAK running on ${config.tlsCert ? 'https' : 'http'}://${config.bind}:${server.address().port}`);
+  log(`Version ${VERSION}`);
   log(`Public address: ${config.publicUrl || '(from request)'}${config.adminHost ? ', admin domain: ' + config.adminHost : ''}`);
   log(ffmpegOk ? 'ffmpeg found: HLS and MPEG-TS available' : 'ffmpeg not found: MJPEG only');
   if (store.data.admin.mustChange) log('First start: admin login admin / admin123 – the password is changed at the first login.');

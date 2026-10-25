@@ -2229,7 +2229,10 @@ updateStatus();
     if (t) try { localStorage.setItem('tak.access', t); } catch (e) { /* private mode */ }
     try {
       const cfg = parseQr(location.origin + location.pathname + '#' + hash);
-      if (!servers.some(s => s.host === cfg.host)) { await applyConfig(cfg, true); handled = true; }
+      // also when the server is already saved but without a certificate or for another user
+      // (e.g. an earlier failed attempt) – otherwise the new login from the link would be ignored
+      const known = servers.find(s => s.host === cfg.host);
+      if (!known || (cfg.username && cfg.password && (!known.certPem || known.username !== cfg.username))) { await applyConfig(cfg, true); handled = true; }
     } catch (e) { /* invalid */ }
   } else if (!servers.length) {
     try {

@@ -191,3 +191,6 @@ table.kv td { padding: 4px 0; word-break: break-all; }
 /* Notification popups for information only: compact, disappear by themselves */
 .toast.info { cursor: pointer; padding: 8px 12px; transition: opacity .3s, transform .3s; }
 .toast.info.gone { opacity: 0; transform: translateX(20px); }
+
+/* version next to the name: shows whether the current page was loaded after an update */
+.top h1 .ver { font-size: 11px; color: var(--mut); letter-spacing: 0; }

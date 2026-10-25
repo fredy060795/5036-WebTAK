@@ -62,3 +62,6 @@ button.sm { padding: 5px 9px; font-size: 13px; }
 .badge.off { color: var(--mut); }
 .badge.stop { color: var(--err); }
 .check { display: flex; gap: 8px; align-items: center; color: var(--fg); font-size: 15px; }
+
+/* version next to the name: shows whether the current page was loaded after an update */
+.ver { font-size: 11px; font-weight: 400; color: var(--mut); letter-spacing: 0; vertical-align: middle; }
