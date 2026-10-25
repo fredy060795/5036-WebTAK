@@ -9,7 +9,7 @@
   if (typeof module === 'object' && module.exports) module.exports = m;
   else root.meshProto = m;
 })(this, () => {
-  const PORT = { TEXT: 1, POSITION: 3, NODEINFO: 4, ATAK: 72 };
+  const PORT = { TEXT: 1, POSITION: 3, NODEINFO: 4, ATAK: 72, FORWARDER: 257 };
   const BROADCAST = 0xffffffff;
   const ALL_CHAT = 'All Chat Rooms';
   // TAKPacket Team / MemberRole enums: index = enum value (0 = unspecified)
@@ -232,21 +232,159 @@
     });
   }
 
-  // plain Meshtastic node (Meshtastic app, no TAK) with a position -> point on the map, stale 30 min
+  // team from the node name like the ATAK plugin: "Hans -5" = Red (-0/-1 White … -14 Brown), without a suffix Cyan
+  function nodeTeam(name) {
+    const m = / -(\d+)$/.exec(name);
+    if (!m) return { callsign: name, team: 'Cyan' };
+    const n = Number(m[1]);
+    return { callsign: name.slice(0, m.index), team: n === 0 ? 'White' : TEAMS[n] || 'Cyan' };
+  }
+
+  // plain Meshtastic node (Meshtastic app, no TAK) with a position -> user on the map like in ATAK, stale 30 min
   function nodeCot({ num, user, position }, now = new Date()) {
     const time = position.time ? new Date(Math.min(position.time * 1000, +now)) : now;
-    const name = (user && (user.longName || user.shortName)) || nodeId(num);
+    const { callsign, team } = nodeTeam((user && (user.longName || user.shortName)) || nodeId(num));
     return event({
-      uid: 'MESH-' + nodeId(num), type: 'a-f-G-U-C', how: 'm-g', time, staleMs: 1800000, lat: position.lat, lon: position.lon, hae: position.alt,
-      detail: `<contact callsign="${esc(name)}"/>`
+      uid: 'MESH-' + nodeId(num), type: 'a-f-G-E-S', how: 'm-g', time, staleMs: 1800000, lat: position.lat, lon: position.lon, hae: position.alt,
+      detail: `<contact callsign="${esc(callsign)}"/><__group name="${team}" role="Team Member"/>`
         + (position.course != null ? `<track course="${position.course}" speed="${position.speed || 0}"/>` : '')
         + `<remarks>Meshtastic ${esc(nodeId(num))}${user && user.shortName ? ' (' + esc(user.shortName) + ')' : ''}</remarks>`,
     });
   }
 
+  // ---------------- ATAK_FORWARDER (port 257): other CoT (markers, deletions …) like the ATAK plugin ----------------
+  // The plugin sends the CoT XML zlib-compressed: below 233 bytes as one packet, larger as fountain blocks
+  // (util/fountain in the plugin): an LT code whose blocks are chosen with java.util.Random from a seed.
+
+  const FTN = [0x46, 0x54, 0x4e]; // "FTN"
+  const FOUNTAIN = { BLOCK: 214, HEADER: 11, ACK_SIZE: 19, DATA: 1, COMPLETE: 2, NEED_MORE: 3, TYPE_COT: 0x00 };
+  const MASK48 = (1n << 48n) - 1n;
+
+  // java.util.Random – exactly the same numbers as in Java/Android
+  class JavaRandom {
+    constructor(seed) { this.s = (BigInt(seed) ^ 0x5DEECE66Dn) & MASK48; }
+    next(bits) {
+      this.s = (this.s * 0x5DEECE66Dn + 0xBn) & MASK48;
+      return Number(BigInt.asIntN(32, this.s >> BigInt(48 - bits)));
+    }
+    nextDouble() { return (this.next(26) * 134217728 + this.next(27)) / 9007199254740992; }
+    nextInt(bound) {
+      if ((bound & -bound) === bound) return Number((BigInt(bound) * BigInt(this.next(31))) >> 31n);
+      let bits, val;
+      do { bits = this.next(31); val = bits % bound; } while (((bits - val + (bound - 1)) | 0) < 0);
+      return val;
+    }
+  }
+
+  // robust soliton distribution (c = 0.1, delta = 0.5 like the plugin)
+  function solitonCdf(K, c = 0.1, delta = 0.5) {
+    const mu = new Array(K + 1).fill(0), cdf = new Array(K + 1).fill(0);
+    const S = c * Math.log(K / delta) * Math.sqrt(K);
+    const threshold = Math.floor(K / S);
+    let Z = 0;
+    for (let d = 1; d <= K; d++) {
+      const rho = d === 1 ? 1 / K : 1 / (d * (d - 1));
+      const tau = d < threshold ? S / (K * d) : d === threshold ? S * Math.log(S / delta) / K : 0;
+      mu[d] = rho + tau;
+      Z += mu[d];
+    }
+    let cum = 0;
+    for (let d = 1; d <= K; d++) { cum += mu[d] / Z; cdf[d] = cum; }
+    return cdf;
+  }
+  function sampleDegree(rng, K) {
+    const cdf = solitonCdf(K), u = rng.nextDouble();
+    for (let d = 1; d <= K; d++) if (u <= cdf[d]) return d;
+    return K;
+  }
+  function selectIndices(rng, K, degree) {
+    degree = Math.min(degree, K);
+    const set = new Set();
+    while (set.size < degree) set.add(rng.nextInt(K));
+    return [...set].sort((a, b) => a - b);
+  }
+  // which source blocks a seed combines (the first block of a transfer is always a single source block)
+  function fountainIndices(seed, K, transferId) {
+    const rng = new JavaRandom(seed);
+    const deg = sampleDegree(rng, K);
+    return selectIndices(rng, K, seed === (Math.imul(transferId, 31337) & 0xffff) ? 1 : deg);
+  }
+
+  // data (transfer type byte + zlib data) -> packets for port 257
+  function fountainEncode(data, numBlocks, transferId) {
+    const B = FOUNTAIN.BLOCK, K = Math.ceil(data.length / B);
+    const src = [];
+    for (let i = 0; i < K; i++) { const b = new Uint8Array(B); b.set(data.subarray(i * B, (i + 1) * B)); src.push(b); }
+    const out = [];
+    for (let i = 0; i < numBlocks; i++) {
+      const seed = (Math.imul(transferId, 31337) + i * 7919) & 0xffff;
+      const pkt = new Uint8Array(FOUNTAIN.HEADER + B);
+      pkt.set(FTN);
+      pkt[3] = (transferId >> 16) & 0xff; pkt[4] = (transferId >> 8) & 0xff; pkt[5] = transferId & 0xff;
+      pkt[6] = seed >> 8; pkt[7] = seed & 0xff; pkt[8] = K; pkt[9] = (data.length >> 8) & 0xff; pkt[10] = data.length & 0xff;
+      for (const idx of fountainIndices(seed, K, transferId)) for (let j = 0; j < B; j++) pkt[FOUNTAIN.HEADER + j] ^= src[idx][j];
+      out.push(pkt);
+    }
+    return out;
+  }
+
+  // blocks [{ seed, payload }] -> data, or null while not decodable yet (peeling decoder)
+  function fountainDecode(blocks, K, totalLength, transferId) {
+    const decoded = new Array(K).fill(null);
+    let count = 0;
+    const work = blocks.map(b => ({ payload: Uint8Array.from(b.payload), idx: new Set(fountainIndices(b.seed, K, transferId)) }));
+    let progress = true;
+    while (progress && count < K) {
+      progress = false;
+      for (const w of work) {
+        if (!w.idx) continue;
+        for (const i of [...w.idx]) {
+          if (!decoded[i]) continue;
+          for (let j = 0; j < w.payload.length; j++) w.payload[j] ^= decoded[i][j];
+          w.idx.delete(i);
+        }
+        if (w.idx.size === 1) {
+          const i = w.idx.values().next().value;
+          decoded[i] = w.payload;
+          count++;
+          w.idx = null;
+          progress = true;
+        } else if (!w.idx.size) w.idx = null;
+      }
+    }
+    if (count < K) return null;
+    const out = new Uint8Array(totalLength);
+    for (let i = 0; i < K; i++) out.set(decoded[i].subarray(0, Math.min(FOUNTAIN.BLOCK, totalLength - i * FOUNTAIN.BLOCK)), i * FOUNTAIN.BLOCK);
+    return out;
+  }
+
+  // port 257 payload: fountain data block / ACK, or null (plain zlib CoT, codec2 audio …)
+  function parseFountain(b) {
+    if (b.length < 7 || b[0] !== FTN[0] || b[1] !== FTN[1] || b[2] !== FTN[2]) return null;
+    const transferId = (b[3] << 16) | (b[4] << 8) | b[5];
+    if (b.length === FOUNTAIN.ACK_SIZE) {
+      return { ack: { transferId, type: b[6], received: (b[7] << 8) | b[8], needed: (b[9] << 8) | b[10], hash: b.slice(11, 19) } };
+    }
+    if (b.length < FOUNTAIN.HEADER) return null;
+    return { block: { transferId, seed: (b[6] << 8) | b[7], K: b[8], totalLength: (b[9] << 8) | b[10], payload: b.subarray(FOUNTAIN.HEADER) } };
+  }
+
+  function fountainAck(transferId, type, received, needed, hash) {
+    const p = new Uint8Array(FOUNTAIN.ACK_SIZE);
+    p.set(FTN);
+    p[3] = (transferId >> 16) & 0xff; p[4] = (transferId >> 8) & 0xff; p[5] = transferId & 0xff; p[6] = type;
+    p[7] = (received >> 8) & 0xff; p[8] = received & 0xff; p[9] = (needed >> 8) & 0xff; p[10] = needed & 0xff;
+    p.set(hash.subarray(0, 8), 11);
+    return p;
+  }
+
+  // blocks to send for K source blocks (50 % / 25 % / 15 % extra like the plugin)
+  const fountainBlockCount = K => Math.ceil(K * (1 + (K <= 10 ? 0.5 : K <= 50 ? 0.25 : 0.15)));
+
   return {
-    PORT, BROADCAST, ALL_CHAT, TEAMS, ROLES, Writer, decode,
+    PORT, BROADCAST, ALL_CHAT, TEAMS, ROLES, FOUNTAIN, Writer, decode,
     wantConfig, toRadioPacket, takPli, takChat, parseTak, parseFromRadio, parseUserPayload, parsePositionPayload,
-    pliCot, chatCot, nodeCot, nodeId, utf8,
+    pliCot, chatCot, nodeCot, nodeTeam, nodeId, utf8,
+    JavaRandom, fountainIndices, fountainEncode, fountainDecode, parseFountain, fountainAck, fountainBlockCount,
   };
 });

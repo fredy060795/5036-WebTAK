@@ -75,6 +75,27 @@ srt://<TAK server>:8890?streamid=publish:drone-<callsign>:<user>:<password>
 
 Ports 1935 (RTMP), 8554 (RTSP) and 8890/udp (SRT) must be reachable on the TAK server.
 
+**Drone address without a password:** whoever logged in on this device in WebTAK (user + password, QR code with
+login, setup package) or opened it from the access page gets the address under Video → Drone right away – unique per
+user (`drone-<callsign>`). The password is kept on the device only after the TAK server confirmed it (like ATAK).
+
+## Field of view and drone telemetry (UAS in HQ)
+
+- **Cones ("funnels")** show where a camera looks: for every contact or marker with a field of view (`<sensor>` like in
+  ATAK – e.g. ATAK UAS Tool, other WebTAK users), in 2D and 3D.
+- **Own stream:** while the phone or helmet camera is live, the own position carries the view direction, angle
+  (60°/66°) and 100 m range – ATAK and WebTAK show the cone. Phone camera: direction of the back of the phone (compass,
+  also in north-up mode); helmet camera: the phone is not on the helmet, so the GPS course while moving.
+- **Drone telemetry (KLV, MISB ST 0601):** when a drone feed carries KLV (professional drones, ATAK UAS Tool, QGroundControl,
+  STANAG 4609 encoders), WebTAK shows while watching it: **the drone** (position, height, view direction and cone),
+  **the image area on the ground** (corners from KLV or computed from height, angle and field of view) and **the image
+  centre** (SPI). The player shows e.g. `UAS 1050 m · 227° · FOV 60° ⌖` (tap = drone on the map). The viewer also
+  sends the drone to the TAK server, so ATAK in HQ sees it too.
+  - The server reads the KLV track with ffmpeg while someone watches (shared by all viewers). For feeds of the own
+    TAK server it uses RTSP of MediaMTX with the OTS login (RTSP keeps KLV, OTS's HLS usually does not).
+  - **DJI Fly / DJI Pilot 2 (RTMP)** send only the video – no position or direction of the drone. Use a KLV source or
+    ATAK UAS Tool for that.
+
 ## Aligning the image (every helmet is mounted differently)
 
 The user can align on the phone (card "Align") and the admin in the viewer window – both see the same setting.
@@ -202,6 +223,17 @@ device, also raster maps with several detail levels; stay stored offline).
 mission, both are loaded or subscribed automatically. Errors while fetching are in the server log
 ("EUD TAK-API … error").
 
+**KML/KMZ from any program** (Google Earth, Google My Maps, QGIS, CalTopo, WinTAK …): UTF-16 and ISO-8859-1 files,
+prefixed KML (`kml:Placemark`), Google Earth tracks (`gx:Track`), coordinates with spaces; icons that do not load
+(offline, `http://` on an https page) become dots. A file that only links to data elsewhere (My Maps "Keep data up to
+date") gets a hint to export it with the data.
+
+**Device profile like ATAK (auto-enrollment):** after logging in, WebTAK fetches the TAK server's enrollment profile
+once and on every connection the connection profile (only what is new since the last sync). In OpenTAKServer these
+are the data packages marked "install on enrollment/connection", the map sources (they appear under Menu → Maps as
+"… (TAK server)", also for saving offline and 3D) and device profile settings (callsign, team, role – an
+administrator's assignment in WebTAK has priority).
+
 **Map** (Menu → Map): choose the source (OpenStreetMap, OpenTopoMap, Esri Satellite/Topo or a custom
 URL with `{z}/{x}/{y}`). Tiles go through this server and are cached there under `DATA_DIR/tiles`.
 **Save offline:** the visible area or a drawn **corridor**
@@ -214,8 +246,10 @@ running, markers and chats wait in the outbox and go out as soon as the connecti
 **Meshtastic (LoRa, without internet)** – Menu → **Meshtastic**: WebTAK connects directly to a Meshtastic radio
 over Bluetooth (Android: Chrome; iPhone: only in the "Bluefy" app – Safari has no Bluetooth). Positions and chat go
 over LoRa as TAK packets (port 72, like the Meshtastic ATAK plugin), so WebTAK users and ATAK users with the plugin
-see each other without internet. Players with only the Meshtastic app appear on the map as points, their text
-messages in the chat. Over LoRa go the chat to All (also as Meshtastic text, can be switched off) and direct
+see each other without internet. Players with only the Meshtastic app appear on the map as users like in ATAK
+(team colour from the end of the node name like the plugin: "Hans -5" = Red, without a suffix Cyan), their text
+messages in the chat. **Markers, moving/renaming and deleting** go over LoRa as CoT on port 257 like the plugin
+(zlib; larger ones as fountain blocks with acknowledgement) – also markers from ATAK users arrive this way. Over LoRa go the chat to All (also as Meshtastic text, can be switched off) and direct
 messages; team and group chats stay on the TAK server (the TAK packets of the plugin have no rooms).
 - **Sending:** by default only while no TAK server is connected (offline) – online the TAK server carries everything.
   "Always" sends over LoRa as well. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
@@ -306,6 +340,22 @@ in the admin without choosing groups therefore gets **all** groups; missions wit
 **Security:** the passwords of the TAK accounts and the OTS admin password are stored in `DATA_DIR/db.json`
 (file mode 600) so the access page can show the data; the access link is secret (48 characters) and
 worthless after blocking/deleting. Registrations are limited to 5 per hour and IP.
+
+## Federation (TAK servers exchange data)
+
+Admin → TAK server → **Federation**: OpenTAKServer has no federation of its own – WebTAK connects to every listed
+server as a TAK client (own certificate per server) and passes data on **in all directions**:
+
+- **Live data** (positions, markers, drawings, chat, deletions) right away to every other server.
+- **Data packages** every N minutes (or "Sync now"): what one server has and another does not is copied – compared
+  by SHA-256, so nothing arrives twice; uploaded like ATAK (`/Marti/sync/missionupload`, the server keeps the hash).
+- **No loops, no duplicates:** forwarded CoT carries a marker (`<__webtakfed>`) and is never passed on again; the same
+  event from two servers is forwarded once; pings, mission changes and file transfer requests stay on their server.
+- **Servers:** the own OpenTAKServer from the settings (certificate with the OTS login, automatically) plus any number
+  of others: address, ports, and **user + password** (only used to request the certificate – not stored) or a
+  **.p12**. An unknown server certificate is asked once (fingerprint). Live data and data packages can be switched
+  per server; the table shows status and how much went in/out.
+- What WebTAK sees on a server follows the groups of its certificate user there.
 
 ## Managing the TAK server (in the WebTAK admin)
 

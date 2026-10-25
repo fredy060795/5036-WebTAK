@@ -75,3 +75,37 @@ test('CoT from mesh packets: contact, chat, Meshtastic node', () => {
   assert.match(node, /callsign="Hans Mesh"/);
   assert.match(node, /time="2026-10-25T10:00:00.000Z"/, 'future position time is capped to now');
 });
+
+test('Meshtastic nodes as users with the team from the name (like the ATAK plugin)', () => {
+  assert.deepEqual(P.nodeTeam('Hans -5'), { callsign: 'Hans', team: 'Red' });
+  assert.deepEqual(P.nodeTeam('Lead -0'), { callsign: 'Lead', team: 'White' });
+  assert.deepEqual(P.nodeTeam('Anna'), { callsign: 'Anna', team: 'Cyan' });
+  const xml = P.nodeCot({ num: 1, user: { longName: 'Charlie -12' }, position: { lat: 48, lon: 14, time: 0 } });
+  assert.match(xml, /type="a-f-G-E-S"/);
+  assert.match(xml, /<contact callsign="Charlie"\/><__group name="Green" role="Team Member"\/>/);
+});
+
+// reference values from the plugin's Java code (FountainCodec/FountainPacket, java.util.Random)
+test('fountain code (port 257) is bit-identical to the Meshtastic ATAK plugin', () => {
+  const r = new P.JavaRandom(42);
+  assert.deepEqual([r.nextInt(1), r.nextInt(214), r.nextDouble(), r.nextInt(64)], [0, 67, 0.6832234717598454, 19]);
+  assert.deepEqual([r.nextInt(2), r.nextInt(214), r.nextDouble(), r.nextInt(64)], [1, 69, 0.7077105889551186, 5]);
+
+  const data = Uint8Array.from({ length: 500 }, (_, i) => (i * 7 + 3) & 255);
+  const pkts = P.fountainEncode(data, 5, 0x123456);
+  assert.equal(require('crypto').createHash('sha256').update(pkts.map(hex).join('')).digest('hex'),
+    '7c0b6198f4333d1845066dd38f19441a01d619d1b1918b4b8f6e19d1f50087c8');
+  assert.equal(hex(pkts[0].subarray(0, 11)), '46544e12345673460301f4');
+  assert.equal(P.fountainBlockCount(3), 5);
+
+  // the blocks in any order give the data back
+  const blocks = [pkts[4], pkts[2], pkts[0], pkts[3], pkts[1]].map(b => P.parseFountain(b).block);
+  let out = null;
+  for (let i = 1; i <= blocks.length && !out; i++) out = P.fountainDecode(blocks.slice(0, i), 3, 500, 0x123456);
+  assert.deepEqual(out, data);
+
+  const ack = P.fountainAck(0x123456, P.FOUNTAIN.COMPLETE, 4, 0, bytes('ba626314ec76f1ea'));
+  assert.equal(hex(ack), '46544e1234560200040000ba626314ec76f1ea');
+  assert.deepEqual(P.parseFountain(ack).ack, { transferId: 0x123456, type: 2, received: 4, needed: 0, hash: bytes('ba626314ec76f1ea') });
+  assert.equal(P.parseFountain(P.utf8.encode('x\u009c...')), null, 'plain zlib CoT is no fountain packet');
+});

@@ -277,6 +277,7 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 @media (orientation: landscape) and (min-width: 640px) { .vw-body img, .vw-body video { max-height: 45vh; } }
 #viewer.full .vw-body img, #viewer.full .vw-body video { max-height: none; height: 100%; }
 #vwAlt { position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 3px; background: #1f4f6a; border: 1px solid #2c6f93; font: 500 13px var(--font); }
+#vwTele { position: absolute; top: 8px; left: 8px; padding: 4px 8px; border-radius: 3px; background: rgba(0, 0, 0, 0.65); border: 1px solid #ffd400; color: #ffd400; font: 500 12px var(--font); }
 #vwMsg { position: absolute; left: 10px; right: 10px; text-align: center; color: #aaa; font-size: 13px; pointer-events: none; }
 
 /* Chat (Sheet) */

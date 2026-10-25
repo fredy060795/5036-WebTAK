@@ -1,6 +1,7 @@
 // Meshtastic over Bluetooth (Web Bluetooth: Android/Chrome, iPhone only in the "Bluefy" app): the EUD talks
-// directly to a Meshtastic radio. Positions and chat go over LoRa as TAK packets (port 72) like the
-// Meshtastic ATAK plugin – ATAK users with the plugin and WebTAK users see each other without internet.
+// directly to a Meshtastic radio. Positions and chat go over LoRa as TAK packets (port 72), markers and other
+// CoT over port 257 – like the Meshtastic ATAK plugin, so ATAK users with the plugin and WebTAK users see each
+// other without internet.
 // Sending: only while no TAK server is connected (default) or always. During a video stream the radio is
 // released (camera and LoRa share the phone's Bluetooth) and reconnected when the stream ends.
 'use strict';
@@ -257,10 +258,12 @@
           msgId: tak.msgId || String(p.id), text: tak.chat.message, toUid: tak.chat.to === P.ALL_CHAT ? '' : profile.uid,
         }));
       }
+    } else if (p.portnum === P.PORT.FORWARDER) {
+      receiveForwarder(p).catch(() => {});
     } else if (p.portnum === P.PORT.TEXT) {
       // TAK users send their chat as a TAK packet too (and the plugin ignores their text) -> skip duplicates
       if (n.takUid || (p.to !== P.BROADCAST && p.to !== myNode)) return;
-      const name = (n.user && (n.user.longName || n.user.shortName)) || P.nodeId(p.from);
+      const name = P.nodeTeam((n.user && (n.user.longName || n.user.shortName)) || P.nodeId(p.from)).callsign; // without " -5" team suffix
       handleCot(P.chatCot({ senderUid: 'MESH-' + P.nodeId(p.from), senderCallsign: name, msgId: String(p.id), text: new TextDecoder().decode(p.payload) }));
     } else if (p.portnum === P.PORT.POSITION) {
       try { n.position = P.parsePositionPayload(p.payload) || n.position; } catch (e) { return; }
@@ -283,8 +286,8 @@
 
   const shouldSend = () => state === 'connected' && (cfg.send === 'always' || !window.eud.serverOnline());
 
-  function send(portnum, payload) {
-    return write(P.toRadioPacket({ portnum, payload, channel: cfg.channel, id: 1 + Math.floor(Math.random() * 0xfffffff0) }));
+  function send(portnum, payload, channel = cfg.channel) {
+    return write(P.toRadioPacket({ portnum, payload, channel, id: 1 + Math.floor(Math.random() * 0xfffffff0) }));
   }
 
   function sendPli() {
@@ -331,6 +334,105 @@
       .then(() => { if (body !== text) toast('Mesh: message shortened to fit one LoRa packet.'); })
       .catch(err => toast('Mesh: sending failed – ' + err.message));
   });
+
+  // ---------------- Markers, changes, deletions: CoT over port 257 like the ATAK plugin ----------------
+  // zlib-compressed CoT XML: below 233 bytes as one packet, larger as fountain blocks (receivers answer with an ACK)
+
+  const MAX_DIRECT = 232;      // the plugin sends payloads below 233 bytes directly
+  const MAX_SOURCE_BLOCKS = 10; // ~2 KB compressed – larger (long routes …) waits for the TAK server
+  const BLOCK_GAP = 1600;      // ms between blocks (LongFast airtime like the plugin's default)
+  const sleep = ms => new Promise(r => setTimeout(r, ms));
+  const sha8 = async b => new Uint8Array(await crypto.subtle.digest('SHA-256', b)).slice(0, 8);
+  const same = (a, b) => a.length === b.length && a.every((x, i) => x === b[i]);
+  const through = async (bytes, stream) => new Uint8Array(await new Response(new Blob([bytes]).stream().pipeThrough(stream)).arrayBuffer());
+  const zlib = bytes => (window.CompressionStream ? through(bytes, new CompressionStream('deflate')) : Promise.resolve(bytes));
+  async function unzlib(bytes) {
+    if (window.DecompressionStream) {
+      for (const f of ['deflate', 'deflate-raw']) {
+        try { return await through(bytes, new DecompressionStream(f)); } catch (e) { /* next format */ }
+      }
+    }
+    return bytes; // plain XML
+  }
+
+  const sending = new Map();   // transferId -> { hash, done, more }
+  const receiving = new Map(); // "from:transferId" -> { K, totalLength, blocks, seeds, done, t }
+
+  document.addEventListener('eud-cot-out', e => {
+    if (!shouldSend()) return;
+    e.detail.mesh = true;
+    sendCotMesh(e.detail.xml).catch(err => toast('Mesh: sending failed – ' + err.message));
+  });
+
+  async function sendCotMesh(xml) {
+    const z = await zlib(P.utf8.encode(xml));
+    if (z.length <= MAX_DIRECT) return send(P.PORT.FORWARDER, z);
+    const data = new Uint8Array(z.length + 1); // transfer type byte (0 = CoT) + zlib data
+    data[0] = P.FOUNTAIN.TYPE_COT;
+    data.set(z, 1);
+    const K = Math.ceil(data.length / P.FOUNTAIN.BLOCK);
+    if (K > MAX_SOURCE_BLOCKS) { toast('Mesh: too large for LoRa – it is sent once the TAK server is back.', 5000); return; }
+    const transferId = 1 + Math.floor(Math.random() * 0xfffffe);
+    const st = { hash: await sha8(data), done: false, more: 0 };
+    sending.set(transferId, st);
+    // like the plugin: blocks + ACK wait, up to 3 rounds; a further round sends NEW blocks (new seeds)
+    let next = 0, count = P.fountainBlockCount(K);
+    for (let round = 0; round < 3 && !st.done && state === 'connected'; round++) {
+      const blocks = P.fountainEncode(data, next + count, transferId).slice(next);
+      next += count;
+      for (const b of blocks) {
+        if (st.done || state !== 'connected') break;
+        await send(P.PORT.FORWARDER, b);
+        await sleep(BLOCK_GAP);
+      }
+      const until = Date.now() + Math.min(300000, 10000 + count * 6400 + 12800);
+      while (!st.done && !st.more && Date.now() < until && state === 'connected') await sleep(250);
+      count = st.more || Math.max(5, Math.ceil(K / 5));
+      st.more = 0;
+    }
+    sending.delete(transferId);
+  }
+
+  async function receiveForwarder(p) {
+    const b = p.payload;
+    const f = P.parseFountain(b);
+    if (f && f.ack) {
+      const st = sending.get(f.ack.transferId);
+      if (!st) return;
+      if (f.ack.type === P.FOUNTAIN.COMPLETE) { if (same(f.ack.hash, st.hash)) st.done = true; } else if (f.ack.type === P.FOUNTAIN.NEED_MORE) st.more = f.ack.needed;
+      return;
+    }
+    if (f && f.block) return receiveBlock(p, f.block);
+    if (b[0] === 0xc2 || (b[0] === 0x4d && b[1] === 0x46 && b[2] === 0x54)) return; // codec2 voice, file transfer receipt
+    showCot(await unzlib(b));
+  }
+
+  async function receiveBlock(p, blk) {
+    const key = p.from + ':' + blk.transferId;
+    let st = receiving.get(key);
+    if (st && (st.K !== blk.K || st.totalLength !== blk.totalLength)) st = null; // new transfer with the same id
+    if (!st) { st = { K: blk.K, totalLength: blk.totalLength, blocks: [], seeds: new Set(), done: false }; receiving.set(key, st); }
+    st.t = Date.now();
+    if (st.done || st.seeds.has(blk.seed)) return;
+    st.seeds.add(blk.seed);
+    st.blocks.push(blk);
+    if (st.blocks.length < st.K) return;
+    const data = P.fountainDecode(st.blocks, st.K, st.totalLength, blk.transferId);
+    if (!data) return;
+    st.done = true;
+    // ACK like the plugin (twice), so the sender stops repeating
+    const ack = P.fountainAck(blk.transferId, P.FOUNTAIN.COMPLETE, st.blocks.length, 0, await sha8(data));
+    send(P.PORT.FORWARDER, ack, p.channel).then(() => sleep(200)).then(() => send(P.PORT.FORWARDER, ack, p.channel)).catch(() => {});
+    if (data[0] === 0x00 || data[0] === 0x30) showCot(await unzlib(data.subarray(1))); // CoT (0x30 = "0" from iOS)
+  }
+
+  function showCot(bytes) {
+    const xml = new TextDecoder().decode(bytes).trim();
+    if (!xml.startsWith('<')) return;
+    try { handleCot(xml); } catch (e) { /* not CoT */ }
+  }
+
+  setInterval(() => { for (const [k, st] of receiving) if (Date.now() - st.t > 300000) receiving.delete(k); }, 60000);
 
   // ---------------- Video: release the radio while streaming, reconnect afterwards ----------------
 

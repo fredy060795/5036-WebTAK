@@ -74,11 +74,14 @@ const SOURCES = {
   sat: { name: 'Esri Satellite', maxZoom: 19, attribution: '© Esri' },
   esritopo: { name: 'Esri Topo', maxZoom: 19, attribution: '© Esri' },
 };
+// map sources from the TAK server's device profile (ATAK customMapSource): straight from their tile server
+for (const m of store.get('eud.takMaps', [])) SOURCES[m.id] = { name: m.name + ' (TAK server)', maxZoom: m.maxZoom || 19, attribution: '', url: m.url };
 const TILE_BASE = new URL('tiles/', location.href).pathname; // /eud/tiles/
 if (!SOURCES[profile.tiles] && profile.tiles !== 'custom') profile.tiles = 'osm';
 
 function sourceTemplate(id) {
   if (id === 'custom') return profile.customUrl || '';
+  if (SOURCES[id] && SOURCES[id].url) return SOURCES[id].url;
   return TILE_BASE + id + '/{z}/{x}/{y}.png';
 }
 function sourceMaxZoom(id) { return id === 'custom' ? 20 : SOURCES[id].maxZoom; }
@@ -299,6 +302,7 @@ function parseCot(xml) {
     fill: attr('fillColor', 'value'),
     weight: Number(attr('strokeWeight', 'value')) || 3,
     ellipse: q('shape > ellipse'),
+    sensor: q(':scope > sensor'),
     rbRange: Number(attr('range', 'value')),
     rbBearing: Number(attr('bearing', 'value')),
     video: attr('__video', 'url'),
@@ -419,6 +423,7 @@ function removeItem(uid) {
   const it = items.get(uid);
   if (!it) return;
   if (it.layer) it.layer.remove();
+  if (it.fov) it.fov.remove();
   items.delete(uid);
   persistSoon();
   if (window.view3d) view3d.dirty();
@@ -427,11 +432,37 @@ function removeItem(uid) {
 // R&B lines are thin: drawn on a canvas that also counts a tap next to the line (easier with a finger)
 const rbRenderer = L.canvas({ tolerance: 14 });
 
+// field of view like ATAK (<sensor azimuth fov range …>): cameras, drones (UAS Tool, KLV), own stream
+function sensorOf(c) {
+  const s = c.sensor;
+  if (!s || s.getAttribute('hideFov') === 'true') return null;
+  const az = Number(s.getAttribute('azimuth')), fov = Number(s.getAttribute('fov'));
+  if (!s.hasAttribute('azimuth') || !Number.isFinite(az) || !(fov > 0)) return null;
+  const range = Number(s.getAttribute('range'));
+  const rgb = ['fovRed', 'fovGreen', 'fovBlue'].map(a => Number(s.getAttribute(a)));
+  const color = rgb.every(x => Number.isFinite(x) && s.hasAttribute('fovRed')) ? `rgb(${rgb.map(x => Math.round(Math.min(1, Math.max(0, x)) * 255)).join(',')})`
+    : TEAMS[c.team] || '#ffd400';
+  return { az, fov: Math.min(fov, 359), range: range > 0 ? Math.min(range, 50000) : 100, color };
+}
+// the cone ("funnel") on the map: tip at the camera, opening in the view direction
+function fovLayer(lat, lon, s, faded) {
+  const pts = [[lat, lon]];
+  const n = Math.max(6, Math.ceil(s.fov / 5));
+  for (let i = 0; i <= n; i++) {
+    const p = destPoint(lat, lon, s.range, s.az - s.fov / 2 + (s.fov * i) / n);
+    pts.push([p.lat, p.lon]);
+  }
+  // light overlay: thin edge, almost transparent – the map underneath stays readable
+  return L.polygon(pts, { color: s.color, weight: 1, opacity: faded ? 0.25 : 0.55, fillColor: s.color, fillOpacity: faded ? 0.03 : 0.08, interactive: false });
+}
+
 function drawItem(it) {
   const c = it.c;
   const stale = Date.now() > c.stale;
   if (it.layer) it.layer.remove();
   it.layer = null;
+  if (it.fov) it.fov.remove();
+  it.fov = null;
   const stroke = argb(c.stroke, '#ffd400');
   const fill = argb(c.fill, 'rgba(0,0,0,0)');
   const style = { color: stroke, weight: Math.min(c.weight, 8), fillColor: fill, fillOpacity: c.fill ? 1 : 0, opacity: stale ? 0.45 : 1 };
@@ -451,6 +482,8 @@ function drawItem(it) {
     // markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
     it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: editable(it), autoPan: true }).addTo(pointsLayer);
     if (editable(it)) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
+    const s = sensorOf(c);
+    if (s) it.fov = fovLayer(c.lat, c.lon, s, stale).addTo(shapesLayer);
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
@@ -486,8 +519,9 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
 // keep the situational picture on the device (for starting without network)
 let persistTimer;
 function persistSoon() {
-  clearTimeout(persistTimer);
+  if (persistTimer) return; // at the latest after 1.5 s – constant updates (drone telemetry) must not postpone it forever
   persistTimer = setTimeout(() => {
+    persistTimer = null;
     const keep = [...items.values()].sort((a, b) => b.c.time - a.c.time).slice(0, 800)
       .map(it => ({ xml: it.xml, own: !!it.own }));
     store.set('eud.picture', keep);
@@ -757,6 +791,12 @@ function sendCot(xml, queue) {
     }
   }
   if (queue) store.set('eud.outbox2', outbox);
+  // markers, changes and deletions also over Meshtastic (mesh.js) – chat goes its own way (eud-chat-out)
+  if (queue && !/ type="b-t-f"/.test(xml)) {
+    const ev = new CustomEvent('eud-cot-out', { detail: { xml, mesh: false } });
+    document.dispatchEvent(ev);
+    if (ev.detail.mesh) sent = true;
+  }
   return sent;
 }
 
@@ -798,7 +838,11 @@ function openConn(srv) {
     const was = c.state;
     c.state = msg.state;
     c.message = msg.message || '';
-    if (msg.state === 'connected' && was !== 'connected') { toast('Connected: ' + (srv.name || srv.host)); sendSelfTo(srv); }
+    if (msg.state === 'connected' && was !== 'connected') {
+      toast('Connected: ' + (srv.name || srv.host));
+      sendSelfTo(srv);
+      document.dispatchEvent(new CustomEvent('eud-connected', { detail: { srv } })); // device profile (data.js)
+    }
     if (msg.state === 'untrusted') {
       askTrust(`${srv.host}:${srv.port}`, msg.fingerprint, msg.subject).then(ok => {
         if (!ok) return disconnectServer(srv);
@@ -881,7 +925,19 @@ document.addEventListener('visibilitychange', () => {
 // Own position (SA)
 // ======================================================================
 
-let meMarker = null, meCircle = null, follow = true, lastSent = 0, sentAt = null;
+let meMarker = null, meCircle = null, meFov = null, follow = true, lastSent = 0, sentAt = null, sentAz = null;
+
+// own camera while streaming: field of view for ATAK/WebTAK (<sensor>). Phone camera: direction of the
+// back of the phone (compass); helmet camera: the phone is not on the helmet -> GPS course while moving.
+const CAM_FOV = { phone: { fov: 60, vfov: 45, model: 'Phone camera' }, ble: { fov: 66, vfov: 50, model: 'Helmet camera' } };
+const CAM_RANGE = 100;
+function camSensor() {
+  const kind = window.eudVideoUrl && CAM_FOV[window.eudVideoSource];
+  if (!kind || !me) return null;
+  const moving = Number.isFinite(me.course) && me.speed > 0.5;
+  const az = window.eudVideoSource === 'phone' && camHeading != null ? camHeading : moving ? me.course : null;
+  return az == null ? null : { az: Math.round(az) % 360, fov: kind.fov, vfov: kind.vfov, model: kind.model, range: CAM_RANGE, color: TEAMS[profile.team] || '#00FFFF' };
+}
 
 function selfXml() {
   const now = new Date();
@@ -891,6 +947,8 @@ function selfXml() {
   const course = Number.isFinite(p.course) ? p.course : 0;
   const speed = Number.isFinite(p.speed) ? p.speed : 0;
   const video = window.eudVideoUrl ? `<__video url="${xmlEsc(window.eudVideoUrl)}"/>` : '';
+  const cam = camSensor();
+  const sensor = cam ? `<sensor azimuth="${cam.az}" fov="${cam.fov}" vfov="${cam.vfov}" range="${cam.range}" elevation="0" roll="0" north="0" type="r-e" model="${cam.model}" version="0.6"/>` : '';
   return `<event version="2.0" uid="${xmlEsc(profile.uid)}" type="a-f-G-U-C" how="m-g" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 120000))}">`
     + `<point lat="${p.lat.toFixed(7)}" lon="${p.lon.toFixed(7)}" hae="${Number.isFinite(p.alt) ? p.alt.toFixed(1) : '9999999'}" ce="${Math.round(p.acc || 9999999)}" le="9999999"/>`
     + `<detail><takv os="${xmlEsc(navigator.platform || 'Web')}" version="1.0" device="Browser" platform="WebTAK"/>`
@@ -899,12 +957,14 @@ function selfXml() {
     + `<precisionlocation altsrc="GPS" geopointsrc="GPS"/>`
     + `<__group role="${xmlEsc(profile.role)}" name="${xmlEsc(profile.team)}"/>`
     + (battery != null ? `<status battery="${battery}"/>` : '')
-    + video
+    + video + sensor
     + `<track course="${course.toFixed(1)}" speed="${speed.toFixed(1)}"/></detail></event>`;
 }
 
 function sendSelf() {
+  const cam = camSensor();
   if (sendCot(selfXml(), false)) {
+    sentAz = cam ? cam.az : null;
     lastSent = Date.now();
     if (me) {
       sentAt = { lat: me.lat, lon: me.lon };
@@ -937,8 +997,26 @@ function drawMe() {
     meCircle.setLatLng(ll).setRadius(me.acc || 0);
     if (follow) map.panTo(ll, { animate: true });
   }
+  drawMeFov();
   if (window.view3d) view3d.dirty();
 }
+function drawMeFov() {
+  if (meFov) meFov.remove();
+  const cam = camSensor();
+  meFov = cam ? fovLayer(me.lat, me.lon, cam).addTo(shapesLayer) : null;
+}
+// streaming: compass on (also in north-up mode); the view turns -> the cone follows, others see it within seconds
+let camWatch = false;
+setInterval(() => {
+  const want = !!window.eudVideoUrl && window.eudVideoSource === 'phone';
+  if (want && !camWatch) { camWatch = true; startHeading(); }
+  if (!want && camWatch) { camWatch = false; if (compassMode !== 'heading') stopHeading(); camHeading = null; }
+  if (!me) return;
+  const cam = camSensor();
+  if ((cam ? cam.az : null) !== (meFov ? meFov._az : null)) { drawMeFov(); if (meFov) meFov._az = cam.az; if (window.view3d) view3d.dirty(); }
+  const turned = cam && (sentAz == null || Math.abs(((cam.az - sentAz + 540) % 360) - 180) > 15);
+  if ((turned || (!cam && sentAz != null)) && Date.now() - lastSent > 3000) sendSelf();
+}, 1000);
 
 if ('geolocation' in navigator) {
   navigator.geolocation.watchPosition(pos => {
@@ -1284,6 +1362,37 @@ function applyAssignment(a) {
   if (changed) { toast(`Assigned by administrator: ${profile.callsign} (${profile.team})`, 5000); sendSelf(); }
 }
 
+// settings from the TAK server's device profile (like ATAK): callsign, team, role – an administrator's
+// assignment (WebTAK) has priority
+function applyProfilePrefs(p) {
+  if (!p || profile.assigned) return;
+  const next = { callsign: p.callsign || profile.callsign, team: TEAMS[p.team] ? p.team : profile.team, role: ROLES.includes(p.role) ? p.role : profile.role };
+  if (next.callsign === profile.callsign && next.team === profile.team && next.role === profile.role) return;
+  Object.assign(profile, next);
+  saveProfile();
+  showMe();
+  if (typeof updateSelfInfo === 'function') updateSelfInfo();
+  if (me) drawMe();
+  toast(`Set by the TAK server: ${profile.callsign} (${profile.team}, ${profile.role})`, 5000);
+  sendSelf();
+}
+// map sources from a device profile: into the map menu (kept on the device)
+function addTakMaps(list) {
+  const known = store.get('eud.takMaps', []);
+  let added = 0;
+  for (const m of list || []) {
+    const id = 'tak-' + (m.name || m.url).toLowerCase().replace(/[^a-z0-9]+/g, '-').slice(0, 40);
+    const rec = { id, name: m.name, url: m.url, maxZoom: m.maxZoom };
+    const i = known.findIndex(k => k.id === id);
+    if (i >= 0) known[i] = rec; else { known.push(rec); added++; }
+    const isNew = !SOURCES[id];
+    SOURCES[id] = { name: m.name + ' (TAK server)', maxZoom: m.maxZoom || 19, attribution: '', url: m.url };
+    if (isNew) $('fTiles').insertBefore(new Option(SOURCES[id].name, id), $('fTiles').querySelector('option[value="custom"]'));
+  }
+  store.set('eud.takMaps', known);
+  return added;
+}
+
 function fillMe() {
   $('fCallsign').value = profile.callsign;
   $('fTeam').value = profile.team;
@@ -1381,6 +1490,7 @@ function fillEdit() {
 
 function readEdit() {
   const host = $('fHost').value.trim().replace(/^[a-z]+:\/\//i, '').replace(/[/:].*$/, '');
+  const prevHost = draft.host;
   if (host !== draft.host) draft.fingerprint = '';
   draft.host = host;
   draft.name = $('fName').value.trim();
@@ -1388,7 +1498,9 @@ function readEdit() {
   draft.proto = $('fProto').value;
   draft.enrollPort = Number($('fEnroll').value) || 8446;
   draft.apiPort = Number($('fApi').value) || 8443;
-  draft.username = $('fUser').value.trim();
+  const user = $('fUser').value.trim();
+  if (host !== prevHost || user !== draft.username) draft.password = ''; // the remembered login no longer fits
+  draft.username = user;
 }
 
 function updateCertState() {
@@ -1474,6 +1586,8 @@ async function requestCert(password) {
         draft.certPem = r.certPem;
         draft.keyPem = r.keyPem;
         draft.certInfo = r.info;
+        draft.enrollProfile = true; // fetch the enrollment profile (maps, data packages) on the next connection, like ATAK
+        draft.password = password; // confirmed by the TAK server: the drone/camera address (RTMP/SRT) needs it, like ATAK keeps it
         addCas(draft, r.caPems);
         $('fPass').value = '';
         setMsg(msg, 'Certificate received.', true);
@@ -2063,6 +2177,7 @@ function headingUp(deg) { map.setBearing(-deg); }
 
 let compassMode = 'north'; // 'north' = north up (ATAK default), 'heading' = heading up
 let heading = null;        // device compass in degrees
+let camHeading = null;     // where the back of the phone (rear camera) looks, degrees
 let lastTurn = 0;
 
 let needleAngle = 0; // continuous so the needle always turns the short way
@@ -2083,12 +2198,24 @@ function onOrientation(e) {
   if (h == null) return;
   const sc = screen.orientation ? screen.orientation.angle || 0 : (window.orientation || 0);
   heading = (h + sc + 360) % 360;
+  camHeading = backHeading(e, h);
   if (compassMode !== 'heading') return;
   const now = Date.now();
   if (now - lastTurn < 120) return; // rotate smoothly, save battery
   lastTurn = now;
   headingUp(heading);
   updateCompass();
+}
+
+// direction of the back of the device (rear camera) from alpha/beta/gamma (W3C device orientation, -z axis);
+// iPhone: webkitCompassHeading already follows the camera when the phone is held up. Phone lying flat -> compass.
+function backHeading(e, h) {
+  if (typeof e.webkitCompassHeading === 'number' || typeof e.beta !== 'number' || typeof e.gamma !== 'number') return h;
+  const r = Math.PI / 180, a = (360 - h) * r, b = e.beta * r, g = e.gamma * r;
+  const vx = -Math.cos(a) * Math.sin(g) - Math.sin(a) * Math.sin(b) * Math.cos(g);
+  const vy = -Math.sin(a) * Math.sin(g) + Math.cos(a) * Math.sin(b) * Math.cos(g);
+  if (Math.hypot(vx, vy) < 0.35) return h; // flat: no meaningful camera direction
+  return (Math.atan2(vx, vy) / r + 360) % 360;
 }
 
 function startHeading() {
@@ -2102,6 +2229,7 @@ function startHeading() {
   }
 }
 function stopHeading() {
+  if (camWatch) return; // the own stream still needs the camera direction
   window.removeEventListener('deviceorientationabsolute', onOrientation);
   window.removeEventListener('deviceorientation', onOrientation);
 }
@@ -2375,7 +2503,7 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
 
 loadPicture();
 renderChat();

@@ -340,3 +340,67 @@ test('TAK server on this machine: allowed only on the TAK ports, with the reason
   assert.match(await tak.targetProblem('', '169.254.169.254', { ...local, port: 8089 }), /points to this machine/);
   assert.match(await tak.targetProblem('tak.example.com', 'other.example.com', local), /missing in the list/);
 });
+
+test('KML from other programs: UTF-16, ISO-8859-1, link-only files', () => {
+  const kml = name => `<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${name}</name><Point><coordinates>7.89,47.91,0</coordinates></Point></Placemark></Document></kml>`;
+  const u16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<?xml version="1.0" encoding="UTF-16"?>' + kml('Größe'), 'utf16le')]);
+  assert.match(tak.extractContent('a.kml', u16).overlays[0].kml, /<name>Größe<\/name>/);
+  const l1 = Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?>' + kml('Straße'), 'latin1');
+  const r1 = tak.extractContent('b.kml', l1);
+  assert.match(r1.overlays[0].kml, /<name>Straße<\/name>/);
+  assert.equal(r1.warnings, undefined);
+  const link = '<kml xmlns="http://www.opengis.net/kml/2.2"><NetworkLink><Link><href>https://www.google.com/maps/d/kml?mid=1&amp;x=2</href></Link></NetworkLink></kml>';
+  const r2 = tak.extractContent('c.kml', Buffer.from(link));
+  assert.match(r2.warnings[0], /only links to https:\/\/www\.google\.com\/maps\/d\/kml\?mid=1&x=2/);
+});
+
+test('device profile like OpenTAKServer: settings, map sources and data packages on enrollment/connection', async () => {
+  const fs = require('fs');
+  const os = require('os');
+  const path = require('path');
+  const { execFileSync } = require('child_process');
+  const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'prof-'));
+  const sub = '5c2bfcae3d98c9f4d262172df99ebac5';
+  // data package marked "install on enrollment" in OTS (nested ZIP)
+  fs.mkdirSync(path.join(dir, 'pkg', 'MANIFEST'), { recursive: true });
+  fs.writeFileSync(path.join(dir, 'pkg', 'MANIFEST', 'manifest.xml'), '<MissionPackageManifest/>');
+  fs.writeFileSync(path.join(dir, 'pkg', 'area.kml'), '<kml><Document><Placemark><name>Field</name><Point><coordinates>14,48</coordinates></Point></Placemark></Document></kml>');
+  execFileSync('zip', ['-qr', '../Event.zip', 'MANIFEST', 'area.kml'], { cwd: path.join(dir, 'pkg') });
+  fs.mkdirSync(path.join(dir, 'p', 'MANIFEST'), { recursive: true });
+  fs.mkdirSync(path.join(dir, 'p', sub));
+  fs.mkdirSync(path.join(dir, 'p', 'maps'));
+  fs.writeFileSync(path.join(dir, 'p', 'MANIFEST', 'manifest.xml'), '<MissionPackageManifest version="2"/>');
+  fs.writeFileSync(path.join(dir, 'p', sub, 'preference.pref'), '<preferences><preference version="1" name="com.atakmap.app_preferences">'
+    + '<entry key="locationCallsign" class="class java.lang.String">ALPHA 9</entry><entry key="locationTeam" class="class java.lang.String">Dark Blue</entry>'
+    + '<entry key="atakRoleType" class="class java.lang.String">Team Lead</entry><entry key="repoStartupSync" class="class java.lang.Boolean">true</entry></preference></preferences>');
+  fs.writeFileSync(path.join(dir, 'p', sub, 'truststore-root.p12'), 'P12');
+  fs.copyFileSync(path.join(dir, 'Event.zip'), path.join(dir, 'p', sub, 'Event.zip'));
+  fs.writeFileSync(path.join(dir, 'p', 'maps', 'esri.xml'), '<?xml version="1.0"?><customMapSource><name>Esri Imagery</name><minZoom>0</minZoom><maxZoom>19</maxZoom>'
+    + '<tileType>jpg</tileType><url>https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{$z}/{$y}/{$x}</url></customMapSource>');
+  fs.writeFileSync(path.join(dir, 'p', 'maps', 'bing.xml'), '<customMapSource><name>Bing</name><url>https://ecn.t0.tiles.virtualearth.net/tiles/a{$q}.jpeg</url></customMapSource>');
+  execFileSync('zip', ['-qr', '../profile.zip', 'MANIFEST', sub, 'maps'], { cwd: path.join(dir, 'p') });
+  const zip = fs.readFileSync(path.join(dir, 'profile.zip'));
+  fs.rmSync(dir, { recursive: true, force: true });
+  const seen = [];
+  const api = https.createServer({ key: serverKeyPem, cert: serverCertPem, ca: [ca.pem], requestCert: true, rejectUnauthorized: true }, (req, res) => {
+    const u = new URL(req.url, 'https://x');
+    seen.push(u.pathname + u.search);
+    if (u.pathname === '/Marti/api/tls/profile/enrollment') { res.writeHead(200, { 'Content-Type': 'application/zip' }); return res.end(zip); }
+    if (u.pathname === '/Marti/api/device/profile/connection') { res.writeHead(204); return res.end(); } // nothing new
+    res.writeHead(404); res.end();
+  });
+  await new Promise(r => api.listen(0, '127.0.0.1', r));
+  const conn = { host: '127.0.0.1', apiPort: api.address().port, caPems: [ca.pem], certPem: enrolled.certPem, keyPem: enrolled.keyPem };
+  try {
+    const r = await tak.marti(conn, 'profile', { kind: 'enrollment', uid: 'EUD-1' });
+    assert.deepEqual(r.prefs, { callsign: 'ALPHA 9', team: 'Dark Blue', role: 'Team Lead' });
+    assert.deepEqual(r.maps, [{ name: 'Esri Imagery', url: 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', minZoom: 0, maxZoom: 19 }]);
+    assert.equal(r.overlays.length, 1);
+    assert.equal(r.overlays[0].name, 'area');
+    const c = await tak.marti(conn, 'profile', { kind: 'connection', uid: 'EUD-1', secago: 3600 });
+    assert.equal(c.empty, true);
+    assert.deepEqual(seen, ['/Marti/api/tls/profile/enrollment?clientUid=EUD-1', '/Marti/api/device/profile/connection?syncSecago=3600&clientUid=EUD-1']);
+  } finally {
+    api.close();
+  }
+});
