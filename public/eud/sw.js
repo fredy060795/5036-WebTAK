@@ -6,7 +6,7 @@ const TILE_CACHE = 'eud-tiles';
 const MAX_TILES = 40000; // saved areas + recently viewed tiles
 const SHELL = [
   './', 'index.html', 'eud.css', 'eud.js', 'view3d.js', 'video.js', 'data.js', 'meshproto.js', 'mesh.js', 'manifest.webmanifest',
-  'icon-192.png', 'icon-512.png', 'apple-touch-icon.png',
+  'icon-192.png', 'icon-512.png', 'apple-touch-icon.png', 'tak-badge.png',
   'vendor/leaflet.js', 'vendor/leaflet-rotate.js', 'vendor/leaflet.css', 'vendor/milsymbol.js', 'vendor/jsQR.js', 'vendor/hls.min.js',
   'vendor/maplibre-gl.mjs', 'vendor/maplibre-gl-worker.mjs', 'vendor/maplibre-gl.css',
   'vendor/images/layers.png', 'vendor/images/layers-2x.png',
