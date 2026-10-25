@@ -340,3 +340,16 @@ test('TAK server on this machine: allowed only on the TAK ports, with the reason
   assert.match(await tak.targetProblem('', '169.254.169.254', { ...local, port: 8089 }), /points to this machine/);
   assert.match(await tak.targetProblem('tak.example.com', 'other.example.com', local), /missing in the list/);
 });
+
+test('KML from other programs: UTF-16, ISO-8859-1, link-only files', () => {
+  const kml = name => `<kml xmlns="http://www.opengis.net/kml/2.2"><Document><Placemark><name>${name}</name><Point><coordinates>7.89,47.91,0</coordinates></Point></Placemark></Document></kml>`;
+  const u16 = Buffer.concat([Buffer.from([0xff, 0xfe]), Buffer.from('<?xml version="1.0" encoding="UTF-16"?>' + kml('Größe'), 'utf16le')]);
+  assert.match(tak.extractContent('a.kml', u16).overlays[0].kml, /<name>Größe<\/name>/);
+  const l1 = Buffer.from('<?xml version="1.0" encoding="ISO-8859-1"?>' + kml('Straße'), 'latin1');
+  const r1 = tak.extractContent('b.kml', l1);
+  assert.match(r1.overlays[0].kml, /<name>Straße<\/name>/);
+  assert.equal(r1.warnings, undefined);
+  const link = '<kml xmlns="http://www.opengis.net/kml/2.2"><NetworkLink><Link><href>https://www.google.com/maps/d/kml?mid=1&amp;x=2</href></Link></NetworkLink></kml>';
+  const r2 = tak.extractContent('c.kml', Buffer.from(link));
+  assert.match(r2.warnings[0], /only links to https:\/\/www\.google\.com\/maps\/d\/kml\?mid=1&x=2/);
+});

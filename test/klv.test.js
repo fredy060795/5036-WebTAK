@@ -55,14 +55,16 @@ test('drone position, view direction and image area on the ground', () => {
   assert.ok(ul[1] > ur[1], 'looking south: upper left is east');
 
   const cot = toCot(v, { uid: 'UAS-drone-alpha', name: 'DRONE ALPHA', video: 'rtsp://tak:8554/drone-alpha', now: new Date('2026-10-25T10:00:00Z') });
-  assert.equal(cot.length, 3);
+  assert.equal(cot.length, 4);
   assert.match(cot[0], /uid="UAS-drone-alpha" type="a-f-A-M-H-Q"/);
   assert.match(cot[0], /<sensor azimuth="180.0" fov="60.0" vfov="40.0" range="214" elevation="-35.0"/);
   assert.match(cot[0], /<__video url="rtsp:\/\/tak:8554\/drone-alpha"\/>/);
   assert.match(cot[1], /uid="UAS-drone-alpha-fp" type="u-d-f"/);
   assert.equal((cot[1].match(/<link point=/g) || []).length, 5, 'closed ring');
-  assert.match(cot[2], /uid="UAS-drone-alpha-spi" type="b-m-p-s-p-i"/);
-  assert.match(cot[2], /stale="2026-10-25T10:01:00.000Z"/);
+  assert.match(cot[2], /uid="UAS-drone-alpha-los" type="u-d-f"/);
+  assert.equal((cot[2].match(/<link point=/g) || []).length, 2, 'drone -> image centre');
+  assert.match(cot[3], /uid="UAS-drone-alpha-spi" type="b-m-p-s-p-i"/);
+  assert.match(cot[3], /stale="2026-10-25T10:01:00.000Z"/);
 });
 
 test('image area from the corner offsets (tags 26-33) when sent', () => {

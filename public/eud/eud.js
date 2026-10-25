@@ -449,7 +449,8 @@ function fovLayer(lat, lon, s, faded) {
     const p = destPoint(lat, lon, s.range, s.az - s.fov / 2 + (s.fov * i) / n);
     pts.push([p.lat, p.lon]);
   }
-  return L.polygon(pts, { color: s.color, weight: 1.5, opacity: faded ? 0.4 : 0.9, fillColor: s.color, fillOpacity: faded ? 0.08 : 0.2, interactive: false });
+  // light overlay: thin edge, almost transparent – the map underneath stays readable
+  return L.polygon(pts, { color: s.color, weight: 1, opacity: faded ? 0.25 : 0.55, fillColor: s.color, fillOpacity: faded ? 0.03 : 0.08, interactive: false });
 }
 
 function drawItem(it) {

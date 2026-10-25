@@ -77,6 +77,7 @@
       href = href.trim();
       if (/^data:image\//.test(href)) return href;
       if (imgs[href]) return imgs[href];
+      if (/^http:\/\//i.test(href)) href = 'https://' + href.slice(7); // http images are blocked on an https page
       const rel = resolvePath(docPath, href);
       if (imgs[rel]) return imgs[rel];
       const base = href.split('/').pop();
@@ -91,9 +92,11 @@
     for (const [docPath, text] of docs) {
       let doc;
       try { doc = parseXml(text); } catch (e) { if (docPath === (ov.path || 'doc.kml')) throw e; continue; }
+      // by local name: KML from other programs may use a prefix (kml:Placemark) or none at all
+      const all = (el, name) => el.getElementsByTagNameNS('*', name);
       const kids = (el, name) => [...el.children].filter(c => c.localName === name);
       const kid = (el, name) => kids(el, name)[0];
-      const txt = (el, name) => { const n = el && el.getElementsByTagName(name)[0]; return n ? n.textContent.trim() : ''; };
+      const txt = (el, name) => { const n = el && all(el, name)[0]; return n ? n.textContent.trim() : ''; };
       const readStyle = st => {
         const ls = kid(st, 'LineStyle'), ps = kid(st, 'PolyStyle'), is = kid(st, 'IconStyle');
         return {
@@ -103,14 +106,14 @@
         };
       };
       const styles = {};
-      for (const st of doc.getElementsByTagName('Style')) if (st.getAttribute('id')) styles['#' + st.getAttribute('id')] = readStyle(st);
-      for (const sm of doc.getElementsByTagName('StyleMap')) {
-        const pair = [...sm.getElementsByTagName('Pair')].find(p => txt(p, 'key') === 'normal');
+      for (const st of all(doc, 'Style')) if (st.getAttribute('id')) styles['#' + st.getAttribute('id')] = readStyle(st);
+      for (const sm of all(doc, 'StyleMap')) {
+        const pair = [...all(sm, 'Pair')].find(p => txt(p, 'key') === 'normal');
         if (pair && sm.getAttribute('id')) styles['#' + sm.getAttribute('id')] = styles[txt(pair, 'styleUrl').replace(/^[^#]*/, '')] || {};
       }
-      const coords = el => (el ? el.textContent.trim().split(/\s+/).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])).map(p => [p[1], p[0]]) : []);
+      const coords = el => (el ? el.textContent.trim().replace(/\s*,\s*/g, ',').split(/\s+/).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])).map(p => [p[1], p[0]]) : []);
 
-      for (const pm of doc.getElementsByTagName('Placemark')) {
+      for (const pm of all(doc, 'Placemark')) {
         const own = kid(pm, 'Style');
         const st = Object.assign({}, styles[txt(pm, 'styleUrl').replace(/^[^#]*/, '')] || {}, own ? readStyle(own) : {});
         const name = txt(pm, 'name');
@@ -124,9 +127,10 @@
             if (el.localName === 'Point') {
               const p = coords(kid(el, 'coordinates'))[0];
               if (!p) continue;
-              const m = st.icon
-                ? L.marker(p, { pane: 'kml', icon: L.icon({ iconUrl: st.icon, iconSize: [24, 24], iconAnchor: [12, 12] }) })
-                : L.circleMarker(p, { pane: 'kml', radius: 6, color: '#000', weight: 1.5, fillColor: (st.iconColor || line).color, fillOpacity: 1 });
+              const dot = () => L.circleMarker(p, { pane: 'kml', radius: 6, color: '#000', weight: 1.5, fillColor: (st.iconColor || line).color, fillOpacity: 1 });
+              const m = st.icon ? L.marker(p, { pane: 'kml', icon: L.icon({ iconUrl: st.icon, iconSize: [24, 24], iconAnchor: [12, 12] }) }) : dot();
+              // an icon from the internet that does not load (offline, blocked): a dot instead of nothing
+              if (st.icon) m.on('add', () => { const img = m.getElement(); if (img) img.onerror = () => { const d = dot(); if (name) d.bindTooltip(name, { permanent: true, direction: 'right', className: 'ov-label', offset: [8, 0] }); d.bindPopup(popup, { maxWidth: 260 }); group.removeLayer(m); group.addLayer(d); }; });
               if (name) m.bindTooltip(name, { permanent: true, direction: 'right', className: 'ov-label', offset: [8, 0] });
               add(m);
             } else if (el.localName === 'LineString' || el.localName === 'LinearRing') {
@@ -134,9 +138,13 @@
               if (pts.length > 1) add(L.polyline(pts, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2 }));
             } else if (el.localName === 'Polygon') {
               const outer = kid(el, 'outerBoundaryIs'), inner = kids(el, 'innerBoundaryIs');
-              const rings = [coords(outer && outer.getElementsByTagName('coordinates')[0]), ...inner.map(i => coords(i.getElementsByTagName('coordinates')[0]))].filter(r => r.length > 2);
+              const rings = [coords(outer && all(outer, 'coordinates')[0]), ...inner.map(i => coords(all(i, 'coordinates')[0]))].filter(r => r.length > 2);
               if (rings.length) add(L.polygon(rings, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2, fillColor: poly.color, fillOpacity: st.fill === false ? 0 : poly.opacity }));
-            } else if (el.localName === 'MultiGeometry') {
+            } else if (el.localName === 'Track') {
+              // Google Earth GPS track (gx:Track): <gx:coord>lon lat alt</gx:coord>
+              const pts = kids(el, 'coord').map(c => c.textContent.trim().split(/\s+/).map(Number)).filter(q => Number.isFinite(q[0]) && Number.isFinite(q[1])).map(q => [q[1], q[0]]);
+              if (pts.length > 1) add(L.polyline(pts, { pane: 'kml', color: line.color, opacity: line.opacity, weight: st.width || 2 }));
+            } else if (el.localName === 'MultiGeometry' || el.localName === 'MultiTrack') {
               walk(el);
             }
           }
@@ -144,17 +152,17 @@
         walk(pm);
       }
       // raster maps (GroundOverlay) with LatLonBox or gx:LatLonQuad
-      for (const go of doc.getElementsByTagName('GroundOverlay')) {
-        const icon = go.getElementsByTagName('Icon')[0];
+      for (const go of all(doc, 'GroundOverlay')) {
+        const icon = all(go, 'Icon')[0];
         const url = image(txt(icon, 'href'), docPath);
         if (!url) continue;
         let b = null;
-        const box = go.getElementsByTagName('LatLonBox')[0];
+        const box = all(go, 'LatLonBox')[0];
         if (box) {
           b = [[Number(txt(box, 'south')), Number(txt(box, 'west'))], [Number(txt(box, 'north')), Number(txt(box, 'east'))]];
         } else {
-          const quad = go.getElementsByTagName('gx:LatLonQuad')[0] || go.getElementsByTagName('LatLonQuad')[0];
-          const pts = quad ? coords(quad.getElementsByTagName('coordinates')[0] || quad) : [];
+          const quad = all(go, 'LatLonQuad')[0];
+          const pts = quad ? coords(all(quad, 'coordinates')[0] || quad) : [];
           if (pts.length >= 4) b = [[Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1]))], [Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]];
         }
         if (b && b.flat().every(Number.isFinite)) grounds.push({ bounds: b, url, span: Math.abs(b[1][1] - b[0][1]) || 1e-9 });

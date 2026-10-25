@@ -223,6 +223,11 @@ device, also raster maps with several detail levels; stay stored offline).
 mission, both are loaded or subscribed automatically. Errors while fetching are in the server log
 ("EUD TAK-API … error").
 
+**KML/KMZ from any program** (Google Earth, Google My Maps, QGIS, CalTopo, WinTAK …): UTF-16 and ISO-8859-1 files,
+prefixed KML (`kml:Placemark`), Google Earth tracks (`gx:Track`), coordinates with spaces; icons that do not load
+(offline, `http://` on an https page) become dots. A file that only links to data elsewhere (My Maps "Keep data up to
+date") gets a hint to export it with the data.
+
 **Map** (Menu → Map): choose the source (OpenStreetMap, OpenTopoMap, Esri Satellite/Topo or a custom
 URL with `{z}/{x}/{y}`). Tiles go through this server and are cached there under `DATA_DIR/tiles`.
 **Save offline:** the visible area or a drawn **corridor**
