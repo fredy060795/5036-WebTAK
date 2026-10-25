@@ -77,7 +77,7 @@ async function api(path, { method = 'GET', body } = {}) {
     showFirst();
     throw new ApiError(data.error);
   }
-  if (!res.ok) throw new ApiError(data.error || 'Error ' + res.status);
+  if (!res.ok) throw Object.assign(new ApiError(data.error || 'Error ' + res.status), { code: data.code, fingerprint: data.fingerprint, subject: data.subject });
   return data;
 }
 

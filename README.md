@@ -341,6 +341,22 @@ in the admin without choosing groups therefore gets **all** groups; missions wit
 (file mode 600) so the access page can show the data; the access link is secret (48 characters) and
 worthless after blocking/deleting. Registrations are limited to 5 per hour and IP.
 
+## Federation (TAK servers exchange data)
+
+Admin → TAK server → **Federation**: OpenTAKServer has no federation of its own – WebTAK connects to every listed
+server as a TAK client (own certificate per server) and passes data on **in all directions**:
+
+- **Live data** (positions, markers, drawings, chat, deletions) right away to every other server.
+- **Data packages** every N minutes (or "Sync now"): what one server has and another does not is copied – compared
+  by SHA-256, so nothing arrives twice; uploaded like ATAK (`/Marti/sync/missionupload`, the server keeps the hash).
+- **No loops, no duplicates:** forwarded CoT carries a marker (`<__webtakfed>`) and is never passed on again; the same
+  event from two servers is forwarded once; pings, mission changes and file transfer requests stay on their server.
+- **Servers:** the own OpenTAKServer from the settings (certificate with the OTS login, automatically) plus any number
+  of others: address, ports, and **user + password** (only used to request the certificate – not stored) or a
+  **.p12**. An unknown server certificate is asked once (fingerprint). Live data and data packages can be switched
+  per server; the table shows status and how much went in/out.
+- What WebTAK sees on a server follows the groups of its certificate user there.
+
 ## Managing the TAK server (in the WebTAK admin)
 
 Under **TAK server** in the sidebar WebTAK manages OpenTAKServer like its own UI:

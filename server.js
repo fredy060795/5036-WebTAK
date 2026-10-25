@@ -29,6 +29,7 @@ const { TakVideo } = require('./lib/takvideo');
 const { atakPackage } = require('./lib/datapackage');
 const { proxyMedia } = require('./lib/mediaproxy');
 const { KlvFeeds } = require('./lib/klvfeed');
+const { Federation } = require('./lib/federation');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -742,6 +743,133 @@ async function klvCandidates(req, raw) {
   return out;
 }
 
+// ---------------- Federation: TAK servers exchange data through WebTAK ----------------
+// store.data.federation = { id, enabled, intervalMin, local: { enabled, cot, packages, cert… }, peers: [{ id, name, host, ports, cert…, cot, packages, enabled }] }
+function fedConfig() {
+  const f = store.data.federation || (store.data.federation = {});
+  if (!f.id) f.id = crypto.randomBytes(4).toString('hex');
+  f.intervalMin = Number(f.intervalMin) || 5;
+  f.local = Object.assign({ enabled: true, cot: true, packages: true }, f.local || {});
+  f.peers = f.peers || [];
+  return f;
+}
+const certOf = x => ({ certPem: x.certPem || '', keyPem: x.keyPem || '', caPems: x.caPems || [], fingerprint: x.fingerprint || '' });
+function fedLocal() {
+  const o = takUsers.t.ots || {};
+  let internal = '';
+  try { internal = new URL(o.url).hostname; } catch (e) { /* no OTS */ }
+  const host = o.host || internal;
+  return { id: 'local', name: 'This TAK server', host, altHost: internal && internal !== host ? internal : '', port: o.streamPort || 8089, apiPort: o.apiPort || 8443, enrollPort: o.enrollPort || tak.ENROLL_PORT };
+}
+function fedMembers() {
+  const f = fedConfig();
+  if (!f.enabled) return [];
+  const out = [];
+  if (f.local.enabled && takUsers.otsConfigured()) out.push({ ...fedLocal(), ...certOf(f.local), cot: f.local.cot, packages: f.local.packages });
+  for (const p of f.peers) if (p.enabled !== false) out.push({ ...p, ...certOf(p), altHost: '' });
+  return out;
+}
+const federation = new Federation({ tak, log, id: fedConfig().id, members: fedMembers, intervalMin: () => fedConfig().intervalMin });
+// client certificate for a member: with user + password (the password is not kept) or from a .p12
+async function fedCert(target, { host, enrollPort, username, password, p12, p12Password, fingerprint }) {
+  if (p12) {
+    const r = tak.readP12(String(p12), String(p12Password || ''));
+    if (!r.certPem || !r.keyPem) throw new Error('The .p12 holds no client certificate.');
+    Object.assign(target, { certPem: r.certPem, keyPem: r.keyPem, caPems: r.caPems || [], fingerprint: fingerprint || target.fingerprint || '' });
+    return;
+  }
+  const r = await tak.enroll({ host, port: Number(enrollPort) || tak.ENROLL_PORT, username, password, uid: 'WEBTAK-FED-' + fedConfig().id, caPems: target.caPems || [], fingerprint: fingerprint || target.fingerprint || '' });
+  Object.assign(target, { certPem: r.certPem, keyPem: r.keyPem, caPems: r.caPems, fingerprint: fingerprint || target.fingerprint || '', username });
+}
+// own TAK server: certificate with the OTS login from the settings (the own server is trusted) -> '' or a problem
+async function fedLocalCert() {
+  const f = fedConfig();
+  if (!f.enabled || !f.local.enabled || !takUsers.otsConfigured() || f.local.certPem) return '';
+  const o = takUsers.t.ots, l = fedLocal();
+  const req = { host: l.altHost || l.host, enrollPort: l.enrollPort, username: o.username, password: o.password };
+  try {
+    try { await fedCert(f.local, req); } catch (e) { if (e.code !== 'UNTRUSTED') throw e; await fedCert(f.local, { ...req, fingerprint: e.fingerprint }); }
+    f.local.error = '';
+    return '';
+  } catch (e) {
+    f.local.error = 'certificate request failed – ' + e.message + ' (switch "takes part" off and on to try again)';
+    return 'This TAK server: ' + f.local.error;
+  }
+}
+
+function fedView() {
+  const f = fedConfig();
+  const st = federation.state();
+  const live = id => st.members.find(m => m.id === id) || null;
+  const info = x => (x.certPem ? tak.certInfo(x.certPem) : null);
+  return {
+    enabled: !!f.enabled, intervalMin: f.intervalMin, lastSync: st.lastSync,
+    local: { available: takUsers.otsConfigured(), host: fedLocal().host, enabled: f.local.enabled, cot: f.local.cot, packages: f.local.packages, cert: info(f.local), live: live('local'), error: f.local.certPem ? '' : f.local.error || '' },
+    peers: f.peers.map(p => ({ id: p.id, name: p.name, host: p.host, port: p.port, apiPort: p.apiPort, enrollPort: p.enrollPort, username: p.username || '',
+      cot: p.cot !== false, packages: p.packages !== false, enabled: p.enabled !== false, cert: info(p), live: live(p.id) })),
+  };
+}
+async function handleFederation(req, res, route, method) {
+  const f = fedConfig();
+  const untrusted = e => (e.code === 'UNTRUSTED' ? json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject }) : null);
+  if (route === '' && method === 'GET') return json(res, 200, fedView());
+  if (route === '' && method === 'POST') {
+    const body = await readJson(req);
+    f.enabled = !!body.enabled;
+    if (body.intervalMin) f.intervalMin = Math.min(1440, Math.max(1, Number(body.intervalMin) || 5));
+    const warning = await fedLocalCert();
+    store.save();
+    federation.apply();
+    log('Federation', f.enabled ? 'on' : 'off');
+    return json(res, 200, { ...fedView(), warning });
+  }
+  if (route === 'local' && method === 'POST') {
+    const body = await readJson(req);
+    Object.assign(f.local, { enabled: !!body.enabled, cot: !!body.cot, packages: !!body.packages });
+    const warning = await fedLocalCert();
+    store.save();
+    federation.apply();
+    return json(res, 200, { ...fedView(), warning });
+  }
+  if (route === 'peers' && method === 'POST') {
+    const body = await readJson(req, 512 * 1024);
+    const host = String(body.host || '').trim().replace(/^[a-z]+:\/\//i, '').replace(/[/:].*$/, '');
+    if (!host || !/^[a-z0-9.:_-]+$/i.test(host)) throw new Error('Enter the address of the TAK server.');
+    let p = f.peers.find(x => x.id === body.id);
+    const fresh = !p;
+    if (!p) p = { id: crypto.randomBytes(4).toString('hex') };
+    const before = { host: p.host, enrollPort: p.enrollPort };
+    Object.assign(p, {
+      name: String(body.name || host).trim().slice(0, 60), host, port: Number(body.port) || 8089, apiPort: Number(body.apiPort) || 8443,
+      enrollPort: Number(body.enrollPort) || tak.ENROLL_PORT, cot: body.cot !== false, packages: body.packages !== false, enabled: body.enabled !== false,
+    });
+    if (before.host && before.host !== host) Object.assign(p, { certPem: '', keyPem: '', caPems: [], fingerprint: '' }); // another server
+    if (body.password || body.p12) {
+      try {
+        await fedCert(p, { host, enrollPort: p.enrollPort, username: String(body.username || '').trim(), password: String(body.password || ''), p12: body.p12, p12Password: body.p12Password, fingerprint: body.fingerprint });
+      } catch (e) { return untrusted(e) || json(res, 400, { error: e.message }); }
+    }
+    if (!p.certPem) return json(res, 400, { error: 'Enter user and password (or a .p12) – WebTAK requests its own certificate there.' });
+    if (fresh) f.peers.push(p);
+    store.save();
+    federation.apply();
+    log('Federation server', fresh ? 'added' : 'changed', p.name);
+    return json(res, 200, fedView());
+  }
+  const pm = route.match(/^peers\/([a-f0-9]+)$/);
+  if (pm && method === 'DELETE') {
+    f.peers = f.peers.filter(x => x.id !== pm[1]);
+    store.save();
+    federation.apply();
+    return json(res, 200, fedView());
+  }
+  if (route === 'sync' && method === 'POST') {
+    await federation.syncPackages();
+    return json(res, 200, fedView());
+  }
+  return json(res, 404, { error: 'Unknown request.' });
+}
+
 async function takProblem(host, port) {
   const ports = takPorts();
   if (ownTak(host) && ports.includes(Number(port))) return '';
@@ -999,6 +1127,7 @@ async function handleAdminApi(req, res, route) {
   }
   if (route.startsWith('takusers/')) return await handleTakAdmin(req, res, route.slice(9));
   if (route.startsWith('ots/')) return await handleOtsAdmin(req, res, route.slice(4));
+  if (route === 'federation' || route.startsWith('federation/')) return await handleFederation(req, res, route.slice(11), method);
   if (route === 'takvideo' && method === 'GET') return json(res, 200, takVideo.state());
   if (route === 'takvideo/settings' && method === 'POST') { takVideo.setSettings(await readJson(req)); return json(res, 200, takVideo.state()); }
   if (route === 'takvideo/sync' && method === 'POST') { const r = await takVideo.syncAll(); return json(res, 200, { ...r, ...takVideo.state() }); }
@@ -1506,11 +1635,14 @@ server.listen(config.port, config.bind, () => {
   log(`Public address: ${config.publicUrl || '(from request)'}${config.adminHost ? ', admin domain: ' + config.adminHost : ''}`);
   log(ffmpegOk ? 'ffmpeg found: HLS and MPEG-TS available' : 'ffmpeg not found: MJPEG only');
   if (store.data.admin.mustChange) log('First start: admin login admin / admin123 – the password is changed at the first login.');
+  federation.apply(); // TAK server federation (if switched on)
 });
 
 function shutdown() {
   log('Server shutting down');
   hub.shutdown();
+  federation.stop();
+  klvFeeds.close();
   for (const c of wss.clients) c.close(1001, 'server shutdown');
   server.close(() => process.exit(0));
   setTimeout(() => process.exit(0), 3000).unref();

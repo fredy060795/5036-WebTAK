@@ -97,6 +97,7 @@
     <a href="#otsgroups" data-nav="otsgroups" class="admin-only"><span class="ic">◫</span>Groups</a>
     <a href="#missions" data-nav="missions" class="admin-only"><span class="ic">⟳</span>Missions (Data Sync)</a>
     <a href="#mesh" data-nav="mesh" class="admin-only"><span class="ic">⌁</span>Meshtastic</a>
+    <a href="#federation" data-nav="federation" class="admin-only"><span class="ic">⇄</span>Federation</a>
     <div class="side-h admin-only">Video</div>
     <a href="#video" data-nav="video" class="admin-only"><span class="ic">📡</span>Video feeds <span class="badge nb live" id="navLive"></span></a>
     <a href="#create" data-nav="create" class="admin-only"><span class="ic">＋</span>Create stream</a>
@@ -385,6 +386,45 @@
       <p class="msg" id="omeMsg"></p>
       <div class="table-wrap"><table class="streams" id="omeTable"><thead><tr><th>Channel</th><th>Radio</th><th>Up/Down</th><th>Link</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
+    <section class="card" data-view="federation">
+      <div class="row between"><h2>Federation <span class="mut small">(TAK servers exchange data)</span></h2><button id="fdReload" type="button">⟳</button></div>
+      <p class="mut small">WebTAK connects to every server below with its own certificate and passes data on in <b>all directions</b>: live data
+        (positions, markers, drawings, chat, deletions) right away, <b>data packages</b> regularly – only what a server is missing (by hash),
+        so nothing arrives twice and nothing loops back. Who sees what on a server follows the groups of WebTAK's certificate user there.</p>
+      <div class="row">
+        <label class="check"><input type="checkbox" id="fdOn"> Federation on</label>
+        <div><label>Data packages every (minutes)</label><input id="fdInterval" type="number" min="1" max="1440" style="width:90px"></div>
+        <div class="actions-end"><button type="button" id="fdSync">⇄ Sync data packages now</button></div>
+      </div>
+      <p class="mut small" id="fdLast"></p>
+      <p class="msg" id="fdMsg"></p>
+      <div class="table-wrap"><table class="streams" id="fdTable"><thead><tr><th>Server</th><th>Status</th><th>Live data</th><th>Data packages</th><th>Exchanged</th><th></th></tr></thead><tbody></tbody></table></div>
+      <h3 id="fdFormTitle">Add server</h3>
+      <form id="fdForm">
+        <input type="hidden" name="id">
+        <div class="row">
+          <div class="grow"><label>Name</label><input name="name" maxlength="60" placeholder="e.g. TAK Bravo"></div>
+          <div class="grow"><label>Address</label><input name="host" required placeholder="tak.example.org" autocapitalize="off" spellcheck="false"></div>
+        </div>
+        <div class="row">
+          <div><label>Streaming port</label><input name="port" type="number" placeholder="8089" style="width:110px"></div>
+          <div><label>API port</label><input name="apiPort" type="number" placeholder="8443" style="width:110px"></div>
+          <div><label>Enrollment port</label><input name="enrollPort" type="number" placeholder="8446" style="width:110px"></div>
+        </div>
+        <div class="row">
+          <div class="grow"><label>User on that server</label><input name="username" autocomplete="off" autocapitalize="off"></div>
+          <div class="grow"><label>Password (only to request the certificate – not stored)</label><input name="password" type="password" autocomplete="new-password"></div>
+        </div>
+        <div class="row">
+          <div class="grow"><label>… or certificate (.p12)</label><input name="p12" type="file" accept=".p12,.pfx"></div>
+          <div class="grow"><label>.p12 password</label><input name="p12Password" type="password" autocomplete="off"></div>
+        </div>
+        <label class="check"><input type="checkbox" name="cot" checked> Live data (positions, markers, chat)</label>
+        <label class="check"><input type="checkbox" name="packages" checked> Data packages</label>
+        <label class="check"><input type="checkbox" name="enabled" checked> Active</label>
+        <div class="row" style="margin-top:10px"><button class="pri" type="submit">Save &amp; connect</button><button type="button" id="fdCancel" class="hidden">Cancel</button></div>
+      </form>
+    </section>
   </main>
   </div>
 </div>
@@ -461,5 +501,6 @@
 <script src="admin.js"></script>
 <script src="takusers.js"></script>
 <script src="ots.js"></script>
+<script src="federation.js"></script>
 </body>
 </html>
