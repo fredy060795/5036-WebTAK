@@ -138,6 +138,13 @@ function bearing(a, b) {
   const x = Math.cos(a.lat * r) * Math.sin(b.lat * r) - Math.sin(a.lat * r) * Math.cos(b.lat * r) * Math.cos((b.lon - a.lon) * r);
   return (Math.atan2(y, x) / r + 360) % 360;
 }
+// point at distance m (metres) and bearing brg (degrees) from lat/lon
+function destPoint(lat, lon, m, brg) {
+  const r = Math.PI / 180, d = m / 6371000, b = brg * r, la = lat * r;
+  const la2 = Math.asin(Math.sin(la) * Math.cos(d) + Math.cos(la) * Math.sin(d) * Math.cos(b));
+  const lo2 = lon * r + Math.atan2(Math.sin(b) * Math.sin(d) * Math.cos(la), Math.cos(d) - Math.sin(la) * Math.sin(la2));
+  return { lat: la2 / r, lon: ((lo2 / r + 540) % 360) - 180 };
+}
 const fmtDist = m => m < 1000 ? Math.round(m) + ' m' : (m / 1000).toFixed(m < 10000 ? 2 : 1) + ' km';
 function ago(ts) {
   const s = Math.round((Date.now() - ts) / 1000);
@@ -292,6 +299,8 @@ function parseCot(xml) {
     fill: attr('fillColor', 'value'),
     weight: Number(attr('strokeWeight', 'value')) || 3,
     ellipse: q('shape > ellipse'),
+    rbRange: Number(attr('range', 'value')),
+    rbBearing: Number(attr('bearing', 'value')),
     video: attr('__video', 'url'),
     videoEntry: q('__video ConnectionEntry'),
     linkPoints: links.map(l => l.getAttribute('point')).filter(Boolean).map(s => s.split(',').map(Number)).filter(p => Number.isFinite(p[0]) && Number.isFinite(p[1])),
@@ -352,8 +361,9 @@ function popupHtml(it) {
   const rows = [];
   const kind = c.type.startsWith('a-')
     ? (AFF_NAMES[c.type.split('-')[1]] || 'Object') + (c.team ? ` · ${esc(c.team)} · ${esc(c.role || '')}` : '')
-    : c.type.startsWith('b-m-p') ? 'Point' : c.type.startsWith('u-d') ? 'Drawing' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
+    : c.type.startsWith('b-m-p') ? 'Point' : c.type === 'u-rb-a' ? 'R&amp;B line' : c.type.startsWith('u-d') ? 'Drawing' : c.type.startsWith('b-m-r') ? 'Route' : esc(c.type);
   rows.push(`<div class="t">${esc(c.callsign || c.uid)}</div><div class="k">${kind}</div>`);
+  if (isRb(c)) rows.push(`<div><b>${esc(rbText(c))}</b></div>`);
   if (Number.isFinite(c.lat)) rows.push(`<div>${c.lat.toFixed(5)}, ${c.lon.toFixed(5)}${Number.isFinite(c.hae) && c.hae < 9e6 ? ` · ${Math.round(c.hae)} m` : ''}</div>`);
   if (me && Number.isFinite(c.lat)) rows.push(`<div class="k">${fmtDist(distance(me, c))} · ${Math.round(bearing(me, c))}°</div>`);
   if (c.speed > 0.5) rows.push(`<div class="k">${(c.speed * 3.6).toFixed(0)} km/h</div>`);
@@ -362,14 +372,21 @@ function popupHtml(it) {
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
-  if (it.own) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
-  if (it.own && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
+  if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
+  if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
 }
 
-const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c';
+// like ATAK: every marker, point and drawing can be moved, renamed and deleted by anyone –
+// only the live position of other devices (contacts with a team) not, the device sends it again anyway
+function editable(it) { return !!it.own || !(it.c.type.startsWith('a-') && it.c.team); }
 
-// change an own marker (position and/or name) and send it to all servers
+const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c' && !isRb(c);
+// R&B line (like ATAK, type u-rb-a): start point + range (m) + bearing (degrees)
+const isRb = c => c.type === 'u-rb-a' && Number.isFinite(c.lat) && Number.isFinite(c.rbRange) && Number.isFinite(c.rbBearing);
+const rbText = c => `${fmtDist(c.rbRange)} · ${String(Math.round(c.rbBearing) % 360).padStart(3, '0')}°`;
+
+// change a marker (position and/or name) and send it to all servers – with the same UID, so it changes for everyone
 function updateOwn(it, { lat, lon, name }) {
   const doc = new DOMParser().parseFromString(it.xml, 'application/xml');
   const ev = doc.documentElement;
@@ -391,7 +408,7 @@ function updateOwn(it, { lat, lon, name }) {
     contact.setAttribute('callsign', name);
   }
   const xml = new XMLSerializer().serializeToString(ev);
-  handleCot(xml, { own: true, local: true });
+  handleCot(xml, { own: !!it.own, local: true });
   persistSoon();
   const sent = sendCot(xml, true);
   toast((name != null ? 'Renamed' : 'Moved') + (sent ? ' – sent.' : ' – will be sent once connected.'));
@@ -406,6 +423,9 @@ function removeItem(uid) {
   if (window.view3d) view3d.dirty();
 }
 
+// R&B lines are thin: drawn on a canvas that also counts a tap next to the line (easier with a finger)
+const rbRenderer = L.canvas({ tolerance: 14 });
+
 function drawItem(it) {
   const c = it.c;
   const stale = Date.now() > c.stale;
@@ -414,7 +434,11 @@ function drawItem(it) {
   const stroke = argb(c.stroke, '#ffd400');
   const fill = argb(c.fill, 'rgba(0,0,0,0)');
   const style = { color: stroke, weight: Math.min(c.weight, 8), fillColor: fill, fillOpacity: c.fill ? 1 : 0, opacity: stale ? 0.45 : 1 };
-  if (c.type === 'u-d-c-c' && c.ellipse && Number.isFinite(c.lat)) {
+  if (isRb(c)) {
+    const end = destPoint(c.lat, c.lon, c.rbRange, c.rbBearing);
+    it.layer = L.polyline([[c.lat, c.lon], [end.lat, end.lon]], { ...style, color: argb(c.stroke, '#ffd700'), weight: Math.max(3, Math.min(c.weight, 8)), renderer: rbRenderer }).addTo(shapesLayer);
+    it.layer.bindTooltip(`${esc(c.callsign || 'R&B')}: ${rbText(c)}`, { permanent: true, direction: 'center', className: 'measure-label' });
+  } else if (c.type === 'u-d-c-c' && c.ellipse && Number.isFinite(c.lat)) {
     const r = Number(c.ellipse.getAttribute('major')) || Number(c.ellipse.getAttribute('minor')) || 0;
     it.layer = L.circle([c.lat, c.lon], { radius: r, ...style }).addTo(shapesLayer);
   } else if (c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) {
@@ -423,9 +447,9 @@ function drawItem(it) {
       || (pts.length > 2 && pts[0][0] === pts[pts.length - 1][0] && pts[0][1] === pts[pts.length - 1][1]);
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
-    // own markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
-    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: !!it.own, autoPan: true }).addTo(pointsLayer);
-    if (it.own) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
+    // markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
+    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: editable(it), autoPan: true }).addTo(pointsLayer);
+    if (editable(it)) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
   }
   if (it.layer) it.layer.bindPopup(() => popupHtml(it), { maxWidth: 260 });
   it.stale = stale;
@@ -932,6 +956,8 @@ function wirePopup(root, close) {
   const btn = root.querySelector('[data-del]');
   if (btn) btn.addEventListener('click', () => {
     const uid = btn.getAttribute('data-del');
+    const it = items.get(uid);
+    if (it && !it.own && !confirm(`Delete "${it.c.callsign || toolName(it.c.type) || uid}" for everyone?`)) return;
     removeItem(uid);
     sendCot(deleteXml(uid), true);
     close();
@@ -2099,7 +2125,9 @@ setPitch(0);
 // 3D as default: start with the last used tilt
 if (use3d() && profile.start3d !== false) setTimeout(() => setPitch(Math.max(45, profile.pitch || 60)), 300);
 
-// ---------------- Measuring distance ----------------
+// ---------------- R&B line (range & bearing) ----------------
+// Like ATAK: tap start and end point -> an R&B line that stays, is sent to the TAK server and
+// can be tapped (rename, delete) like a marker. The tool stays on for more lines.
 
 let measuring = false;
 let measurePts = [];
@@ -2107,24 +2135,31 @@ const measureLayer = L.layerGroup().addTo(map);
 
 function drawMeasure() {
   measureLayer.clearLayers();
-  if (!measurePts.length) return;
-  L.polyline(measurePts, { color: '#ffd700', weight: 3, dashArray: '8 6', interactive: false }).addTo(measureLayer);
-  let total = 0;
-  measurePts.forEach((p, i) => {
-    L.circleMarker(p, { radius: 5, color: '#000', weight: 1.5, fillColor: '#ffd700', fillOpacity: 1, interactive: false }).addTo(measureLayer);
-    if (i > 0) total += distance({ lat: measurePts[i - 1].lat, lon: measurePts[i - 1].lng }, { lat: p.lat, lon: p.lng });
-  });
-  const last = measurePts[measurePts.length - 1];
-  if (measurePts.length > 1) {
-    const prev = measurePts[measurePts.length - 2];
-    const brg = Math.round(bearing({ lat: prev.lat, lon: prev.lng }, { lat: last.lat, lon: last.lng }));
-    L.tooltip({ permanent: true, direction: 'right', offset: [10, 0], className: 'measure-label' })
-      .setLatLng(last).setContent(`${fmtDist(total)} · ${String(brg).padStart(3, '0')}°`).addTo(measureLayer);
-  }
+  for (const p of measurePts) L.circleMarker(p, { radius: 5, color: '#000', weight: 1.5, fillColor: '#ffd700', fillOpacity: 1, interactive: false }).addTo(measureLayer);
 }
 function addMeasurePoint(ll) {
   measurePts.push(ll);
+  if (measurePts.length < 2) return drawMeasure();
+  const [a, b] = measurePts;
+  measurePts = [];
   drawMeasure();
+  placeRb({ lat: a.lat, lon: a.lng }, { lat: b.lat, lon: b.lng });
+}
+function placeRb(a, b) {
+  const now = new Date();
+  const idx = Math.max(1, Number(profile.rbIndex) || 1);
+  profile.rbIndex = idx + 1;
+  saveProfile();
+  const name = `R&B ${idx}`;
+  const xml = `<event version="2.0" uid="${profile.uid}-rb-${rnd(6)}" type="u-rb-a" how="h-e" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 30 * 86400000))}">`
+    + `<point lat="${a.lat.toFixed(7)}" lon="${a.lon.toFixed(7)}" hae="9999999" ce="9999999" le="9999999"/>`
+    + `<detail><range value="${distance(a, b).toFixed(2)}"/><bearing value="${bearing(a, b).toFixed(2)}"/><inclination value="0.0"/>`
+    + '<rangeUnits value="1"/><bearingUnits value="0"/><northRef value="0"/><strokeColor value="-10496"/><strokeWeight value="3.0"/>'
+    + `<contact callsign="${xmlEsc(name)}"/><remarks/><archive/><labels_on value="true"/>`
+    + `<link uid="${xmlEsc(profile.uid)}" production_time="${cotTime(now)}" type="a-f-G-U-C" parent_callsign="${xmlEsc(profile.callsign || profile.uid)}" relation="p-p"/></detail></event>`;
+  handleCot(xml, { own: true });
+  const sent = sendCot(xml, true);
+  toast(sent ? `${name} sent.` : `${name} saved – will be sent once connected.`);
 }
 function toggleMeasure() {
   measuring = !measuring;
@@ -2132,7 +2167,9 @@ function toggleMeasure() {
   $('btnMeasure').classList.toggle('active', measuring);
   $('measureHint').classList.toggle('hidden', !measuring);
   map.getContainer().classList.toggle('drawing', measuring);
-  if (measuring) { setTool(null); setPitch(0); measurePts = []; } else { measurePts = []; drawMeasure(); }
+  if (measuring) { setTool(null); setPitch(0); }
+  measurePts = [];
+  drawMeasure();
 }
 $('btnMeasure').addEventListener('click', toggleMeasure);
 
