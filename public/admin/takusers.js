@@ -82,7 +82,8 @@
         el('td', { 'data-label': 'Name', class: 'name' }, el('b', { text: u.name }), el('span', { class: 'mut small', text: [u.unit, u.email].filter(Boolean).join(' · ') })),
         el('td', { 'data-label': 'Callsign' }, el('b', { text: u.callsign }),
           u.requestedCallsign && u.requestedCallsign !== u.callsign ? el('div', { class: 'mut small', text: 'Requested: ' + u.requestedCallsign }) : null),
-        el('td', { 'data-label': 'Team' }, chip(u.teamColor), document.createTextNode(`${u.teamName} · ${u.role}`)),
+        el('td', { 'data-label': 'Team' }, chip(u.teamColor), document.createTextNode(`${u.teamName} · ${u.role}`),
+          u.access && u.access !== 'both' ? el('div', { class: 'mut small', text: ACCESS[u.access] }) : null),
         el('td', { 'data-label': 'OTS' }, el('code', { text: u.username || '–' })),
         el('td', { 'data-label': 'Devices', class: 'num', text: u.devices ? String(u.devices.length) : '–' }),
         el('td', { 'data-label': 'Requested', text: fmt(u.created) }),
@@ -100,6 +101,8 @@
     } catch (e) { msg(e.message); }
   });
 
+  const ACCESS = { both: 'Send and receive (default)', receive: 'Receive only (IN off)', send: 'Send only (OUT off)' };
+
   // edit / approve in one dialog
   function edit(u, approve) {
     const f = el('form', {});
@@ -109,6 +112,9 @@
     team.value = u.team;
     const role = el('select', {}, ...state.roles.map(r => el('option', { value: r, text: r })));
     role.value = u.role;
+    // group direction in OTS: by default the user sends and receives in his team
+    const access = el('select', {}, ...Object.entries(ACCESS).map(([v, t]) => el('option', { value: v, text: t })));
+    access.value = u.access || 'both';
     const name = el('input', { value: u.name || '', maxlength: '60' });
     const unit = el('input', { value: u.unit || '', maxlength: '60' });
     const notes = el('input', { value: u.notes || '', maxlength: '500', placeholder: 'visible to admins only' });
@@ -121,9 +127,10 @@
     f.append(info,
       field('Callsign (overrides the user\'s name in ATAK and for everyone else)', callsign),
       el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Team (color)', team)), el('div', { class: 'grow' }, field('Role', role))),
+      field('Communication (OTS groups)', access),
       el('div', { class: 'row' }, el('div', { class: 'grow' }, field('Name', name)), el('div', { class: 'grow' }, field('Unit', unit))),
       field('Note', notes));
-    const body = () => ({ callsign: callsign.value, team: team.value, role: role.value, name: name.value, unit: unit.value, notes: notes.value });
+    const body = () => ({ callsign: callsign.value, team: team.value, role: role.value, access: access.value, name: name.value, unit: unit.value, notes: notes.value });
     const run = async (path, opts, done) => {
       setMsg(out, 'Please wait …', true);
       try {

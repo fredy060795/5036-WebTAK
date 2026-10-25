@@ -268,11 +268,11 @@ server certificate. The `tak://…/enroll` QR from OTS stays as an alternative �
 trusted certificate (e.g. Let's Encrypt), and many camera apps do not open `tak://` links at all.
 The package can also be opened with iTAK.
 
-**Teams and visibility:** default: everyone sees everyone – approved users then get **no group** in OTS,
-just like users created by hand; OTS uses its default group `__ANON__` for this, and everyone (also WinTAK/ATAK
-without a group) sees each other. Only when a checkbox is removed in the "Who sees whom?" matrix does WebTAK create an
-OTS group per team (`TEAM_<NAME>`): the team no longer reads the other's group, OTS then does not deliver its positions,
-markers and chats. Exchange with devices without a group (`__ANON__`) continues (can be switched off);
+**Teams and visibility:** default: everyone sees everyone – every approved user is in the OTS group of their team
+(`TEAM_<NAME>`) with **IN + OUT** (send and receive), reads the groups of the other teams and exchanges with devices
+without a group (`__ANON__`, e.g. users created by hand). Single users can be set to **receive only** (IN off) or
+**send only** (OUT off) under Users → Edit. When a checkbox is removed in the "Who sees whom?" matrix, the team no
+longer reads the other's group, OTS then does not deliver its positions, markers and chats. Exchange with devices without a group (`__ANON__`) continues (can be switched off);
 a hidden team does not send to `__ANON__`, otherwise it would be visible there after all. At startup and with
 "Sync with OTS" all users' groups are brought to this state; devices reconnect afterwards. This lets several units share a server
 without disturbing each other. (Requirement: OTS with channels/groups, default `OTS_ENABLE_CHANNELS=True`,
