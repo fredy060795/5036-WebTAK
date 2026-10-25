@@ -656,6 +656,24 @@ function takSettings() {
   return { allowedHosts: s.takHosts || '', preset: s.eudPreset || null };
 }
 
+// The TAK server connected in the admin (OTS): allowed on its TAK ports even if it runs on this machine
+// (localhost / 127.0.1.1 in /etc/hosts), and reached over the OTS address set in the admin (often internal)
+// when its public domain does not answer from here (router without NAT loopback, Docker).
+function ownTak(host) {
+  const o = takUsers.t.ots || {};
+  let internal = '';
+  try { internal = new URL(o.url).hostname.replace(/^\[|\]$/g, ''); } catch (e) { /* no OTS address */ }
+  const names = [o.host, internal].filter(Boolean).map(x => x.toLowerCase());
+  if (!host || !names.includes(host.toLowerCase())) return null;
+  return { ports: [o.streamPort || 8089, o.enrollPort || tak.ENROLL_PORT, o.apiPort || tak.API_PORT], altHost: internal.toLowerCase() !== host.toLowerCase() ? internal : '' };
+}
+
+async function takAllowed(host, port) {
+  const own = ownTak(host);
+  if (own && own.ports.includes(Number(port))) return true;
+  return tak.targetAllowed(takSettings().allowedHosts, host);
+}
+
 const eudLimits = new Map(); // ip -> [timestamps] for certificate requests
 const martiLimits = new Map(); // ip -> [timestamps] for TAK server API requests
 
@@ -701,9 +719,9 @@ async function handleEudApi(req, res, route) {
     const body = await readJson(req, 512 * 1024);
     const conn = body.server || {};
     const host = String(conn.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    if (!(await takAllowed(host, Number(conn.apiPort) || tak.API_PORT))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
     try {
-      return json(res, 200, await tak.marti({ ...conn, host }, String(body.action || ''), body.args || {}));
+      return json(res, 200, await tak.marti({ ...conn, host, altHost: (ownTak(host) || {}).altHost || '' }, String(body.action || ''), body.args || {}));
     } catch (e) {
       log('EUD TAK-API', host, String(body.action || ''), 'error:', e.message);
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
@@ -719,10 +737,11 @@ async function handleEudApi(req, res, route) {
     eudLimits.set(ip, list);
     const body = await readJson(req, 512 * 1024);
     const host = String(body.host || '').trim();
-    if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
+    const port = Number(body.port) || tak.ENROLL_PORT;
+    if (!(await takAllowed(host, port))) return json(res, 403, { error: `TAK server ${host} is not allowed on this server.` });
     try {
       const r = await tak.enroll({
-        host, port: Number(body.port) || tak.ENROLL_PORT, username: body.username, password: body.password,
+        host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
         uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
         fingerprint: String(body.fingerprint || ''),
       });
@@ -1232,7 +1251,7 @@ function handleTakSocket(ws, req) {
       stop();
       const host = String(msg.host || '').trim();
       if (!host) return say('error', 'No TAK server given.');
-      if (!(await tak.targetAllowed(takSettings().allowedHosts, host))) return say('error', `TAK server ${host} is not allowed on this server.`);
+      if (!(await takAllowed(host, Number(msg.port) || 8089))) return say('error', `TAK server ${host} is not allowed on this server.`);
       if (ws.readyState !== 1) return;
       stop();
       entry.host = `${host}:${msg.port}`;
@@ -1249,7 +1268,7 @@ function handleTakSocket(ws, req) {
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign', ...assigned }));
       }
       link = new tak.TakLink({
-        host, port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
+        host, altHost: msg.proto === 'udp' ? '' : (ownTak(host) || {}).altHost || '', port: Number(msg.port) || 8089, proto: msg.proto, uid: String(msg.uid || 'EUD').slice(0, 64),
         certPem: msg.certPem, keyPem: msg.keyPem, caPems: Array.isArray(msg.caPems) ? msg.caPems : [], fingerprint: msg.fingerprint,
         onStatus: (state, message, extra) => say(state, message, extra),
         onCot: xml => { if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'cot', xml })); },

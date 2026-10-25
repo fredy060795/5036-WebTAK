@@ -146,6 +146,22 @@ test('CoT connection over SSL with client certificate: receive and send', async 
   link.stop();
 });
 
+test('own TAK server: public address does not answer from here -> internal address is used', async () => {
+  // 127.0.0.2 has no listener (like a domain without NAT loopback), 127.0.0.1 is the internal OTS address
+  const r = await tak.enroll({ host: '127.0.0.2', altHost: '127.0.0.1', port: enrollPort, username: 'max', password: 'secret', caPems: [ca.pem] });
+  assert.match(r.certPem, /BEGIN CERTIFICATE/);
+  const messages = [];
+  const link = new tak.TakLink({
+    host: '127.0.0.2', altHost: '127.0.0.1', port: cotPort, proto: 'ssl', uid: 'EUD-3',
+    certPem: enrolled.certPem, keyPem: enrolled.keyPem, caPems: enrolled.caPems,
+    onStatus: (s, m) => messages.push(s + ': ' + m),
+  });
+  link.start();
+  for (let i = 0; i < 80 && !messages.some(m => m.startsWith('connected')); i++) await sleep(50);
+  link.stop();
+  assert.ok(messages.some(m => m === `connected: Connected to 127.0.0.2:${cotPort} (SSL) via 127.0.0.1`), messages.join(' | '));
+});
+
 test('CoT connection without a matching CA reports "not trusted" with fingerprint', async () => {
   let untrusted = null;
   const link = new tak.TakLink({
