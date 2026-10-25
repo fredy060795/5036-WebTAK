@@ -137,9 +137,10 @@
       </div>
 
       <div data-takp="teams" class="hidden">
-        <p class="mut small">Default: everyone sees everyone – users then get no group in OTS (like users created by hand).
-          Untick = this team does not see the other one. Only then does WebTAK create an OTS group per team (TEAM_…) and
-          OTS stops delivering positions, markers and chats of the hidden team. Devices have to reconnect afterwards.</p>
+        <p class="mut small">Default: everyone sees everyone. Every user is in the OTS group of their team (TEAM_…) with IN + OUT
+          (send and receive) and reads the groups of the other teams. Untick = this team does not see the other one: OTS stops
+          delivering positions, markers and chats of the hidden team. Devices have to reconnect afterwards.
+          Single users can be set to "receive only" or "send only" under Users → Edit.</p>
         <div id="takTeams"></div>
         <div class="row" style="margin-top:8px">
           <button class="sm" type="button" id="takAddTeam">+ Team</button>
@@ -176,9 +177,10 @@
           </div>
           <p class="mut small">Recommended: leave empty – every account gets its own random password. It is shown on the access page and included in the
             ATAK setup package, the user does not have to type it. One fixed password for everyone is insecure.</p>
-          <label class="check"><input type="checkbox" name="anon"> With team blocks, still exchange with devices without a group (__ANON__)</label>
-          <p class="mut small">As long as no team blocks are set, approved users get <b>no group</b> in OTS – like users created by
-            hand. That way everyone sees everyone (OTS default group __ANON__). Team groups are only needed for blocks.</p>
+          <label class="check"><input type="checkbox" name="anon"> Exchange with devices without a group (__ANON__)</label>
+          <p class="mut small">Approved users get the OTS group of their team with <b>IN + OUT</b>, so they can communicate (positions,
+            markers, chat, direct messages). With this switch they also exchange with users created by hand in OTS, which are in
+            the default group __ANON__. Per user "receive only" / "send only" under Users → Edit.</p>
           <div class="row" style="margin-top:10px">
             <button class="pri" type="submit">Save</button>
             <button type="button" id="otsTest">Test connection</button>

@@ -370,9 +370,32 @@ function camSend(obj) {
   return writeChain;
 }
 
+// Android often drops a fresh BLE connection to the ESP32 right after gatt.connect() ("GATT Server is
+// disconnected. Cannot retrieve services") – connect again a few times, with a short pause before the
+// service discovery, until the service is there.
+async function gattService(dev, svcUuid, tries = 5) {
+  let last;
+  for (let i = 0; i < tries; i++) {
+    try {
+      const server = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+      await new Promise(r => setTimeout(r, 300 + i * 300));
+      if (!dev.gatt.connected) throw new Error('GATT Server is disconnected.');
+      return await server.getPrimaryService(svcUuid);
+    } catch (e) {
+      last = e;
+      if (e.name === 'NotFoundError' && !/disconnected/i.test(e.message)) throw e; // service really missing
+      try { if (dev.gatt.connected) dev.gatt.disconnect(); } catch (x) { /* ignore */ }
+      await new Promise(r => setTimeout(r, 700 + i * 500));
+    }
+  }
+  throw last;
+}
+
+let gattBusy = false; // a connect is running: the disconnect handler does not start a second one
 async function setupGatt() {
-  const server = await device.gatt.connect();
-  const svc = await server.getPrimaryService(SVC);
+  gattBusy = true;
+  let svc;
+  try { svc = await gattService(device, SVC); } finally { gattBusy = false; }
   cmdChr = await svc.getCharacteristic(COMMAND);
   const img = await svc.getCharacteristic(IMAGE);
   img.addEventListener('characteristicvaluechanged', onImagePacket);
@@ -446,6 +469,7 @@ async function connectCamera() {
 }
 
 async function onCamDisconnected() {
+  if (gattBusy) return; // drop during connecting: setupGatt tries again itself
   camConnected = false;
   cmdChr = null;
   frame = null;

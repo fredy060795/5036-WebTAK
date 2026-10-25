@@ -372,6 +372,7 @@ function popupHtml(it) {
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
+  if (c.type.startsWith('a-') && c.team && it.uid !== profile.uid) rows.push(`<button type="button" class="play" data-msg="${esc(c.uid)}">✉ MESSAGE</button>`);
   if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
   if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
   return rows.join('');
@@ -508,23 +509,48 @@ setInterval(() => {
 }, 15000);
 
 // ======================================================================
-// Chat (GeoChat, "All Chat Rooms")
+// Chat (GeoChat) with channels like ATAK/iTAK/WinTAK: "All Chat Rooms", own team,
+// direct messages and groups. Direct and group messages carry <marti><dest …/></marti>,
+// so the TAK server delivers them only to the recipients.
 // ======================================================================
+
+const ALL_ROOM = 'All Chat Rooms';
+let chatConv = 'all';                // current channel (key)
+const chatUnread = {};               // channel key -> unread messages
+
+// channel of a message: all | team:<name> | dm:<uid of the other one> | grp:<id>
+function chatChannel(c) {
+  const ch = c.chat;
+  const room = ch ? ch.getAttribute('chatroom') || '' : '';
+  const id = ch ? ch.getAttribute('id') || room : '';
+  const grp = ch && ch.querySelector('chatgrp');
+  const uids = grp ? [...grp.attributes].filter(a => /^uid\d+$/.test(a.name)).sort((a, b) => a.name.slice(3) - b.name.slice(3)).map(a => a.value) : [];
+  const fromMe = c.uid.startsWith('GeoChat.' + profile.uid + '.') || uids[0] === profile.uid;
+  const senderUid = uids[0] || (c.links[0] && c.links[0].uid) || (/^GeoChat\.(.+?)\./.exec(c.uid) || [])[1] || '';
+  if (!ch || room === ALL_ROOM || id === ALL_ROOM) return { key: 'all', name: 'All' };
+  if (id === profile.uid || (room && room === profile.callsign && uids.length <= 2)) {
+    return { key: 'dm:' + senderUid, name: (ch.getAttribute('senderCallsign') || senderUid), uid: senderUid };
+  }
+  if (fromMe && uids.length === 2 && id === uids[1]) return { key: 'dm:' + id, name: room || id, uid: id };
+  if (TEAMS[room] && id === room) return { key: 'team:' + room, name: room };
+  return { key: 'grp:' + id, name: room || id, id, members: uids.filter(u => u !== profile.uid && u !== id) };
+}
 
 function receiveChat(c, local) {
   const ch = c.chat;
-  const room = ch ? ch.getAttribute('chatroom') || ch.getAttribute('id') || '' : '';
   const sender = ch ? ch.getAttribute('senderCallsign') || '' : c.callsign || '';
   if (chat.some(m => m.id === c.uid)) return;
-  const toMe = ch && (ch.getAttribute('id') === profile.uid || room === profile.callsign);
   const fromMe = c.uid.startsWith('GeoChat.' + profile.uid + '.');
-  chat.push({ id: c.uid, from: sender, room: toMe ? 'Direct' : room, text: c.remarks, time: c.time, me: fromMe });
-  chat = chat.slice(-200);
+  const conv = chatChannel(c);
+  chat.push({ id: c.uid, from: sender, conv: conv.key, convName: conv.name, uid: conv.uid || '', members: conv.members || null, text: c.remarks, time: c.time, me: fromMe });
+  chat = chat.slice(-500);
   store.set('eud.chat', chat);
-  if (!local && !fromMe && $('chatWin').classList.contains('hidden')) {
+  const visible = !$('chatWin').classList.contains('hidden') && chatConv === conv.key;
+  if (!local && !fromMe && !visible) {
     unread++;
+    chatUnread[conv.key] = (chatUnread[conv.key] || 0) + 1;
     updateBadge();
-    toast(`${sender}: ${c.remarks}`);
+    toast(`${sender}${conv.key === 'all' ? '' : ' → ' + (conv.key.startsWith('dm:') ? 'you' : conv.name)}: ${c.remarks}`);
   }
   renderChat();
 }
@@ -534,22 +560,72 @@ function updateBadge() {
   $('chatBadge').classList.toggle('hidden', !unread);
 }
 
+// known channels: All, own team, all conversations so far, then contacts for a new direct message
+function chatChannels() {
+  const list = [{ key: 'all', name: 'All' }];
+  if (profile.team) list.push({ key: 'team:' + profile.team, name: profile.team });
+  const seen = new Set(list.map(x => x.key));
+  for (let i = chat.length - 1; i >= 0; i--) {
+    const m = chat[i];
+    const key = m.conv || 'all';
+    if (seen.has(key)) continue;
+    seen.add(key);
+    list.push({ key, name: m.convName || m.room || key, uid: m.uid, id: key.startsWith('grp:') ? key.slice(4) : '', members: m.members });
+  }
+  const contacts = [...items.values()].filter(it => it.c && it.c.type.startsWith('a-') && it.c.team && it.uid !== profile.uid && !seen.has('dm:' + it.uid))
+    .map(it => ({ key: 'dm:' + it.uid, name: it.c.callsign || it.uid, uid: it.uid, fresh: true }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+  return { list, contacts };
+}
+function channelInfo(key) {
+  const { list, contacts } = chatChannels();
+  return list.concat(contacts).find(x => x.key === key) || { key: 'all', name: 'All' };
+}
+const channelLabel = x => x.key === 'all' ? 'All Chat Rooms' : x.key.startsWith('team:') ? `Team ${x.name}` : x.key.startsWith('dm:') ? `✉ ${x.name}` : `Group ${x.name}`;
+
+function renderChannels() {
+  const sel = $('chatConv');
+  const { list, contacts } = chatChannels();
+  if (!list.concat(contacts).some(x => x.key === chatConv)) chatConv = 'all';
+  sel.textContent = '';
+  for (const x of list) {
+    const o = document.createElement('option');
+    o.value = x.key;
+    o.textContent = channelLabel(x) + (chatUnread[x.key] ? ` (${chatUnread[x.key]})` : '');
+    sel.append(o);
+  }
+  if (contacts.length) {
+    const g = document.createElement('optgroup');
+    g.label = 'New direct message';
+    for (const x of contacts) {
+      const o = document.createElement('option');
+      o.value = x.key;
+      o.textContent = '✉ ' + x.name;
+      g.append(o);
+    }
+    sel.append(g);
+  }
+  sel.value = chatConv;
+}
+
 function renderChat() {
+  renderChannels();
   const log = $('chatLog');
   log.textContent = '';
-  if (!chat.length) {
+  const msgs = chat.filter(m => (m.conv || 'all') === chatConv);
+  if (!msgs.length) {
     const e = document.createElement('div');
     e.className = 'chat-empty';
     e.textContent = 'No messages';
     log.append(e);
   }
-  for (const m of chat) {
+  for (const m of msgs) {
     const d = document.createElement('div');
     d.className = 'cm ' + (m.me ? 'out' : 'in');
     const h = document.createElement('div');
     h.className = 'cm-h';
     const who = document.createElement('b');
-    who.textContent = m.from + (m.room && m.room !== 'All Chat Rooms' ? ' → ' + m.room : '');
+    who.textContent = m.from;
     const time = document.createElement('span');
     time.textContent = hhmm(new Date(m.time));
     h.append(who, time);
@@ -562,26 +638,50 @@ function renderChat() {
   log.scrollTop = log.scrollHeight;
 }
 
-function chatXml(text) {
+function setChatConv(key) {
+  chatConv = key;
+  unread = Math.max(0, unread - (chatUnread[key] || 0));
+  chatUnread[key] = 0;
+  updateBadge();
+  renderChat();
+}
+
+const callsignOf = uid => { const it = items.get(uid); return (it && it.c && it.c.callsign) || ''; };
+
+// recipients of a channel (null = everyone)
+function chatRecipients(x) {
+  if (x.key === 'all') return null;
+  if (x.key.startsWith('dm:')) return [x.uid || x.key.slice(3)];
+  if (x.key.startsWith('team:')) {
+    return [...items.values()].filter(it => it.c && it.c.type.startsWith('a-') && it.c.team === x.name && it.uid !== profile.uid).map(it => it.uid);
+  }
+  return (x.members || []).filter(u => u !== profile.uid);
+}
+
+function chatXml(text, x = { key: 'all', name: 'All' }) {
   const now = new Date();
-  const id = rnd(8);
-  const room = 'All Chat Rooms';
+  const msgId = rnd(8);
+  const to = chatRecipients(x);
+  const room = x.key === 'all' ? ALL_ROOM : x.key.startsWith('dm:') ? (callsignOf(x.uid) || x.name) : x.name;
+  const roomId = x.key === 'all' ? ALL_ROOM : x.key.startsWith('dm:') ? x.uid : x.key.startsWith('team:') ? x.name : x.id;
+  const uids = x.key === 'all' ? [profile.uid, ALL_ROOM] : [profile.uid, ...to];
   const call = xmlEsc(profile.callsign || profile.uid);
-  const p = me || { lat: 0, lon: 0 };
-  return `<event version="2.0" uid="GeoChat.${xmlEsc(profile.uid)}.${room}.${id}" type="b-t-f" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 86400000))}">`
+  const p = me || profile.lastPos || { lat: 0, lon: 0 };
+  // TAK server: only to these devices (by callsign, otherwise by UID)
+  const marti = to ? `<marti>${to.map(u => callsignOf(u) ? `<dest callsign="${xmlEsc(callsignOf(u))}"/>` : `<dest uid="${xmlEsc(u)}"/>`).join('')}</marti>` : '';
+  return `<event version="2.0" uid="GeoChat.${xmlEsc(profile.uid)}.${xmlEsc(roomId)}.${msgId}" type="b-t-f" how="h-g-i-g-o" time="${cotTime(now)}" start="${cotTime(now)}" stale="${cotTime(new Date(+now + 86400000))}">`
     + `<point lat="${p.lat}" lon="${p.lon}" hae="9999999" ce="9999999" le="9999999"/><detail>`
-    + `<__chat parent="RootContactGroup" groupOwner="false" messageId="${id}" chatroom="${room}" id="${room}" senderCallsign="${call}">`
-    + `<chatgrp uid0="${xmlEsc(profile.uid)}" uid1="${room}" id="${room}"/></__chat>`
+    + `<__chat parent="RootContactGroup" groupOwner="false" messageId="${msgId}" chatroom="${xmlEsc(room)}" id="${xmlEsc(roomId)}" senderCallsign="${call}">`
+    + `<chatgrp ${uids.map((u, i) => `uid${i}="${xmlEsc(u)}"`).join(' ')} id="${xmlEsc(roomId)}"/></__chat>`
     + `<link uid="${xmlEsc(profile.uid)}" type="a-f-G-U-C" relation="p-p"/>`
-    + `<remarks source="BAO.F.ATAK.${xmlEsc(profile.uid)}" to="${room}" time="${cotTime(now)}">${xmlEsc(text)}</remarks>`
+    + `<remarks source="BAO.F.ATAK.${xmlEsc(profile.uid)}" to="${xmlEsc(roomId)}" time="${cotTime(now)}">${xmlEsc(text)}</remarks>`
+    + marti
     + `<__serverdestination destinations="0.0.0.0:4242:tcp:${xmlEsc(profile.uid)}"/></detail></event>`;
 }
 
-function openChat() {
+function openChat(key) {
   closeSheets('chat');
-  unread = 0;
-  updateBadge();
-  renderChat();
+  setChatConv(key || chatConv);
   $('chatWin').classList.remove('hidden', 'min');
   $('btnChat').classList.add('active');
 }
@@ -597,11 +697,16 @@ $('chatForm').addEventListener('submit', e => {
   e.preventDefault();
   const text = $('chatIn').value.trim();
   if (!text) return;
-  const xml = chatXml(text);
+  const x = channelInfo(chatConv);
+  const to = chatRecipients(x);
+  if (to && !to.length) return toast(`Nobody of team ${x.name} is online right now.`);
+  const xml = chatXml(text, x);
   handleCot(xml, { local: true });
   sendCot(xml, true);
   $('chatIn').value = '';
 });
+$('chatConv').addEventListener('change', e => setChatConv(e.target.value));
+$('chatConv').addEventListener('click', e => e.stopPropagation());
 
 // ======================================================================
 // Connections to the TAK servers (one WebSocket to the relay per server)
@@ -672,6 +777,7 @@ function openConn(srv) {
   updateStatus();
   sock.onopen = () => {
     c.retry = 0;
+    c.wsOk = true;
     sock.send(JSON.stringify({
       type: 'connect', host: srv.host, port: srv.port, proto: srv.proto, uid: profile.uid, callsign: profile.callsign,
       certPem: srv.proto === 'ssl' ? srv.certPem : '', keyPem: srv.proto === 'ssl' ? srv.keyPem : '',
@@ -703,7 +809,13 @@ function openConn(srv) {
   sock.onclose = () => {
     if (c.ws !== sock) return;
     c.ws = null;
-    if (c.state !== 'error' && c.state !== 'untrusted') c.state = 'offline';
+    if (c.state !== 'error' && c.state !== 'untrusted') {
+      c.state = 'offline';
+      // the page itself loads, only the WebSocket does not open: usually a reverse proxy (nginx) without WebSocket forwarding
+      c.message = !c.wsOk && navigator.onLine
+        ? 'WebTAK relay not reachable: the WebSocket /ws/tak does not open. If WebTAK runs behind nginx/Apache, the proxy must forward WebSockets (Upgrade/Connection headers).'
+        : '';
+    }
     updateStatus();
     if (srv.auto) c.timer = setTimeout(() => openConn(srv), Math.min(30000, 1000 * 2 ** c.retry++));
   };
@@ -770,7 +882,9 @@ let meMarker = null, meCircle = null, follow = true, lastSent = 0, sentAt = null
 
 function selfXml() {
   const now = new Date();
-  const p = me;
+  // without GPS (PC, location refused) still report: otherwise the TAK server does not know this device
+  // and cannot deliver direct messages – last known position, otherwise 0,0 without accuracy
+  const p = me || { ...(profile.lastPos || { lat: 0, lon: 0 }), acc: 9999999 };
   const course = Number.isFinite(p.course) ? p.course : 0;
   const speed = Number.isFinite(p.speed) ? p.speed : 0;
   const video = window.eudVideoUrl ? `<__video url="${xmlEsc(window.eudVideoUrl)}"/>` : '';
@@ -787,12 +901,18 @@ function selfXml() {
 }
 
 function sendSelf() {
-  if (!me) return;
-  if (sendCot(selfXml(), false)) { lastSent = Date.now(); sentAt = { lat: me.lat, lon: me.lon }; }
+  if (sendCot(selfXml(), false)) {
+    lastSent = Date.now();
+    if (me) {
+      sentAt = { lat: me.lat, lon: me.lon };
+      profile.lastPos = { lat: +me.lat.toFixed(6), lon: +me.lon.toFixed(6) };
+      saveProfile();
+    }
+  }
 }
 function sendSelfTo(srv) {
   const c = connOf(srv);
-  if (me && isOpen(c)) c.ws.send(JSON.stringify({ type: 'cot', xml: selfXml() }));
+  if (isOpen(c)) c.ws.send(JSON.stringify({ type: 'cot', xml: selfXml() }));
 }
 window.eudSendSelf = sendSelf;
 
@@ -944,6 +1064,8 @@ function placeMarker(latlng) {
 function wirePopup(root, close) {
   const play = root.querySelector('[data-play]');
   if (play) play.addEventListener('click', () => { close(); window.eudPlay(play.dataset.name, play.dataset.play); });
+  const msg = root.querySelector('[data-msg]');
+  if (msg) msg.addEventListener('click', () => { close(); openChat('dm:' + msg.getAttribute('data-msg')); });
   const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
@@ -1131,6 +1253,7 @@ $('clearGo').addEventListener('click', async () => {
     n += chat.length;
     chat = [];
     store.set('eud.chat', chat);
+    for (const k of Object.keys(chatUnread)) delete chatUnread[k];
     unread = 0;
     updateBadge();
     renderChat();
@@ -1207,7 +1330,7 @@ function renderServers() {
     el.querySelector('.srv-proto').textContent = srv.proto.toUpperCase();
     el.querySelector('.srv-url').textContent = `${srv.host}:${srv.port}` + (srv.proto === 'ssl' ? (srv.certPem ? ' · certificate ✓' : ' · no certificate') : '');
     const info = el.querySelector('.srv-info');
-    info.textContent = !srv.auto ? 'disconnected' : (c.state === 'error' || c.state === 'untrusted' ? c.message : STATE_TEXT[c.state] || c.state);
+    info.textContent = !srv.auto ? 'disconnected' : (c.state === 'error' || c.state === 'untrusted' || (c.state === 'offline' && c.message) ? c.message : STATE_TEXT[c.state] || c.state);
     info.classList.toggle('err', srv.auto && ['error', 'untrusted'].includes(c.state));
     const act = el.querySelector('.act');
     act.textContent = srv.auto ? 'DISCONNECT' : 'CONNECT';

@@ -78,8 +78,8 @@ test('approval only with OTS; creates account, groups and QR; overriding the cal
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.equal(mock.state.users.alpha_10.password, u.password);
   assert.match(u.atakQr, /^tak:\/\/com\.atakmap\.app\/enroll\?host=tak\.example\.com:8089&username=alpha_10&token=/);
-  // Without blocks: no group – like OTS users created by hand (OTS then uses __ANON__)
-  assert.deepEqual(mock.groupsOf('alpha_10'), []);
+  // Without blocks: own team group send + receive (IN + OUT), reads the other teams, exchanges with __ANON__
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
   // access page shows the data only after approval
   const pv = tu.publicView(u);
   assert.equal(pv.username, 'alpha_10');
@@ -87,7 +87,7 @@ test('approval only with OTS; creates account, groups and QR; overriding the cal
   const vera = tu.list().find(x => x.name === 'Vera');
   assert.equal(tu.publicView(vera).password, undefined);
   await tu.approve(vera.id, { callsign: 'Red 1', team: red.id });
-  assert.deepEqual(mock.groupsOf('red_1'), []);
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_BLUE.OUT', 'TEAM_RED.IN', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
 });
 
 test('visibility: Red may not see Blue -> Red no longer reads Blue', async () => {
@@ -108,10 +108,17 @@ test('visibility: Red may not see Blue -> Red no longer reads Blue', async () =>
   assert.equal(tu.canSee(yellow.id, blue.id), true);
   // Yellow is new: Blue and Red (unless blocked) read it too
   assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', 'TEAM_YELLOW.OUT', '__ANON__.OUT']);
-  // blocks removed again: all groups are removed
+  // blocks removed again: everyone reads everyone, own team IN + OUT
   await tu.setTeams(tu.t.teams.filter(t => t.name !== 'Yellow'), []);
-  assert.deepEqual(mock.groupsOf('alpha_10'), []);
-  assert.deepEqual(mock.groupsOf('red_1'), []);
+  assert.deepEqual(mock.groupsOf('alpha_10'), ['TEAM_BLUE.IN', 'TEAM_BLUE.OUT', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_BLUE.OUT', 'TEAM_RED.IN', 'TEAM_RED.OUT', '__ANON__.IN', '__ANON__.OUT']);
+  // single user only receives / only sends
+  const vera = tu.list().find(x => x.username === 'red_1');
+  await tu.update(vera.id, { access: 'receive' });
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_BLUE.OUT', 'TEAM_RED.OUT', '__ANON__.OUT']);
+  await tu.update(vera.id, { access: 'send' });
+  assert.deepEqual(mock.groupsOf('red_1'), ['TEAM_RED.IN', '__ANON__.IN']);
+  await tu.update(vera.id, { access: 'both' });
   // without __ANON__ exchange only the team groups
   tu.setOts({ ...tu.t.ots, anon: false });
   await tu.setTeams(tu.t.teams, [[red.id, blue.id]]);

@@ -269,6 +269,9 @@ code { display: block; padding: 8px; border-radius: 3px; background: #0f1216; wo
 .chat-head span { display: flex; gap: 8px; align-items: center; flex: 1; }
 .chat-head svg { width: 20px; height: 20px; }
 .chat-ctl { display: flex; flex: none !important; }
+/* channel: All, team, direct messages, groups */
+#chatConv { flex: 1; min-width: 0; max-width: 100%; padding: 6px 4px; background: transparent; border: none; border-bottom: 1px solid var(--mut); color: #fff; font: 500 15px var(--font); }
+#chatConv option, #chatConv optgroup { background: var(--sheet); color: #fff; }
 #chatWin { height: 58vh; }
 #chatWin.min { height: auto; }
 #chatWin.min .chat-msgs, #chatWin.min .chat-foot { display: none; }
