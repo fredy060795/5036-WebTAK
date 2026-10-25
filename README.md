@@ -226,6 +226,12 @@ allowed – except the server machine itself (`localhost`) and link-local addres
 Users request real TAK access here; after approval the app creates the account on the
 **OpenTAKServer (OTS)** and the user gets login details, QR codes and an illustrated guide.
 
+> **No OpenTAKServer yet?** [WebTAK Server](https://github.com/fredy060795/5040-WebTAK_Server) is a TAK server in a single
+> file for Windows and Raspberry Pi (installs in one step, links several servers via federation) and speaks the same
+> OTS web API. Enter `https://<server>:8443` as OTS address with its admin login and allow the self-signed certificate.
+> Users, groups, roles, ATAK QR codes, truststore, device profiles and missions work; video feeds (MediaMTX) and
+> Meshtastic are not part of it.
+
 **Workflow**
 
 1. The user opens `https://<server>/join/` (QR code in the admin: "Users & requests" → "Registration QR"), reads
