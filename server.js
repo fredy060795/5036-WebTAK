@@ -379,9 +379,9 @@ async function handleAccessApi(req, res, route) {
   // tak:// link from OTS (only with a trusted server certificate, e.g. Let's Encrypt)
   if (route === 'qr/atak-direct.svg') {
     if (!u.atakQr) return send(res, 404, 'No QR code');
-    return send(res, 200, await qr(u.atakQr), 'image/svg+xml');
+    return send(res, 200, await qr(takUsers.fixQr(u.atakQr)), 'image/svg+xml');
   }
-  if (route === 'atak-link') return json(res, 200, { link: u.atakQr || '' });
+  if (route === 'atak-link') return json(res, 200, { link: takUsers.fixQr(u.atakQr || '') });
   // Setup package: truststore + server + user + password + callsign/team – ATAK sets up everything
   if (route === 'atak-package.zip') {
     let truststore;
@@ -588,7 +588,7 @@ async function handleTakAdmin(req, res, route) {
   if (route === 'state' && method === 'GET') {
     const { password, ...ots } = req.webtakHelper ? { password: '' } : takUsers.t.ots;
     return json(res, 200, {
-      ots: { ...ots, hasPassword: !!password }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
+      ots: { ...ots, hasPassword: !!password, effectiveHost: takUsers.takHost() }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
       teams: takUsers.t.teams, blocks: takUsers.t.blocks, users: takUsers.list().map(u => takUsers.adminView(u)),
       colors: TEAM_COLORS, roles: ROLES, joinUrl: publicBase(req) + '/join/', mail: mailReady(),
     });
@@ -599,6 +599,13 @@ async function handleTakAdmin(req, res, route) {
   if (method === 'GET') {
     const m = /^user\/([a-f0-9]+)\/link$/.exec(route);
     if (m) return json(res, 200, { link: accessLink(req, takUsers.get(m[1])) });
+    // ATAK enrollment QR of a user (popup in the admin: scan, save, print)
+    const q = /^user\/([a-f0-9]+)\/atak-qr\.svg$/.exec(route);
+    if (q) {
+      const link = takUsers.fixQr(takUsers.get(q[1]).atakQr || '');
+      if (!link) return send(res, 404, 'No QR code');
+      return send(res, 200, await QRCode.toString(link, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }), 'image/svg+xml');
+    }
     return json(res, 404, { error: 'Unknown request.' });
   }
   const body = method === 'DELETE' ? {} : await readJson(req);
@@ -735,8 +742,8 @@ async function handleEudApi(req, res, route) {
 
 // what helpers may do in the admin (method, route without query)
 const HELPER_ROUTES = [
-  ['GET', /^streams$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
-  ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/link$/],
+  ['GET', /^streams$/], ['POST', /^events\/delete$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
+  ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/(link|atak-qr\.svg)$/],
   ['POST', /^takusers\/user\/[^/]+\/(approve|reject|update|block|unblock|password|qr)$/],
   ['GET', /^ots\/users$/], ['POST', /^ots\/users$/],
 ];
@@ -976,6 +983,14 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
+  if (route === 'events/delete' && method === 'POST') {
+    const body = await readJson(req);
+    let seqs = body.all ? null : (Array.isArray(body.seqs) ? body.seqs.map(Number) : []);
+    // helpers only see (and delete) the access requests
+    if (req.webtakHelper) seqs = hub.events.filter(e => e.kind === 'takreg' && (!seqs || seqs.includes(e.seq))).map(e => e.seq);
+    hub.deleteEvents(seqs);
+    return json(res, 200, { ok: true });
+  }
   if (route === 'streams' && method === 'GET') {
     const list = hub.list().map(s => {
       const id = StreamHub.id(s.user, s.streamId);
