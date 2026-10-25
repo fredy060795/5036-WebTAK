@@ -742,7 +742,7 @@ async function handleEudApi(req, res, route) {
 
 // what helpers may do in the admin (method, route without query)
 const HELPER_ROUTES = [
-  ['GET', /^streams$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
+  ['GET', /^streams$/], ['POST', /^events\/delete$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
   ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/(link|atak-qr\.svg)$/],
   ['POST', /^takusers\/user\/[^/]+\/(approve|reject|update|block|unblock|password|qr)$/],
   ['GET', /^ots\/users$/], ['POST', /^ots\/users$/],
@@ -983,6 +983,14 @@ async function handleAdminApi(req, res, route) {
     return json(res, 200, { ok: true });
   }
 
+  if (route === 'events/delete' && method === 'POST') {
+    const body = await readJson(req);
+    let seqs = body.all ? null : (Array.isArray(body.seqs) ? body.seqs.map(Number) : []);
+    // helpers only see (and delete) the access requests
+    if (req.webtakHelper) seqs = hub.events.filter(e => e.kind === 'takreg' && (!seqs || seqs.includes(e.seq))).map(e => e.seq);
+    hub.deleteEvents(seqs);
+    return json(res, 200, { ok: true });
+  }
   if (route === 'streams' && method === 'GET') {
     const list = hub.list().map(s => {
       const id = StreamHub.id(s.user, s.streamId);

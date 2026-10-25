@@ -177,6 +177,9 @@ body:not(.helper) .helper-only { display: none !important; }
 .note.unread .note-head > span:first-child { font-weight: 600; }
 .note-ic { font-size: 18px; width: 24px; text-align: center; }
 .note-head { display: flex; justify-content: space-between; gap: 8px; margin-bottom: 4px; font-size: 14px; }
+.note-head > span:first-child { flex: 1; }
+.note-del { background: none; border: 0; color: var(--mut); padding: 0 4px; font-size: 13px; line-height: 1; cursor: pointer; }
+.note-del:hover:not(:disabled) { background: none; color: var(--fg); }
 .np-foot { padding: 8px 12px; border-top: 1px solid var(--bd); display: grid; gap: 2px; }
 .np-foot .check { font-size: 13px; margin: 2px 0; }
 
