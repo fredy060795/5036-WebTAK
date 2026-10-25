@@ -379,9 +379,9 @@ async function handleAccessApi(req, res, route) {
   // tak:// link from OTS (only with a trusted server certificate, e.g. Let's Encrypt)
   if (route === 'qr/atak-direct.svg') {
     if (!u.atakQr) return send(res, 404, 'No QR code');
-    return send(res, 200, await qr(u.atakQr), 'image/svg+xml');
+    return send(res, 200, await qr(takUsers.fixQr(u.atakQr)), 'image/svg+xml');
   }
-  if (route === 'atak-link') return json(res, 200, { link: u.atakQr || '' });
+  if (route === 'atak-link') return json(res, 200, { link: takUsers.fixQr(u.atakQr || '') });
   // Setup package: truststore + server + user + password + callsign/team – ATAK sets up everything
   if (route === 'atak-package.zip') {
     let truststore;
@@ -588,7 +588,7 @@ async function handleTakAdmin(req, res, route) {
   if (route === 'state' && method === 'GET') {
     const { password, ...ots } = req.webtakHelper ? { password: '' } : takUsers.t.ots;
     return json(res, 200, {
-      ots: { ...ots, hasPassword: !!password }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
+      ots: { ...ots, hasPassword: !!password, effectiveHost: takUsers.takHost() }, otsReady: takUsers.otsConfigured(), registration: takUsers.t.registration,
       teams: takUsers.t.teams, blocks: takUsers.t.blocks, users: takUsers.list().map(u => takUsers.adminView(u)),
       colors: TEAM_COLORS, roles: ROLES, joinUrl: publicBase(req) + '/join/', mail: mailReady(),
     });

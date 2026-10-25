@@ -243,6 +243,13 @@
     f.anon.checked = state.ots.anon !== false;
     f.truststorePassword.value = state.ots.truststorePassword || 'atakatak';
     $('otsHasPass').textContent = state.ots.hasPassword ? '(saved)' : '';
+    // which address the QR codes, the setup package and iTAK get – must be the TAK server, not this WebTAK server
+    const eff = state.ots.effectiveHost || '';
+    const same = eff && eff.toLowerCase() === location.hostname.toLowerCase();
+    $('otsHostInfo').textContent = !eff ? ''
+      : same ? `Devices currently get "${eff}" – that is the address of this WebTAK server. If the TAK server has its own domain, enter it above.`
+      : `Devices (QR codes, setup package, iTAK) connect to: ${eff}${state.ots.host ? '' : ' (taken from the OTS address)'}`;
+    $('otsHostInfo').className = 'small ' + (same ? 'warn' : 'mut');
     const r = $('regForm2');
     r.open.checked = !!state.registration.open;
     r.emailConfirm.checked = !!state.registration.emailConfirm;
