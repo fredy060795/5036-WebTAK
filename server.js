@@ -692,6 +692,29 @@ function takPorts() {
 }
 
 // '' = allowed, otherwise the reason
+// Videos of the own TAK server (OTS): like the OTS web UI over its /hls/ with the login (jwt) of the OTS
+// admin set in WebTAK – MediaMTX itself (port 8888) usually is not reachable/redirects. Only for devices that are
+// connected to a TAK server through WebTAK right now; the browser never sees the login.
+function otsMedia(req) {
+  if (!takUsers.otsConfigured()) return null;
+  const ip = clientIp(req);
+  if (![...takLinks.values()].some(l => l.ip === ip && l.state === 'connected')) return null;
+  let base;
+  try { base = new URL(takUsers.t.ots.url); } catch (e) { return null; }
+  return async (url, { fresh }) => {
+    let path;
+    if (url.origin === base.origin && url.pathname.startsWith('/hls/')) path = url.pathname;
+    else if (ownTak(url.hostname) && url.port === '8888') path = '/hls' + url.pathname;
+    else return null;
+    const ots = takUsers.ots();
+    if (fresh || !ots.token) await ots.login();
+    const b = new URL(path, base);
+    const f = new URL(b);
+    f.searchParams.set('jwt', ots.token);
+    return { fetch: f, base: b };
+  };
+}
+
 async function takProblem(host, port) {
   const ports = takPorts();
   if (ownTak(host) && ports.includes(Number(port))) return '';
@@ -708,7 +731,7 @@ async function handleEudApi(req, res, route) {
   }
   // video feeds (HLS) through our own server so the browser may play them
   if (route === 'media' && req.method === 'GET') {
-    return proxyMedia(req, res, { allowed: host => tak.targetAllowed(takSettings().allowedHosts, host), log });
+    return proxyMedia(req, res, { allowed: host => tak.targetAllowed(takSettings().allowedHosts, host), log, mapUpstream: otsMedia(req) });
   }
   if (req.method !== 'POST') return json(res, 404, { error: 'Unknown request.' });
   if (route === 'p12') {
