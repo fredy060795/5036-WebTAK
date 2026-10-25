@@ -157,7 +157,8 @@
     const more = el('div', { class: 'row', style: 'margin-top:8px' });
     if (u.username) {
       more.append(el('button', { class: 'sm', type: 'button', text: 'New password', onclick: () => { if (confirm('Generate a new password? The old one stops working.')) run('password', { method: 'POST', body: {} }, () => setMsg(out, 'New password set – the user sees it on their access page.', true)); } }));
-      more.append(el('button', { class: 'sm', type: 'button', text: 'New ATAK QR', onclick: () => run('qr', { method: 'POST', body: {} }, () => setMsg(out, 'New QR code generated.', true)) }));
+      if (u.atakQr) more.append(el('button', { class: 'sm', type: 'button', text: 'Show ATAK QR', onclick: () => showAtakQr(u, false) }));
+      more.append(el('button', { class: 'sm', type: 'button', text: 'New ATAK QR', onclick: () => run('qr', { method: 'POST', body: {} }, r => showAtakQr(r.user, true)) }));
     }
     more.append(el('button', { class: 'sm', type: 'button', text: 'Copy access link', onclick: async ev => { const r = await tapi(`user/${u.id}/link`); copy(r.link, ev.target); } }));
     more.append(el('button', { class: 'sm admin-only', type: 'button', text: 'Delete', onclick: () => {
@@ -165,6 +166,59 @@
     } }));
     f.append(btns, more, out);
     openModal(approve ? `Approve: ${u.name}` : `Edit ${u.callsign}`, f);
+  }
+
+  // ATAK enrollment QR as a popup: scan right away, save as PNG or print
+  function showAtakQr(u, fresh) {
+    const src = `/api/admin/takusers/user/${u.id}/atak-qr.svg?t=${Date.now()}`;
+    const name = 'atak-qr-' + String(u.callsign || u.username || 'user').replace(/[^\w.-]+/g, '_');
+    const img = el('img', { class: 'qr', alt: 'ATAK QR code', src });
+    const out = el('p', { class: 'msg' });
+    const savePng = async () => {
+      try {
+        const svg = await (await fetch(src, { credentials: 'same-origin' })).text();
+        const pic = new Image();
+        pic.src = 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+        await pic.decode();
+        const c = document.createElement('canvas');
+        c.width = c.height = 1024;
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, c.width, c.height);
+        ctx.imageSmoothingEnabled = false;
+        ctx.drawImage(pic, 0, 0, c.width, c.height);
+        const a = el('a', { href: c.toDataURL('image/png'), download: name + '.png' });
+        document.body.append(a);
+        a.click();
+        a.remove();
+      } catch (e) { setMsg(out, 'Could not save the QR code: ' + e.message); }
+    };
+    const print = () => {
+      const w = window.open('', '_blank');
+      if (!w) return setMsg(out, 'Popup blocked – please allow popups for printing.');
+      const d = w.document;
+      d.title = 'ATAK QR – ' + (u.callsign || u.username);
+      const page = d.createElement('div');
+      page.style.cssText = 'font-family:sans-serif;text-align:center;padding:24px';
+      const h = d.createElement('h2');
+      h.textContent = 'ATAK access: ' + (u.callsign || '') + (u.username ? ' (' + u.username + ')' : '');
+      const p = d.createElement('p');
+      p.textContent = 'ATAK: Network Preferences → Manage Server Connections → ⋮ → Scan QR Code';
+      const pic = d.createElement('img');
+      pic.style.cssText = 'width:90mm;height:90mm';
+      pic.onload = () => { w.focus(); w.print(); };
+      pic.src = location.origin + src;
+      page.append(h, pic, p);
+      d.body.append(page);
+    };
+    openModal('ATAK QR: ' + (u.callsign || u.username),
+      el('p', { class: 'small ' + (fresh ? 'msg ok' : 'mut'), text: fresh ? 'New QR code generated.' : 'Scan in ATAK: Network Preferences → Manage Server Connections → ⋮ → Scan QR Code.' }),
+      img,
+      el('div', { class: 'row', style: 'justify-content:center' },
+        el('button', { class: 'sm', type: 'button', text: '💾 Save as PNG', onclick: savePng }),
+        el('button', { class: 'sm', type: 'button', text: '🖨 Print', onclick: print }),
+        el('button', { class: 'sm', type: 'button', text: 'Close', onclick: closeModal })),
+      out);
   }
 
   // ---------------- Teams and visibility ----------------

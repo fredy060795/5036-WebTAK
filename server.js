@@ -599,6 +599,13 @@ async function handleTakAdmin(req, res, route) {
   if (method === 'GET') {
     const m = /^user\/([a-f0-9]+)\/link$/.exec(route);
     if (m) return json(res, 200, { link: accessLink(req, takUsers.get(m[1])) });
+    // ATAK enrollment QR of a user (popup in the admin: scan, save, print)
+    const q = /^user\/([a-f0-9]+)\/atak-qr\.svg$/.exec(route);
+    if (q) {
+      const link = takUsers.fixQr(takUsers.get(q[1]).atakQr || '');
+      if (!link) return send(res, 404, 'No QR code');
+      return send(res, 200, await QRCode.toString(link, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }), 'image/svg+xml');
+    }
     return json(res, 404, { error: 'Unknown request.' });
   }
   const body = method === 'DELETE' ? {} : await readJson(req);
@@ -736,7 +743,7 @@ async function handleEudApi(req, res, route) {
 // what helpers may do in the admin (method, route without query)
 const HELPER_ROUTES = [
   ['GET', /^streams$/], ['GET', /^registration$/], ['GET', /^tak$/], ['GET', /^(app|eud)-qr\.svg$/],
-  ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/link$/],
+  ['GET', /^takusers\/state$/], ['GET', /^takusers\/join-qr\.svg$/], ['GET', /^takusers\/user\/[^/]+\/(link|atak-qr\.svg)$/],
   ['POST', /^takusers\/user\/[^/]+\/(approve|reject|update|block|unblock|password|qr)$/],
   ['GET', /^ots\/users$/], ['POST', /^ots\/users$/],
 ];
