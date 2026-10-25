@@ -68,10 +68,14 @@
   <div id="pitchText">0°</div>
 </div>
 
-<!-- Bottom right: connection status (green = connected, red = offline) and own position -->
+<!-- Bottom right: connection status like ATAK (WebTAK logo, dot green = connected, red = offline) and own position -->
 <button type="button" id="connBtn" title="Servers" aria-label="Server connection">
-  <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.8"><path d="M4 18 L9 12 L13 15 L20 6"/><path d="M15 6h5v5"/></svg>
+  <img src="tak-badge.png" alt="">
   <span id="dot" class="dot"></span><span id="statusText" class="sr">OFFLINE</span>
+</button>
+<!-- Meshtastic radio (Bluetooth): only while switched on -->
+<button type="button" id="meshBtn" class="hidden" title="Meshtastic" aria-label="Meshtastic">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linejoin="miter" stroke-miterlimit="10"><clipPath id="meshClip1"><rect x="0" y="4.5" width="24" height="14.9"/></clipPath><g clip-path="url(#meshClip1)"><path d="M3.8 21 10.5 3"/><path d="M9.6 21 15.8 4.4 21.6 21"/></g></svg>
 </button>
 <div id="selfInfo">
   <div><span class="k">Callsign:</span> <span id="siCall">---</span></div>
@@ -182,6 +186,8 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.6"><path d="M20 7A9 9 0 0 0 4.6 6.4L3 8M4 17a9 9 0 0 0 15.4.6L21 16"/><path d="M3 3v5h5M21 21v-5h-5"/></svg><span>Data Sync</span></button>
       <button type="button" class="tile" data-open="video">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="2" y="6" width="14" height="12" rx="1"/><path d="M16 10l6-3v10l-6-3"/></svg><span>Video</span></button>
+      <button type="button" class="tile" data-open="mesh">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.7" stroke-linejoin="miter" stroke-miterlimit="10"><clipPath id="meshClip2"><rect x="0" y="4.5" width="24" height="14.9"/></clipPath><g clip-path="url(#meshClip2)"><path d="M3.8 21 10.5 3"/><path d="M9.6 21 15.8 4.4 21.6 21"/></g></svg><span>Meshtastic</span><i id="meshTileDot" class="tile-dot hidden"></i></button>
       <button type="button" class="tile" id="btnMeasure">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><path d="M3 17L17 3l4 4L7 21z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg><span>R&amp;B Line</span></button>
       <button type="button" class="tile" data-open="chat">
@@ -301,6 +307,37 @@
         <div class="subhead">FEEDS FROM TAK SERVER</div>
         <button type="button" class="mbtn blue" id="feedLoad">LOAD VIDEO FEEDS</button>
         <div id="feedList"></div>
+      </section>
+
+      <!-- Meshtastic over Bluetooth -->
+      <section data-sec="mesh">
+        <div class="nw-banner off" id="meshBanner"><span class="dot"></span><span id="meshState">Not connected</span></div>
+        <div class="kv"><span>Nodes heard (2 h)</span><b id="meshNodes">–</b></div>
+        <div class="kv"><span>Sending via mesh</span><b id="meshSending">–</b></div>
+        <p class="hint hidden" id="meshBt">This browser has no Bluetooth. Android: use Chrome. iPhone: open WebTAK in the free "Bluefy" app.</p>
+        <button type="button" class="mbtn hidden" id="meshBluefy">COPY LINK FOR BLUEFY</button>
+        <button type="button" class="mbtn pri big" id="meshPick">CONNECT MESHTASTIC RADIO</button>
+        <div class="row2">
+          <button type="button" class="mbtn hidden" id="meshNew">OTHER RADIO</button>
+          <button type="button" class="mbtn red hidden" id="meshOff">DISCONNECT</button>
+        </div>
+        <p class="msg" id="meshMsg"></p>
+        <div class="subhead">SETTINGS</div>
+        <label for="meshSend">Send position &amp; chat via mesh</label>
+        <select id="meshSend" class="in">
+          <option value="offline">Only when offline (no TAK server)</option>
+          <option value="always">Always (also online)</option>
+        </select>
+        <div class="row2">
+          <div><label for="meshInterval">Position every</label>
+            <select id="meshInterval" class="in"><option value="30">30 s</option><option value="60">1 min</option><option value="120">2 min</option><option value="300">5 min</option></select></div>
+          <div><label for="meshChannel">Channel</label><select id="meshChannel" class="in"></select></div>
+        </div>
+        <label class="check"><input type="checkbox" id="meshShowNodes"> Show Meshtastic users without TAK (Meshtastic app) on the map</label>
+        <label class="check"><input type="checkbox" id="meshText"> Also send chat as Meshtastic text (readable in the Meshtastic app)</label>
+        <p class="hint">Works with the Meshtastic ATAK plugin: positions and chat go over LoRa as TAK packets. A radio accepts only
+          one Bluetooth connection – disconnect the Meshtastic app first. Keep the screen on and WebTAK in the foreground.
+          During a video stream the radio is released and reconnected afterwards.</p>
       </section>
 
       <!-- TAK data -->
@@ -434,5 +471,7 @@
 <script src="view3d.js"></script>
 <script src="video.js"></script>
 <script src="data.js"></script>
+<script src="meshproto.js"></script>
+<script src="mesh.js"></script>
 </body>
 </html>

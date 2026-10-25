@@ -206,7 +206,7 @@ function showMe() {
 // Menu and windows
 // ======================================================================
 
-const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts & Markers', map: 'Map', data: 'TAK Data', clear: 'Clear Content' };
+const TITLES = { server: 'Servers', edit: 'Server', me: 'Callsign', video: 'Video stream', contacts: 'Contacts & Markers', map: 'Map', data: 'TAK Data', clear: 'Clear Content', mesh: 'Meshtastic' };
 let popupSec = null;
 // like ATAK: only one sheet open at the bottom at a time
 function closeSheets(except) {
@@ -703,6 +703,7 @@ $('chatForm').addEventListener('submit', e => {
   const xml = chatXml(text, x);
   handleCot(xml, { local: true });
   sendCot(xml, true);
+  document.dispatchEvent(new CustomEvent('eud-chat-out', { detail: { text, xml, conv: x } })); // Meshtastic (mesh.js)
   $('chatIn').value = '';
 });
 $('chatConv').addEventListener('change', e => setChatConv(e.target.value));
@@ -720,6 +721,8 @@ function connOf(srv) {
   return conns.get(srv.id);
 }
 const isOpen = c => c && c.ws && c.ws.readyState === 1;
+// at least one TAK server connected right now (otherwise Meshtastic sends over LoRa)
+const serverOnline = () => navigator.onLine && servers.some(s => s.auto && connOf(s).state === 'connected');
 
 function updateStatus() {
   const active = servers.filter(s => s.auto);
@@ -2372,7 +2375,7 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, askTrust, postJson, getServers: () => servers, saveServers, fmtDist, distance };
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, fmtDist, distance, serverOnline, getMe: () => me, battery: () => battery };
 
 loadPicture();
 renderChat();
