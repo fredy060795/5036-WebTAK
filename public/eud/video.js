@@ -55,11 +55,16 @@
 
   async function ensureLink() {
     if (link) return link;
-    const res = await fetch('/api/app/register', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name: profile.callsign || 'EUD', unit: profile.team, source: 'eud' }),
-    });
+    let res;
+    try {
+      res = await fetch('/api/app/register', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: profile.callsign || 'EUD', unit: profile.team, source: 'eud' }),
+      });
+    } catch (e) {
+      throw new Error(`WebTAK server not reachable for the video sign-up (${e.message}) – check the internet connection and try again.`);
+    }
     const data = await res.json().catch(() => ({}));
     if (!res.ok) throw new Error(data.error || 'Sign-up at the server failed.');
     link = { u: data.u, s: data.s, k: data.k };
@@ -270,9 +275,32 @@
     }
   }
 
+  // Android often drops a fresh BLE connection to the ESP32 right after gatt.connect() ("GATT Server is
+  // disconnected. Cannot retrieve services") – connect again a few times, with a short pause before the
+  // service discovery, until the service is there.
+  async function gattService(dev, svcUuid, tries = 5) {
+    let last;
+    for (let i = 0; i < tries; i++) {
+      try {
+        const server = dev.gatt.connected ? dev.gatt : await dev.gatt.connect();
+        await new Promise(r => setTimeout(r, 300 + i * 300));
+        if (!dev.gatt.connected) throw new Error('GATT Server is disconnected.');
+        return await server.getPrimaryService(svcUuid);
+      } catch (e) {
+        last = e;
+        if (e.name === 'NotFoundError' && !/disconnected/i.test(e.message)) throw e; // service really missing
+        try { if (dev.gatt.connected) dev.gatt.disconnect(); } catch (x) { /* ignore */ }
+        await new Promise(r => setTimeout(r, 700 + i * 500));
+      }
+    }
+    throw last;
+  }
+
+  let gattBusy = false; // a connect is running: the disconnect handler does not start a second one
   async function setupGatt() {
-    const server = await device.gatt.connect();
-    const svc = await server.getPrimaryService(SVC);
+    gattBusy = true;
+    let svc;
+    try { svc = await gattService(device, SVC); } finally { gattBusy = false; }
     cmdChr = await svc.getCharacteristic(COMMAND);
     const img = await svc.getCharacteristic(IMAGE);
     img.addEventListener('characteristicvaluechanged', onImagePacket);
@@ -282,7 +310,7 @@
   }
 
   async function onBleLost() {
-    if (!device || source !== 'ble') return;
+    if (!device || source !== 'ble' || gattBusy) return;
     toast('Helmet camera lost – reconnecting …');
     for (let i = 0; i < 30 && device && running; i++) {
       try { await setupGatt(); toast('Helmet camera reconnected.'); return; } catch (e) { await new Promise(r => setTimeout(r, 2000)); }
