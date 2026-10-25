@@ -757,6 +757,12 @@ function sendCot(xml, queue) {
     }
   }
   if (queue) store.set('eud.outbox2', outbox);
+  // markers, changes and deletions also over Meshtastic (mesh.js) – chat goes its own way (eud-chat-out)
+  if (queue && !/ type="b-t-f"/.test(xml)) {
+    const ev = new CustomEvent('eud-cot-out', { detail: { xml, mesh: false } });
+    document.dispatchEvent(ev);
+    if (ev.detail.mesh) sent = true;
+  }
   return sent;
 }
 
