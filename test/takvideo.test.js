@@ -107,3 +107,16 @@ test('an existing path (e.g. after a restart) is adopted', async () => {
   assert.equal(mock.state.videos['cam/bravo'].source, tv.sourceFor(id));
   assert.equal(tv.view(id).inTak, true);
 });
+
+test('admin notifications can be deleted, the counter keeps running', () => {
+  hub.deleteEvents(null);
+  hub.event('tak', 'takreg', 'a');
+  hub.event('tak', 'takreg', 'b');
+  const [a, b] = hub.events;
+  hub.deleteEvents([a.seq]);
+  assert.deepEqual(hub.events.map(e => e.text), ['b']);
+  hub.deleteEvents(null);
+  assert.equal(hub.events.length, 0);
+  hub.event('tak', 'takreg', 'c');
+  assert.equal(hub.eventsSince(b.seq).map(e => e.text).join(), 'c');
+});

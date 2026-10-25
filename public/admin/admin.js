@@ -336,13 +336,22 @@ function renderNotes() {
   const unread = notes.filter(n => !n.read).length;
   $('notifyCount').textContent = unread > 99 ? '99+' : String(unread);
   $('notifyCount').classList.toggle('hidden', !unread);
+  $('noteRead').disabled = !unread;
+  $('noteClear').disabled = !notes.length;
+  $('noteRead').textContent = unread ? 'Mark all read' : 'All read';
   if ($('notePanel').classList.contains('hidden')) return;
   const list = $('noteList');
-  list.replaceChildren(...(notes.length ? notes.map(n => el('div', { class: 'note ' + n.ev.kind + (n.read ? '' : ' unread') },
-    el('span', { class: 'note-ic', text: NOTE_ICON[n.ev.kind] || '•' }),
-    el('div', { class: 'grow' },
-      el('div', { class: 'note-head' }, el('span', { text: n.ev.text }), el('span', { class: 'mut small', text: noteTime(n.ev.at) })),
-      el('div', { class: 'row' }, ...noteActions(n.ev, () => closeNotes()))))) : [el('p', { class: 'mut small', style: 'padding:12px', text: 'No notifications yet. New requests, registered cameras and live starts appear here.' })]));
+  list.replaceChildren(...(notes.length ? notes.map(n => {
+    const row = el('div', { class: 'note ' + n.ev.kind + (n.read ? '' : ' unread'), title: n.read ? '' : 'Click to mark as read' },
+      el('span', { class: 'note-ic', text: NOTE_ICON[n.ev.kind] || '•' }),
+      el('div', { class: 'grow' },
+        el('div', { class: 'note-head' }, el('span', { text: n.ev.text }), el('span', { class: 'mut small', text: noteTime(n.ev.at) }),
+          el('button', { class: 'note-del', type: 'button', title: 'Delete', 'aria-label': 'Delete notification', text: '✕', onclick: e => { e.stopPropagation(); deleteNotes([n.ev.seq]); } })),
+        el('div', { class: 'row' }, ...noteActions(n.ev, () => { n.read = true; closeNotes(); }))));
+    // a click on the notification marks it as read
+    row.addEventListener('click', () => { if (!n.read) { n.read = true; renderNotes(); } });
+    return row;
+  }) : [el('p', { class: 'mut small', style: 'padding:12px', text: 'No notifications yet. New requests, registered cameras and live starts appear here.' })]));
 }
 
 function addNote(ev, read) {
@@ -356,8 +365,6 @@ function addNote(ev, read) {
 function openNotes() {
   $('notePanel').classList.remove('hidden');
   renderNotes();
-  for (const n of notes) n.read = true; // opened = read (the marking stays visible until closed)
-  $('notifyCount').classList.add('hidden');
 }
 function closeNotes() {
   $('notePanel').classList.add('hidden');
@@ -370,7 +377,21 @@ $('notifyBtn').addEventListener('click', e => {
 });
 $('noteClose').addEventListener('click', closeNotes);
 $('noteRead').addEventListener('click', () => { for (const n of notes) n.read = true; renderNotes(); });
-document.addEventListener('click', e => { if (!$('notePanel').classList.contains('hidden') && !e.target.closest('#notePanel') && !e.target.closest('#notifyBtn')) closeNotes(); });
+// delete on the server too, so they do not come back after reloading (seqs = null: all)
+async function deleteNotes(seqs) {
+  try {
+    await api('events/delete', { method: 'POST', body: seqs ? { seqs } : { all: true } });
+  } catch (e) { return alert(e.message); }
+  for (let i = notes.length - 1; i >= 0; i--) if (!seqs || seqs.includes(notes[i].ev.seq)) notes.splice(i, 1);
+  renderNotes();
+}
+$('noteClear').addEventListener('click', () => { if (confirm('Delete all notifications?')) deleteNotes(null); });
+renderNotes();
+// composedPath: the clicked element may already have been replaced by renderNotes (then it is no longer inside the panel)
+document.addEventListener('click', e => {
+  const path = e.composedPath();
+  if (!$('notePanel').classList.contains('hidden') && !path.includes($('notePanel')) && !path.includes($('notifyBtn'))) closeNotes();
+});
 
 function showToast(ev) {
   addNote(ev, false);
