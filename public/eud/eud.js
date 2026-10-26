@@ -269,7 +269,11 @@ $('connBtn').addEventListener('click', () => openPopup('server'));
 // ======================================================================
 
 const items = new Map(); // uid -> { uid, c, xml, layer, own, stale }
-let chat = store.get('eud.chat', []);
+// chat messages are deleted automatically after 3 days (otherwise the window and the channel list grow without end)
+const CHAT_KEEP_MS = 3 * 86400000;
+const chatFresh = m => Date.now() - (m.time || 0) < CHAT_KEEP_MS;
+let chat = store.get('eud.chat', []).filter(chatFresh);
+store.set('eud.chat', chat);
 let unread = 0;
 let me = null; // own position
 
@@ -634,6 +638,7 @@ function receiveChat(c, local) {
   const ch = c.chat;
   const sender = ch ? ch.getAttribute('senderCallsign') || '' : c.callsign || '';
   if (chat.some(m => m.id === c.uid)) return;
+  if (!chatFresh(c)) return; // older than 3 days (e.g. sent again by a server): not shown any more
   const fromMe = c.uid.startsWith('GeoChat.' + profile.uid + '.');
   const conv = chatChannel(c);
   chat.push({ id: c.uid, from: sender, conv: conv.key, convName: conv.name, uid: conv.uid || '', members: conv.members || null, text: c.remarks, time: c.time, me: fromMe });
@@ -648,6 +653,14 @@ function receiveChat(c, local) {
   }
   renderChat();
 }
+
+setInterval(() => {
+  const keep = chat.filter(chatFresh);
+  if (keep.length === chat.length) return;
+  chat = keep;
+  store.set('eud.chat', chat);
+  renderChat();
+}, 600000);
 
 function updateBadge() {
   $('chatBadge').textContent = unread;
@@ -778,14 +791,17 @@ function openChat(key) {
   setChatConv(key || chatConv);
   $('chatWin').classList.remove('hidden', 'min');
   $('btnChat').classList.add('active');
+  chatToEnd();
 }
+// newest message in view – only possible once the window is visible (hidden it has no height)
+function chatToEnd() { const log = $('chatLog'); log.scrollTop = log.scrollHeight; }
 function closeChat() {
   $('chatWin').classList.add('hidden');
   $('btnChat').classList.remove('active');
 }
 $('btnChat').addEventListener('click', () => ($('chatWin').classList.contains('hidden') ? openChat() : closeChat()));
 $('chatClose').addEventListener('click', closeChat);
-$('chatMin').addEventListener('click', e => { e.stopPropagation(); $('chatWin').classList.toggle('min'); });
+$('chatMin').addEventListener('click', e => { e.stopPropagation(); $('chatWin').classList.toggle('min'); chatToEnd(); });
 document.querySelector('.chat-head').addEventListener('click', e => { if (e.target.closest('button')) return; $('chatWin').classList.remove('min'); });
 $('chatForm').addEventListener('submit', e => {
   e.preventDefault();
