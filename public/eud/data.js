@@ -165,14 +165,18 @@
           const pts = quad ? coords(all(quad, 'coordinates')[0] || quad) : [];
           if (pts.length >= 4) b = [[Math.min(...pts.map(p => p[0])), Math.min(...pts.map(p => p[1]))], [Math.max(...pts.map(p => p[0])), Math.max(...pts.map(p => p[1]))]];
         }
-        if (b && b.flat().every(Number.isFinite)) grounds.push({ bounds: b, url, span: Math.abs(b[1][1] - b[0][1]) || 1e-9 });
+        // large map image reduced on import (lib/raster.js): its width in pixels for choosing the detail level
+        const pxData = [...all(go, 'Data')].find(d => d.getAttribute('name') === 'webtakPx');
+        const px = pxData ? Number(txt(pxData, 'value')) : 0;
+        if (b && b.flat().every(Number.isFinite)) grounds.push({ bounds: b, url, px, span: Math.abs(b[1][1] - b[0][1]) || 1e-9 });
       }
     }
 
     // raster images: one detail level -> show all; several (super overlay) -> matching level per zoom, only visible ones
     const levels = new Map();
     for (const g of grounds) {
-      const k = Math.round(Math.log2(360 / g.span));
+      // reduced map image: by resolution (all pieces are full resolution, also the narrower edge pieces)
+      const k = g.px ? Math.round(Math.log2(360 * g.px / g.span)) : Math.round(Math.log2(360 / g.span));
       if (!levels.has(k)) levels.set(k, []);
       levels.get(k).push(g);
     }
@@ -180,13 +184,16 @@
       for (const g of grounds) group.addLayer(L.imageOverlay(g.url, g.bounds, { pane: 'kml', opacity: 0.9 }));
     } else {
       const keys = [...levels.keys()].sort((a, b) => a - b);
-      const raster = L.layerGroup();
+      const raster = L.featureGroup(); // featureGroup: the overlay's bounds (zoom to it) work with it
       const made = new Map();
       const refresh = () => {
         if (!map.hasLayer(group)) return;
         const z = map.getZoom();
-        // level whose images are about 256–512 px wide on screen
-        const k = keys.reduce((best, lv) => {
+        // reduced map image (overview + pieces): the coarsest level that is still sharp on screen –
+        // the full-resolution pieces only when zoomed in (and only the visible ones)
+        const sharp = keys.filter(lv => { const g = levels.get(lv)[0]; return g.px && g.px >= 0.8 * 256 * 2 ** z * g.span / 360; });
+        // otherwise (super overlay tiles): level whose images are about 256–512 px wide on screen
+        const k = levels.get(keys[0])[0].px ? (sharp.length ? sharp[0] : keys[keys.length - 1]) : keys.reduce((best, lv) => {
           const w = 256 * 2 ** z / 2 ** lv;
           const bw = 256 * 2 ** z / 2 ** best;
           return Math.abs(Math.log2(w / 384)) < Math.abs(Math.log2(bw / 384)) ? lv : best;

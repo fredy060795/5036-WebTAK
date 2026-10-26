@@ -270,6 +270,9 @@ mission, both are loaded or subscribed automatically. Errors while fetching are 
 prefixed KML (`kml:Placemark`), Google Earth tracks (`gx:Track`), coordinates with spaces; icons that do not load
 (offline, `http://` on an https page) become dots. A file that only links to data elsewhere (My Maps "Keep data up to
 date") gets a hint to export it with the data.
+**Large map images** (GroundOverlay, e.g. a printed game map of 11 000 × 8 000 px in a KMZ or ATAK data package):
+phones cannot show them. On import the server (ffmpeg) turns them into an overview (4096 px) plus full-resolution
+pieces (2048 px, WebP) – zoomed out the overview, zoomed in only the visible pieces; sharp and light (38 MB -> 5 MB).
 
 **Device profile like ATAK (auto-enrollment):** after logging in, WebTAK fetches the TAK server's enrollment profile
 once and on every connection the connection profile (only what is new since the last sync). In OpenTAKServer these
