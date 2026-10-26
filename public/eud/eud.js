@@ -536,6 +536,8 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
   if (c.uid === profile.uid) return; // own echo
   const prev = items.get(c.uid);
   if (prev && prev.c.time > c.time && !local) return; // older than known (e.g. via a second server)
+  const mc = profile.mapCleared;
+  if (!prev && mc && c.time <= mc.before && mc.cats.includes(categoryOf({ c }))) return; // cleared by the admin's request: does not come back
   const it = prev || { uid: c.uid };
   it.c = c;
   it.xml = xml;
@@ -864,6 +866,7 @@ function openConn(srv) {
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
     if (msg.type === 'cot') return handleCot(msg.xml, { srv });
     if (msg.type === 'assign') return applyAssignment(msg);
+    if (msg.type === 'mapclear') return askMapClear(msg.request);
     if (msg.type !== 'status') return;
     const was = c.state;
     c.state = msg.state;
@@ -1240,11 +1243,12 @@ function deleteXml(uid) {
     + `<point lat="0" lon="0" hae="9999999" ce="9999999" le="9999999"/><detail><link uid="${xmlEsc(uid)}" relation="none" type="none"/><__forcedelete/></detail></event>`;
 }
 // remove groups from the device. Optionally delete own markers on the TAK server too (like "Delete" in ATAK).
-function clearCats(ids, { serverToo = false } = {}) {
+function clearCats(ids, { serverToo = false, before = Infinity } = {}) {
   const groups = itemsByCat();
   let n = 0;
   for (const id of ids) {
     for (const it of groups[id] || []) {
+      if (it.c.time > before) continue; // newer than the admin's request: stays
       if (serverToo && it.own) sendCot(deleteXml(it.uid), true);
       removeItem(it.uid);
       n++;
@@ -1364,17 +1368,59 @@ $('clearGo').addEventListener('click', async () => {
   if (!confirm('Remove the selected content from this device?' + (serverToo ? '\n\nYour own markers are also deleted on the TAK server (for everyone).' : ''))) return;
   let n = clearCats(ids.filter(id => CATS.some(c => c.id === id)), { serverToo });
   if (ids.includes('overlays') && window.eud.overlayApi) n += await window.eud.overlayApi.clear();
-  if (ids.includes('chat')) {
-    n += chat.length;
-    chat = [];
-    store.set('eud.chat', chat);
-    for (const k of Object.keys(chatUnread)) delete chatUnread[k];
-    unread = 0;
-    updateBadge();
-    renderChat();
-  }
+  if (ids.includes('chat')) n += clearChat();
   renderClear();
   toast(`${n} item(s) removed`);
+});
+
+function clearChat(before = Infinity) {
+  const keep = chat.filter(m => (m.time || 0) > before);
+  const n = chat.length - keep.length;
+  chat = keep;
+  store.set('eud.chat', chat);
+  for (const k of Object.keys(chatUnread)) delete chatUnread[k];
+  unread = 0;
+  updateBadge();
+  renderChat();
+  return n;
+}
+
+// Clear map asked by the admin (WebTAK admin → Clear map): on every (re)connection until the user
+// cleared it – then never again for this request. Only what is older than the request is removed.
+const MC_LABEL = { contacts: 'Contacts (users)', f: 'Markers – Friendly', h: 'Markers – Hostile', n: 'Markers – Neutral', u: 'Markers – Unknown',
+  points: 'Other points', shapes: 'Drawings & routes', overlays: 'Overlays (KML/KMZ)', chat: 'Chat messages' };
+let mcRequest = null;
+function askMapClear(r) {
+  if (!r) { mcRequest = null; $('mapClear').classList.add('hidden'); return; } // withdrawn by the admin
+  if (profile.mapClearDone === r.id || (mcRequest && mcRequest.id === r.id && !$('mapClear').classList.contains('hidden'))) return;
+  mcRequest = r;
+  const before = Date.parse(r.time) || Date.now();
+  const groups = itemsByCat();
+  const ov = window.eud.overlayApi ? window.eud.overlayApi.list().length : 0;
+  const count = id => (groups[id] ? groups[id].filter(it => it.c.time <= before).length : id === 'overlays' ? ov : id === 'chat' ? chat.filter(m => (m.time || 0) <= before).length : 0);
+  $('mcText').textContent = `The administrator asks to clear the map (${new Date(before).toLocaleString('en-GB', { dateStyle: 'short', timeStyle: 'short' })}):`;
+  $('mcNote').textContent = r.note || '';
+  $('mcList').replaceChildren(...r.cats.map(id => {
+    const row = document.createElement('div');
+    row.className = 'clr';
+    row.innerHTML = `<span class="name">${esc(MC_LABEL[id] || id)}</span><span class="cnt">${count(id)}</span>`;
+    return row;
+  }));
+  $('mapClear').classList.remove('hidden');
+}
+$('mcLater').addEventListener('click', () => { $('mapClear').classList.add('hidden'); toast('You will be asked again at the next connection.'); });
+$('mcGo').addEventListener('click', async () => {
+  const r = mcRequest;
+  $('mapClear').classList.add('hidden');
+  if (!r) return;
+  const before = Date.parse(r.time) || Date.now();
+  let n = clearCats(r.cats.filter(id => CATS.some(c => c.id === id)), { before });
+  if (r.cats.includes('overlays') && window.eud.overlayApi) n += await window.eud.overlayApi.clear();
+  if (r.cats.includes('chat')) n += clearChat(before);
+  profile.mapClearDone = r.id;
+  profile.mapCleared = { before, cats: r.cats };
+  saveProfile();
+  toast(`Map cleared: ${n} item(s) removed.`);
 });
 
 // ======================================================================
@@ -1383,11 +1429,18 @@ $('clearGo').addEventListener('click', async () => {
 
 for (const t of Object.keys(TEAMS)) $('fTeam').append(new Option(t, t));
 for (const r of ROLES) $('fRole').append(new Option(r, r));
-// set by the admin (managed TAK access): apply and lock in the menu
+// set by the admin (managed TAK access): team and role are locked in the menu. The callsign is only a
+// suggestion – the user can change it (several players may share one login for a quick game); a new
+// callsign from the admin is only taken over if the user did not change the last one.
+const takeCallsign = (next, prev) => !!next && (!profile.callsign || (profile.callsign === prev && next !== prev));
 function applyAssignment(a) {
-  const changed = profile.callsign !== a.callsign || profile.team !== a.team || profile.role !== a.role;
+  const before = { callsign: profile.callsign, team: profile.team, role: profile.role };
+  const prev = profile.assigned ? profile.assigned.callsign : undefined;
   profile.assigned = { callsign: String(a.callsign || ''), team: TEAMS[a.team] ? a.team : profile.team, role: ROLES.includes(a.role) ? a.role : profile.role };
-  Object.assign(profile, profile.assigned);
+  if (takeCallsign(profile.assigned.callsign, prev)) profile.callsign = profile.assigned.callsign;
+  profile.team = profile.assigned.team;
+  profile.role = profile.assigned.role;
+  const changed = before.callsign !== profile.callsign || before.team !== profile.team || before.role !== profile.role;
   saveProfile();
   showMe();
   if (typeof updateSelfInfo === 'function') updateSelfInfo();
@@ -1400,7 +1453,10 @@ function applyAssignment(a) {
 // assignment (WebTAK) has priority
 function applyProfilePrefs(p) {
   if (!p || profile.assigned) return;
-  const next = { callsign: p.callsign || profile.callsign, team: TEAMS[p.team] ? p.team : profile.team, role: ROLES.includes(p.role) ? p.role : profile.role };
+  // callsign: like an admin's assignment only when the user did not change the server's last one
+  const prev = profile.serverCallsign;
+  if (p.callsign) profile.serverCallsign = p.callsign;
+  const next = { callsign: takeCallsign(p.callsign, prev) ? p.callsign : profile.callsign, team: TEAMS[p.team] ? p.team : profile.team, role: ROLES.includes(p.role) ? p.role : profile.role };
   if (next.callsign === profile.callsign && next.team === profile.team && next.role === profile.role) return;
   Object.assign(profile, next);
   saveProfile();
@@ -1432,18 +1488,21 @@ function fillMe() {
   $('fTeam').value = profile.team;
   $('fRole').value = profile.role;
   const locked = !!profile.assigned;
-  for (const id of ['fCallsign', 'fTeam', 'fRole']) $(id).disabled = locked;
+  for (const id of ['fTeam', 'fRole']) $(id).disabled = locked;
   $('meLocked').classList.toggle('hidden', !locked);
-  $('meSave').classList.toggle('hidden', locked);
   $('uidText').textContent = profile.uid;
 }
 $('meSave').addEventListener('click', () => {
   const call = $('fCallsign').value.trim();
   if (!call) { $('fCallsign').focus(); return; }
   profile.callsign = call;
-  profile.team = $('fTeam').value;
-  profile.role = $('fRole').value;
+  if (!profile.assigned) {
+    profile.team = $('fTeam').value;
+    profile.role = $('fRole').value;
+  }
   saveProfile();
+  if (typeof updateSelfInfo === 'function') updateSelfInfo();
+  if (me) drawMe();
   showMe();
   sendSelf();
   closePopup();
@@ -1488,9 +1547,9 @@ function renderServers() {
   }
 }
 
-function askCallsign() {
+function askCallsign(msg) {
   openPopup('me');
-  toast('Please enter a callsign first.');
+  toast(msg || 'Please enter a callsign first.', msg ? 6000 : undefined);
   $('fCallsign').focus();
 }
 
@@ -1800,6 +1859,7 @@ async function applyConfig(cfg, auto) {
   if (cfg.proto) draft.proto = cfg.proto;
   if (cfg.enrollPort) draft.enrollPort = cfg.enrollPort;
   if (cfg.username) draft.username = cfg.username;
+  const fresh = !profile.callsign;
   if (cfg.callsign && !profile.callsign) { profile.callsign = cfg.callsign; saveProfile(); showMe(); }
   fillEdit();
   if (cfg.password) $('fPass').value = cfg.password;
@@ -1809,7 +1869,7 @@ async function applyConfig(cfg, auto) {
     const ok = await requestCert(cfg.password);
     if (ok) {
       saveDraft();
-      if (!profile.callsign) askCallsign();
+      if (fresh) askCallsign('Check your callsign – several players can share one login, each with an own callsign.');
       else openPopup('server');
     }
   }

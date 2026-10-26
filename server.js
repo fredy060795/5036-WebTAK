@@ -1152,6 +1152,24 @@ async function handleAdminApi(req, res, route) {
     if (p) url += '#' + new URLSearchParams({ host: p.host, port: p.port, proto: p.proto, enroll: p.enrollPort }).toString();
     return send(res, 200, await QRCode.toString(url, { type: 'svg', margin: 2, errorCorrectionLevel: 'M' }), 'image/svg+xml');
   }
+  // clear the map on all WebTAK devices (after a mission): every device asks its user on the next connection
+  if (route === 'mapclear' && method === 'GET') return json(res, 200, { request: store.data.mapClear || null, devices: takLinks.size });
+  if (route === 'mapclear' && method === 'POST') {
+    const body = await readJson(req);
+    const cats = (Array.isArray(body.cats) ? body.cats : []).filter(c => MAP_CLEAR_CATS.includes(c));
+    if (!cats.length) return json(res, 400, { error: 'Choose what to clear.' });
+    store.data.mapClear = { id: crypto.randomBytes(6).toString('hex'), time: new Date().toISOString(), cats, note: String(body.note || '').slice(0, 200) };
+    store.save();
+    broadcastMapClear();
+    log('Map clear requested:', cats.join(', '));
+    return json(res, 200, { request: store.data.mapClear, devices: takLinks.size });
+  }
+  if (route === 'mapclear' && method === 'DELETE') {
+    store.data.mapClear = null;
+    store.save();
+    broadcastMapClear();
+    return json(res, 200, { request: null, devices: takLinks.size });
+  }
   if (route === 'eud-links' && method === 'GET') {
     return json(res, 200, { links: [...takLinks.values()].map(l => l.info()) });
   }
@@ -1432,16 +1450,21 @@ async function handle(req, res) {
 const wss = new WebSocketServer({ noServer: true, maxPayload: 2 * 1024 * 1024 });
 const takWss = new WebSocketServer({ noServer: true, maxPayload: 1024 * 1024 });
 const takLinks = new Map(); // ws -> connection info (for the admin overview)
-const MAX_TAK_PER_IP = 5;
+const MAP_CLEAR_CATS = ['contacts', 'f', 'h', 'n', 'u', 'points', 'shapes', 'overlays', 'chat'];
+const mapClearMsg = () => JSON.stringify({ type: 'mapclear', request: store.data.mapClear || null });
+function broadcastMapClear() {
+  for (const ws of takLinks.keys()) if (ws.readyState === 1) ws.send(mapClearMsg());
+}
+// several players often share one internet connection (field router, Starlink): one public IP
+const MAX_TAK_PER_IP = Number(process.env.MAX_TAK_PER_IP) || 40;
 
-// own position (SA) of a managed access: callsign, team and role as set by the admin
+// own position (SA) of a managed access: team and role as set by the admin
 function enforceAssignment(xml, uid, a) {
   const m = /<event\b[^>]*\buid="([^"]*)"/.exec(xml);
   if (!m || m[1] !== uid || !/\btype="a-/.test(xml.slice(0, 400))) return xml;
   const attr = v => String(v).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  // the callsign stays the user's (several players may share one login), team and role are the admin's
   return xml
-    .replace(/(<contact\b[^>]*\bcallsign=")[^"]*(")/, `$1${attr(a.callsign)}$2`)
-    .replace(/(<uid\b[^>]*\bDroid=")[^"]*(")/, `$1${attr(a.callsign)}$2`)
     .replace(/(<__group\b[^>]*\bname=")[^"]*(")/, `$1${attr(a.team)}$2`)
     .replace(/(<__group\b[^>]*\brole=")[^"]*(")/, `$1${attr(a.role)}$2`);
 }
@@ -1461,6 +1484,7 @@ function handleTakSocket(ws, req) {
     return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
   } };
   takLinks.set(ws, entry);
+  if (store.data.mapClear) ws.send(mapClearMsg()); // map clear asked by the admin: the device asks its user
   const say = (state, message, extra) => {
     entry.state = state;
     if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'status', state, message, ...(extra || {}) }));
@@ -1488,7 +1512,6 @@ function handleTakSocket(ws, req) {
         assigned = takUsers.assignmentFor(cn);
       } catch (e) { /* no readable certificate */ }
       if (assigned) {
-        entry.callsign = assigned.callsign;
         if (ws.readyState === 1) ws.send(JSON.stringify({ type: 'assign', ...assigned }));
       }
       link = new tak.TakLink({

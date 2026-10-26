@@ -240,9 +240,12 @@
     return { callsign: name.slice(0, m.index), team: n === 0 ? 'White' : TEAMS[n] || 'Cyan' };
   }
 
-  // plain Meshtastic node (Meshtastic app, no TAK) with a position -> user on the map like in ATAK, stale 30 min
-  function nodeCot({ num, user, position }, now = new Date()) {
-    const time = position.time ? new Date(Math.min(position.time * 1000, +now)) : now;
+  // plain Meshtastic node (Meshtastic app, no TAK) with a position -> user on the map like in ATAK, stale 30 min.
+  // Time = when the node was last heard (or its position fix), never "now" for old data – otherwise every
+  // reconnect (the radio sends its whole node list) would make long gone nodes fresh again.
+  function nodeCot({ num, user, position, heard }, now = new Date()) {
+    const t = Math.max(position.time || 0, heard || 0);
+    const time = t ? new Date(Math.min(t * 1000, +now)) : now;
     const { callsign, team } = nodeTeam((user && (user.longName || user.shortName)) || nodeId(num));
     return event({
       uid: 'MESH-' + nodeId(num), type: 'a-f-G-E-S', how: 'm-g', time, staleMs: 1800000, lat: position.lat, lon: position.lon, hae: position.alt,

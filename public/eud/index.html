@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover, interactive-widget=resizes-content">
 <title>WebTAK</title>
 <meta name="theme-color" content="#000000">
 <meta name="apple-mobile-web-app-capable" content="yes">
@@ -14,7 +14,7 @@
 <link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
 <link rel="apple-touch-icon" href="apple-touch-icon.png">
 <link rel="stylesheet" href="vendor/leaflet.css">
-<link rel="stylesheet" href="eud.css">
+<link rel="stylesheet" href="eud.css?v=__WEBTAK_VERSION__">
 </head>
 <body>
 <div id="mapWrap"><div id="map"></div><div id="map3d" class="hidden"></div></div>
@@ -92,12 +92,6 @@
 <div id="drawMenu" class="tmenu hidden">
   <div class="dm-row" id="drawShapes"></div>
   <div class="dm-row dm-colors" id="drawColors"></div>
-</div>
-<div id="rotMenu" class="tmenu hidden">
-  <div class="dm-title">Screen rotation</div>
-  <button type="button" class="dm-item" data-rot="auto">Auto rotate</button>
-  <button type="button" class="dm-item" data-rot="portrait">Portrait (locked)</button>
-  <button type="button" class="dm-item" data-rot="landscape">Landscape (locked)</button>
 </div>
 <div id="shapeBar" class="hidden">
   <div class="draw-hint" id="shapeHint"></div>
@@ -222,8 +216,6 @@
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><circle cx="5" cy="19" r="2.2"/><path d="M6.8 17.2 17 7" stroke-dasharray="2.5 2"/><circle cx="18.5" cy="5.5" r="3"/><circle cx="18.5" cy="5.5" r="0.9" fill="#fff"/></svg><span>Bloodhound</span></button>
       <button type="button" class="tile" data-tb="markers">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><path d="M11 21s-6-6.2-6-11a6 6 0 0 1 12 0c0 1.1-.3 2.3-.8 3.4"/><circle cx="11" cy="10" r="2.2"/><path d="M18 15v6M15 18h6"/></svg><span>Markers</span></button>
-      <button type="button" class="tile" data-tb="rotate">
-        <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5"><rect x="8" y="3" width="8" height="14" rx="1.5"/><path d="M11 14.5h2"/><path d="M4 12a8 8 0 0 0 7 8.5M20 12a8 8 0 0 0-3-6.3"/><path d="m9 19 2 1.5-1.5 2M15.6 4.4l1.4 1.3-1.8 1"/></svg><span>Screen Rotation</span></button>
       <button type="button" class="tile" data-open="chat" data-tb="chat">
         <svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="1.5" stroke-linejoin="round"><path d="M4 5h16v11H9l-5 4z"/></svg><span>Chat</span></button>
       <button type="button" class="tile" data-open="me" data-tb="me">
@@ -298,7 +290,7 @@
           <div><label for="fTeam">Team</label><select id="fTeam" class="in"></select></div>
           <div><label for="fRole">Role</label><select id="fRole" class="in"></select></div>
         </div>
-        <p class="hint hidden" id="meLocked">Callsign, team and role are assigned by your administrator.</p>
+        <p class="hint hidden" id="meLocked">Team and role are assigned by your administrator. The callsign is yours – change it any time (e.g. several players with one login).</p>
         <button type="button" class="mbtn pri" id="meSave">APPLY</button>
         <p class="hint">Device UID: <span id="uidText"></span></p>
       </section>
@@ -468,6 +460,23 @@
 </div>
 
 <!-- Confirm server certificate -->
+<!-- Map clear asked by the admin (after a mission) -->
+<div id="mapClear" class="modal hidden">
+  <div class="backdrop"></div>
+  <div class="mbox">
+    <div class="mhead"><span>CLEAR MAP – ADMIN REQUEST</span></div>
+    <div class="mbody">
+      <p id="mcText"></p>
+      <p class="hint" id="mcNote"></p>
+      <div id="mcList"></div>
+      <p class="hint">Only content from before the request is removed – what was added since then stays.</p>
+      <div class="row2">
+        <button type="button" class="mbtn" id="mcLater">LATER</button>
+        <button type="button" class="mbtn red" id="mcGo">CLEAR NOW</button>
+      </div>
+    </div>
+  </div>
+</div>
 <div id="trust" class="modal hidden">
   <div class="backdrop"></div>
   <div class="mbox">
@@ -503,12 +512,12 @@
 <script src="vendor/leaflet-rotate.js"></script>
 <script src="vendor/milsymbol.js"></script>
 <script src="vendor/jsQR.js"></script>
-<script src="eud.js"></script>
-<script src="view3d.js"></script>
-<script src="video.js"></script>
-<script src="data.js"></script>
-<script src="meshproto.js"></script>
-<script src="mesh.js"></script>
-<script src="tools.js"></script>
+<script src="eud.js?v=__WEBTAK_VERSION__"></script>
+<script src="view3d.js?v=__WEBTAK_VERSION__"></script>
+<script src="video.js?v=__WEBTAK_VERSION__"></script>
+<script src="data.js?v=__WEBTAK_VERSION__"></script>
+<script src="meshproto.js?v=__WEBTAK_VERSION__"></script>
+<script src="mesh.js?v=__WEBTAK_VERSION__"></script>
+<script src="tools.js?v=__WEBTAK_VERSION__"></script>
 </body>
 </html>

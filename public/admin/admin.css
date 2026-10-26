@@ -194,3 +194,4 @@ table.kv td { padding: 4px 0; word-break: break-all; }
 
 /* version next to the name: shows whether the current page was loaded after an update */
 .top h1 .ver { font-size: 11px; color: var(--mut); letter-spacing: 0; }
+.mc-cats { display: grid; grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 4px 16px; margin: 8px 0 12px; }
