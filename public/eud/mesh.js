@@ -19,8 +19,11 @@
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   const cfg = Object.assign({
-    enabled: false, id: '', name: '', send: 'offline', interval: 60, channel: 0, nodes: true, text: true,
+    enabled: false, id: '', name: '', send: 'always', interval: 60, channel: 0, nodes: true, text: true,
   }, store.get('eud.mesh', {}));
+  // default: always also over the mesh – otherwise devices without internet miss what online users send.
+  // The old default "offline" is switched over unless the user chose it himself.
+  if (cfg.send !== 'always' && !cfg.sendChosen) cfg.send = 'always';
   const save = () => store.set('eud.mesh', cfg);
 
   let device = null, toRadio = null, fromRadio = null, fromNum = null;
@@ -474,7 +477,7 @@
     setState('off');
     toast('Meshtastic disconnected.');
   });
-  $('meshSend').addEventListener('change', () => { cfg.send = $('meshSend').value === 'always' ? 'always' : 'offline'; save(); lastPli = 0; render(); });
+  $('meshSend').addEventListener('change', () => { cfg.send = $('meshSend').value === 'always' ? 'always' : 'offline'; cfg.sendChosen = true; save(); lastPli = 0; render(); });
   $('meshInterval').addEventListener('change', () => { cfg.interval = Number($('meshInterval').value) || 60; save(); });
   $('meshChannel').addEventListener('change', () => { cfg.channel = Number($('meshChannel').value) || 0; save(); });
   $('meshShowNodes').addEventListener('change', () => {
