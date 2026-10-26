@@ -78,6 +78,8 @@ Ports 1935 (RTMP), 8554 (RTSP) and 8890/udp (SRT) must be reachable on the TAK s
 **Drone address without a password:** whoever logged in on this device in WebTAK (user + password, QR code with
 login, setup package) or opened it from the access page gets the address under Video → Drone right away – unique per
 user (`drone-<callsign>`). The password is kept on the device only after the TAK server confirmed it (like ATAK).
+Logged in earlier, by data package or .p12 (no password on the device): type the TAK password once under Video → Drone –
+the TAK server checks it (no new certificate), then it is kept and the address appears by itself from then on.
 
 ## Field of view and drone telemetry (UAS in HQ)
 

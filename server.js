@@ -948,7 +948,7 @@ async function handleEudApi(req, res, route) {
       throw e;
     }
   }
-  if (route === 'enroll') {
+  if (route === 'enroll' || route === 'check-login') {
     const ip = clientIp(req);
     const now = Date.now();
     const list = (eudLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
@@ -961,6 +961,11 @@ async function handleEudApi(req, res, route) {
     const why = await takProblem(host, port);
     if (why) { log('EUD enrollment refused:', why); return json(res, 403, { error: why }); }
     try {
+      // only check the password (drone/camera address): no new certificate
+      if (route === 'check-login') {
+        return json(res, 200, await tak.checkLogin({ host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
+          caPems: Array.isArray(body.caPems) ? body.caPems : [], fingerprint: String(body.fingerprint || '') }));
+      }
       const r = await tak.enroll({
         host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
         uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
