@@ -86,11 +86,79 @@ function sourceTemplate(id) {
 }
 function sourceMaxZoom(id) { return id === 'custom' ? 20 : SOURCES[id].maxZoom; }
 
+// ---------------- Offline tiles without a service worker ----------------
+// Browsers without service workers (Bluefy and other iPhone apps on WKWebView) keep saved areas in IndexedDB
+// themselves; the map then takes a tile from there first. With a service worker it does all that (sw.js).
+const pageTiles = !('serviceWorker' in navigator);
+const tileDb = (() => {
+  let db = null;
+  const open = () => db || (db = new Promise((resolve, reject) => {
+    if (!window.indexedDB) return reject(new Error('no IndexedDB'));
+    const r = indexedDB.open('eud-tiles', 1);
+    r.onupgradeneeded = () => r.result.createObjectStore('t');
+    r.onsuccess = () => resolve(r.result);
+    r.onerror = () => reject(r.error);
+  }));
+  const run = (mode, fn) => open().then(d => new Promise((resolve, reject) => {
+    const tx = d.transaction('t', mode);
+    const req = fn(tx.objectStore('t'));
+    tx.oncomplete = () => resolve(req && req.result);
+    tx.onerror = () => reject(tx.error);
+  }));
+  return {
+    get: url => run('readonly', st => st.get(url)).catch(() => null),
+    has: url => run('readonly', st => st.count(url)).then(n => n > 0).catch(() => false),
+    put: (url, rec) => run('readwrite', st => st.put(rec, url)), // { type, data: ArrayBuffer } – Blobs are unreliable in older iOS
+    del: urls => run('readwrite', st => { for (const u of urls) st.delete(u); }).catch(() => {}),
+  };
+})();
+const OfflineTileLayer = L.TileLayer.extend({
+  createTile(coords, done) {
+    if (!pageTiles) return L.TileLayer.prototype.createTile.call(this, coords, done);
+    const tile = document.createElement('img');
+    L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+    L.DomEvent.on(tile, 'error', L.Util.bind(this._tileOnError, this, done, tile));
+    tile.alt = '';
+    tile.setAttribute('role', 'presentation');
+    const url = this.getTileUrl(coords);
+    tileDb.get(new URL(url, location.href).href).then(rec => {
+      if (!rec) { tile.src = url; return; }
+      const obj = URL.createObjectURL(new Blob([rec.data], { type: rec.type || 'image/png' }));
+      tile.addEventListener('load', () => URL.revokeObjectURL(obj), { once: true });
+      tile.src = obj;
+    });
+    return tile;
+  },
+});
+// save without a service worker: in the page (keeps running only while WebTAK is open)
+let pageStop = false;
+async function pagePrefetch(urls, report) {
+  pageStop = false;
+  let done = 0, failed = 0;
+  const queue = urls.slice();
+  const worker = async () => {
+    while (queue.length && !pageStop) {
+      const u = queue.shift();
+      try {
+        if (!(await tileDb.has(u))) {
+          const res = await fetch(u, { mode: new URL(u).origin === location.origin ? 'same-origin' : 'cors' });
+          if (!res.ok) throw new Error(String(res.status));
+          await tileDb.put(u, { type: res.headers.get('content-type') || 'image/png', data: await res.arrayBuffer() });
+        }
+      } catch (e) { failed++; }
+      done++;
+      if (done % 20 === 0) report({ done, failed, total: urls.length });
+    }
+  };
+  await Promise.all([worker(), worker(), worker(), worker()]);
+  report({ done, failed, total: urls.length, finished: true, stopped: pageStop });
+}
+
 let baseLayer = null;
 function setTiles(id) {
   if (id === 'custom' && !profile.customUrl) return;
   if (baseLayer) baseLayer.remove();
-  baseLayer = L.tileLayer(sourceTemplate(id), {
+  baseLayer = new OfflineTileLayer(sourceTemplate(id), {
     maxZoom: sourceMaxZoom(id), maxNativeZoom: sourceMaxZoom(id),
     attribution: id === 'custom' ? '' : SOURCES[id].attribution, keepBuffer: 4,
   });
@@ -2258,7 +2326,9 @@ $('drawBtn').addEventListener('click', startDraw);
 // saving via the service worker (keeps running even when the window is closed)
 let prefetchPort = null;
 async function swReady() {
-  const reg = navigator.serviceWorker && await navigator.serviceWorker.ready.catch(() => null);
+  if (pageTiles) return null;
+  // "ready" never settles when the worker could not be installed: do not wait forever
+  const reg = await Promise.race([navigator.serviceWorker.ready.catch(() => null), new Promise(r => setTimeout(() => r(null), 3000))]);
   return reg && reg.active ? reg.active : null;
 }
 $('prefetchBtn').addEventListener('click', async () => {
@@ -2270,15 +2340,14 @@ $('prefetchBtn').addEventListener('click', async () => {
   const keys = areaTiles(area, zmin, zmax, 20000);
   if (!keys) return setMsg(msg, 'Too many tiles – lower "zoom to" or use a smaller area.');
   const sw = await swReady();
-  if (!sw) return setMsg(msg, 'Offline storage not available (HTTPS only).');
+  if (!sw && !(pageTiles && window.indexedDB)) return setMsg(msg, 'Offline storage not available in this browser.');
   const rec = { id: rnd(4), kind: area.kind, src: profile.tiles, srcName: profile.tiles === 'custom' ? 'Custom source' : SOURCES[profile.tiles].name,
     zmin, zmax, count: keys.length, date: Date.now(), area, template: sourceTemplate(profile.tiles) };
   const ch = new MessageChannel();
   prefetchPort = ch.port1;
   $('prefetchBtn').disabled = true;
   $('prefetchStop').classList.remove('hidden');
-  ch.port1.onmessage = e => {
-    const d = e.data;
+  const onProgress = d => {
     if (!d.finished) return setMsg(msg, `Saving … ${d.done} / ${d.total}`, true);
     $('prefetchBtn').disabled = false;
     $('prefetchStop').classList.add('hidden');
@@ -2292,6 +2361,7 @@ $('prefetchBtn').addEventListener('click', async () => {
       renderAreas();
     }
   };
+  ch.port1.onmessage = e => onProgress(e.data);
   // with the 3D map also save the elevation data (up to zoom 15) so the terrain is available offline
   const urls = keys.map(k => tileUrl(profile.tiles, k));
   if (use3d()) {
@@ -2300,9 +2370,14 @@ $('prefetchBtn').addEventListener('click', async () => {
   }
   rec.count = urls.length;
   setMsg(msg, `Saving … 0 / ${urls.length}`, true);
-  sw.postMessage({ type: 'prefetch', urls }, [ch.port2]);
+  if (sw) sw.postMessage({ type: 'prefetch', urls }, [ch.port2]);
+  else {
+    setMsg(msg, `Saving … 0 / ${urls.length} (keep WebTAK open until it is done)`, true);
+    pagePrefetch(urls, onProgress);
+  }
 });
 $('prefetchStop').addEventListener('click', async () => {
+  pageStop = true;
   const sw = await swReady();
   if (sw) sw.postMessage({ type: 'prefetch-stop' });
 });
@@ -2337,6 +2412,7 @@ function renderAreas() {
       const urls = keys.map(k => { const [z, x, y] = k.split('/'); return new URL(tpl.replace('{z}', z).replace('{x}', x).replace('{y}', y), location.href).href; });
       const sw = await swReady();
       if (sw) sw.postMessage({ type: 'delete', urls });
+      else tileDb.del(urls);
       areas = areas.filter(x => x !== a);
       store.set('eud.areas', areas);
       renderAreas();

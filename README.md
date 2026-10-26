@@ -255,6 +255,8 @@ URL with `{z}/{x}/{y}`). Tiles go through this server and are cached there under
 **Save offline:** the visible area or a drawn **corridor**
 (width in m) with zoom from/to; saved areas can be shown and deleted. Please only load
 areas you need – the free map services do not allow bulk downloading.
+**Bluefy and other iPhone apps without service workers** (WKWebView): saved areas are kept in the device storage
+(IndexedDB) and shown from there – keep WebTAK open while saving. Open WebTAK once online; then the map also works offline.
 
 **Without internet:** the app, saved tiles, situational picture and overlays stay on the device. GPS keeps
 running, markers and chats wait in the outbox and go out as soon as the connection is back.
