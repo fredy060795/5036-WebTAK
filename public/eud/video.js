@@ -600,8 +600,9 @@
   }
   document.addEventListener('eud-popup', e => { if (e.detail === 'video') renderStreams(); });
 
-  $('phoneBtn').addEventListener('click', () => start('phone'));
-  $('bleBtn').addEventListener('click', () => start('ble'));
+  // the compass for the view direction (cone on the map) must be allowed within this tap (iPhone)
+  $('phoneBtn').addEventListener('click', () => { window.eud.askCompass(); start('phone'); });
+  $('bleBtn').addEventListener('click', () => { window.eud.askCompass(); start('ble'); });
   $('screenBtn').addEventListener('click', () => start('screen'));
   // screen sharing only where the browser supports it (PC); no button on phones
   const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && window.isSecureContext && !/Android|iPhone|iPad/i.test(navigator.userAgent);
@@ -645,18 +646,43 @@
   }
   async function droneReady() {
     fillDroneServers();
-    if (!(await droneFromAccess())) droneFromLogin();
+    if (await droneFromAccess()) return;
+    if (droneFromLogin()) return;
+    // registered user, connected with the certificate: WebTAK hands over the login – nothing to type
+    if (await window.eud.askDrone()) droneFromLogin();
   }
   $('droneBox').addEventListener('toggle', () => { if ($('droneBox').open) droneReady(); });
   $('droneSrv').addEventListener('change', droneFromLogin);
   document.addEventListener('eud-popup', e => { if (e.detail === 'video') droneReady(); });
-  $('droneMake').addEventListener('click', () => {
+  // TAK user of a server: from the login, otherwise from the certificate (CN – e.g. login via data package / .p12)
+  const takUser = srv => srv.username || ((/(?:^|,\s*)CN=([^,]+)/.exec((srv.certInfo && srv.certInfo.subject) || '') || [])[1] || '').trim();
+  $('droneMake').addEventListener('click', async () => {
     const srv = window.eud.getServers().find(x => x.id === $('droneSrv').value) || window.eud.getServers().find(x => x.host);
     if (!srv) return toast('Add a TAK server first.');
-    const user = srv.username || (srv.certInfo && srv.certInfo.cn) || '';
+    const user = takUser(srv);
     const pw = $('dronePw').value;
-    if (!user || !pw) return toast('TAK user and password are needed (user from the server settings).');
+    if (!user) return toast('No TAK user known – log in to the server with user and password first.');
+    if (!pw) { $('dronePw').focus(); return toast('Enter your TAK password once – it is kept on this device (like ATAK).'); }
+    $('droneMake').disabled = true;
+    try {
+      // checked by the TAK server first, then kept: next time the address appears by itself
+      const req = { host: srv.host, port: srv.enrollPort, username: user, password: pw, caPems: srv.caPems, fingerprint: srv.fingerprint };
+      try { await window.eud.postJson('/api/eud/check-login', req); } catch (e) {
+        // unknown certificate on the enrollment port: ask once like at the login
+        if (e.code !== 'UNTRUSTED' || !(await window.eud.askTrust(`${srv.host}:${srv.enrollPort || 8446}`, e.fingerprint, e.subject))) throw e;
+        await window.eud.postJson('/api/eud/check-login', { ...req, fingerprint: e.fingerprint });
+      }
+      srv.username = srv.username || user;
+      srv.password = pw;
+      window.eud.saveServers();
+      toast('Password confirmed – kept on this device.');
+    } catch (e) {
+      if (/rejected/i.test(e.message)) { $('droneMake').disabled = false; return toast('Wrong TAK password.'); }
+      toast('Could not check the password (' + e.message + ') – address shown anyway.', 6000);
+    }
+    $('droneMake').disabled = false;
     droneUrl(srv.host, user, pw);
+    $('droneAsk').classList.add('hidden');
     $('dronePw').value = '';
   });
   $('droneCopy').addEventListener('click', () => {

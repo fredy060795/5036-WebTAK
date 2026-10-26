@@ -948,7 +948,7 @@ async function handleEudApi(req, res, route) {
       throw e;
     }
   }
-  if (route === 'enroll') {
+  if (route === 'enroll' || route === 'check-login') {
     const ip = clientIp(req);
     const now = Date.now();
     const list = (eudLimits.get(ip) || []).filter(t => now - t < 3600 * 1000);
@@ -961,6 +961,11 @@ async function handleEudApi(req, res, route) {
     const why = await takProblem(host, port);
     if (why) { log('EUD enrollment refused:', why); return json(res, 403, { error: why }); }
     try {
+      // only check the password (drone/camera address): no new certificate
+      if (route === 'check-login') {
+        return json(res, 200, await tak.checkLogin({ host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
+          caPems: Array.isArray(body.caPems) ? body.caPems : [], fingerprint: String(body.fingerprint || '') }));
+      }
       const r = await tak.enroll({
         host, altHost: (ownTak(host) || {}).altHost || '', port, username: body.username, password: body.password,
         uid: String(body.uid || 'EUD').slice(0, 64), caPems: Array.isArray(body.caPems) ? body.caPems : [],
@@ -1480,6 +1485,8 @@ function handleTakSocket(ws, req) {
   let link = null;
   let assigned = null; // callsign/team/role set by the admin (managed TAK access)
   let eudUid = '';
+  let certUser = '';  // CN of the client certificate of this connection
+  let linkSsl = false; // SSL to our own OTS: the TLS handshake proved the certificate (key on the device)
   const entry = { ip, since: Date.now(), host: '', callsign: '', state: 'idle', info() {
     return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
   } };
@@ -1507,8 +1514,11 @@ function handleTakSocket(ws, req) {
       eudUid = String(msg.uid || '');
       // managed access? The username is in the client certificate (CN)
       assigned = null;
+      certUser = '';
+      linkSsl = msg.proto === 'ssl' && !!ownTak(host);
       try {
         const cn = msg.certPem ? (/(?:^|, )CN=([^,]+)/.exec(tak.certInfo(msg.certPem).subject) || [])[1] : '';
+        certUser = cn || '';
         assigned = takUsers.assignmentFor(cn);
       } catch (e) { /* no readable certificate */ }
       if (assigned) {
@@ -1524,6 +1534,12 @@ function handleTakSocket(ws, req) {
       log('EUD connecting', entry.callsign, '->', entry.host, msg.proto);
     } else if (msg.type === 'cot' && link && typeof msg.xml === 'string' && msg.xml.length < 256 * 1024) {
       if (/^\s*<event[\s>]/.test(msg.xml)) link.send(assigned ? enforceAssignment(msg.xml, eudUid, assigned) : msg.xml);
+    } else if (msg.type === 'drone') {
+      // drone/camera address without typing the password: whoever is connected to our OTS with the certificate
+      // of a user is that user (OTS checked the certificate in the TLS handshake) – we know the login of managed users
+      const login = linkSsl && entry.state === 'connected' ? takUsers.loginFor(certUser) : null;
+      if (ws.readyState === 1) ws.send(JSON.stringify(login ? { type: 'drone', host: takUsers.takHost() || entry.host.replace(/:\d+$/, ''), ...login } : { type: 'drone', error: 'unknown' }));
+      if (login) log('EUD: drone address for', certUser);
     } else if (msg.type === 'disconnect') {
       stop();
       say('closed', 'Disconnected.');

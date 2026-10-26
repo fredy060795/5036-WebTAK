@@ -59,6 +59,7 @@ before(async () => {
       res.writeHead(200, { 'Content-Type': 'application/xml' });
       return res.end('<certificateConfig><nameEntries><nameEntry name="O" value="TestOrg"/><nameEntry name="OU" value="EUD"/></nameEntries></certificateConfig>');
     }
+    if (req.url === '/Marti/api/tls/signClient/' && req.method === 'POST') { res.writeHead(200); return res.end(); } // like OTS: login check only
     if (req.url.startsWith('/Marti/api/tls/signClient/v2') && req.method === 'POST') {
       let data = '';
       req.on('data', c => { data += c; });
@@ -120,6 +121,13 @@ test('certificate enrollment: an unknown server is used only after the fingerpri
   assert.equal(enrolled.caPems.length, 1);
   assert.equal(lastSubject, 'CN=max,O=TestOrg,OU=EUD');
   assert.match(enrolled.info.subject, /CN=max/);
+});
+
+test('password check for the drone address: right/wrong password, no new certificate', async () => {
+  const fp = tak.fingerprintOf(serverCertPem);
+  assert.deepEqual(await tak.checkLogin({ host: '127.0.0.1', port: enrollPort, username: 'max', password: 'secret', fingerprint: fp }), { ok: true });
+  await assert.rejects(tak.checkLogin({ host: '127.0.0.1', port: enrollPort, username: 'max', password: 'wrong', fingerprint: fp }), /rejected/);
+  await assert.rejects(tak.checkLogin({ host: '127.0.0.1', port: enrollPort, username: 'max', password: '' }), /password/);
 });
 
 test('certificate enrollment with truststore (CA) without asking', async () => {

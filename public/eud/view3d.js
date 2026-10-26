@@ -247,7 +247,7 @@
       // own arrow lies flat on the terrain and points in the direction of movement/view
       selfMark = new lib.Marker({ element: el, pitchAlignment: 'map', rotationAlignment: 'map', opacityWhenCovered: '1' }).setLngLat([me.lon, me.lat]).addTo(ml);
     }
-    const rot = Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0);
+    const rot = myDir(); // like 2D: course while moving, otherwise the compass
     selfMark.setLngLat([me.lon, me.lat]).setRotation(rot);
   }
 

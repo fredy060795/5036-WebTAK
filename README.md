@@ -78,6 +78,10 @@ Ports 1935 (RTMP), 8554 (RTSP) and 8890/udp (SRT) must be reachable on the TAK s
 **Drone address without a password:** whoever logged in on this device in WebTAK (user + password, QR code with
 login, setup package) or opened it from the access page gets the address under Video → Drone right away – unique per
 user (`drone-<callsign>`). The password is kept on the device only after the TAK server confirmed it (like ATAK).
+**Registered users never type it:** when the device is connected to our OpenTAKServer with the user's certificate (OTS
+checked it in the TLS handshake), WebTAK hands over the login it manages for that user – also after a login by data
+package/.p12 or in an iPhone home-screen app. Only users WebTAK does not manage (OTS accounts created elsewhere) type
+their TAK password once – the TAK server checks it (no new certificate), then it is kept like in ATAK.
 
 ## Field of view and drone telemetry (UAS in HQ)
 
@@ -86,7 +90,8 @@ user (`drone-<callsign>`). The password is kept on the device only after the TAK
 - **Own stream:** while the phone or helmet camera is live, the own position carries the view direction, angle
   (60°/66°) and 100 m range – ATAK and WebTAK show the cone. Phone camera: direction of the back of the phone (compass,
   also in north-up mode); helmet camera: the GPS course while moving, standing still the phone's compass (fits when
-  the phone is carried facing forward). Cones are at least ~70 px long on the screen at any zoom.
+  the phone is carried facing forward). The compass is allowed with the tap on the stream button (iPhone asks once) –
+  no need to switch the compass on first. Cones are at least ~70 px long on the screen at any zoom.
 - **Drone telemetry (KLV, MISB ST 0601):** when a drone feed carries KLV (professional drones, ATAK UAS Tool, QGroundControl,
   STANAG 4609 encoders), WebTAK shows while watching it: **the drone** (position, height, view direction and cone),
   **the image area on the ground** (corners from KLV or computed from height, angle and field of view) and **the image
@@ -183,7 +188,8 @@ Home Screen"). Laid out like ATAK:
   once, plus overlays and chat; optionally own markers are deleted on the TAK server too.
 - **Left:** compass – the needle always points north. Tap: a map rotated by hand goes back to north up;
   if it is north up, heading up "HDG" (without a sensor by GPS course), again = north up "N".
-  Below it "zoom to me".
+  The compass button only turns the map – the **own arrow always turns**: GPS course while moving, otherwise the
+  phone's compass (iPhone allows it with the first tap). Below it "zoom to me".
 - **Gestures like ATAK:** rotating two fingers = rotate the map (only after ~12° so zooming does not wobble; on a PC
   Shift + mouse wheel), pushing two fingers up/down together = tilt – also from the flat map.
 - **Right:** slider for tilting (double tap = flat). When tilted, WebTAK shows a **real 3D map** like
