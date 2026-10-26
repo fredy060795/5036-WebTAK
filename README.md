@@ -182,6 +182,9 @@ Home Screen"). Laid out like ATAK:
 - **Bloodhound:** in the window of a marker, user or drawing → BLOODHOUND, or the Bloodhound tool and tap a target
   (marker, user or a point on the map). A line from the own position to the target with distance, bearing and – while
   moving – time of arrival, updated every second (red, < 500 m yellow, < 100 m green). STOP ends it.
+- **Users who lose their connection** (no internet, app closed) stay on the map **greyed out at their last position**
+  ("connection lost – last position") – also when the TAK server reports the disconnect – and disappear after 60 min
+  without an update, like mesh users. A new position makes them normal again.
 - **Contacts & Markers** split by type like the ATAK overlay manager: **Contacts** (users), markers
   **Friendly / Hostile / Neutral / Unknown** (by 2525 affiliation), other points, drawings & routes –
   every group can be expanded and collapsed and cleared on its own with 🗑. **Clear Content** clears several groups at
