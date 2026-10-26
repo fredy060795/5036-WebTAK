@@ -1,13 +1,14 @@
 package at.webtak.eud;
 
-import android.content.Context;
+import android.net.Uri;
 import com.getcapacitor.JSObject;
 import com.getcapacitor.Plugin;
 import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 
-// for the start page and the EUD: choose / change the WebTAK server (the app then starts again on it)
+// for the start page (scanned WebTAK QR code) and the EUD (change server): only a real WebTAK server is taken,
+// then the app starts again on it
 @CapacitorPlugin(name = "WebTak")
 public class WebTakPlugin extends Plugin {
 
@@ -15,19 +16,31 @@ public class WebTakPlugin extends Plugin {
     public void setServer(PluginCall call) {
         String url = call.getString("url");
         if (url == null || url.isEmpty()) {
-            getContext().getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE).edit().remove("server").remove("once").apply();
-        } else if (!MainActivity.remember(getContext(), url)) {
+            MainActivity.forget(getContext());
+            call.resolve();
+            getActivity().runOnUiThread(() -> getActivity().recreate());
+            return;
+        }
+        Uri u = Uri.parse(url);
+        if (!"https".equals(u.getScheme()) || u.getHost() == null) {
             call.reject("Only https addresses are possible.");
             return;
         }
-        call.resolve();
-        getActivity().runOnUiThread(() -> getActivity().recreate());
+        new Thread(() -> {
+            if (!MainActivity.isWebTak(url)) {
+                call.reject("No WebTAK server at " + u.getHost() + ".");
+                return;
+            }
+            MainActivity.remember(getContext(), url);
+            call.resolve();
+            getActivity().runOnUiThread(() -> getActivity().recreate());
+        }).start();
     }
 
     @PluginMethod
     public void getInfo(PluginCall call) {
         JSObject r = new JSObject();
-        r.put("server", getContext().getSharedPreferences(MainActivity.PREFS, Context.MODE_PRIVATE).getString("server", null));
+        r.put("server", getContext().getSharedPreferences(MainActivity.PREFS, android.content.Context.MODE_PRIVATE).getString("server", null));
         r.put("version", BuildConfig.VERSION_NAME);
         call.resolve(r);
     }

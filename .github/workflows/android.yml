@@ -28,7 +28,7 @@ jobs:
           java-version: 21
       - name: Web part and plugins
         working-directory: mobile
-        run: npm ci && npx cap sync android
+        run: npm ci && npm run sync
       # the same key for every version, so an update installs over the old app (Settings → Secrets → Actions)
       - name: Signing key
         env:

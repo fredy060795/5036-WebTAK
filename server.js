@@ -1407,6 +1407,8 @@ async function handle(req, res) {
   try {
     if (p === '/health') return send(res, 200, 'ok');
     if (p === '/version') return json(res, 200, { version: VERSION });
+    // the Android app checks this before it uses a server (only a WebTAK server, never just any page)
+    if (p === '/api/eud/app') return json(res, 200, { webtak: true, version: VERSION, name: 'WebTAK' });
     if (p === '/ca.crt' && config.testCa) {
       return send(res, 200, fs.readFileSync(config.testCa), 'application/x-x509-ca-cert',
         { 'Content-Disposition': 'attachment; filename="helm-camera-test-ca.crt"' });

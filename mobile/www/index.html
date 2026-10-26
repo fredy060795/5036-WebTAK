@@ -7,19 +7,23 @@
 <style>
   :root { --bg: #14161a; --card: #1e2229; --line: #333a44; --text: #fff; --mut: #9aa3ae; --green: #1f6f3a; --green-line: #2e8b4a; --red: #e5534b; }
   * { box-sizing: border-box; }
-  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
-  main { max-width: 440px; margin: 0 auto; padding: calc(32px + env(safe-area-inset-top)) 16px 24px; }
+  html, body { margin: 0; min-height: 100%; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: calc(28px + env(safe-area-inset-top)) 16px 24px; }
   h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
-  .sub { color: var(--mut); margin: 0 0 28px; font-size: 14px; }
+  .sub { color: var(--mut); margin: 0 0 22px; font-size: 14px; }
   .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
   .card h2 { font-size: 15px; margin: 0 0 8px; }
   .card p { margin: 0; color: var(--mut); font-size: 14px; }
-  label { display: block; font-size: 13px; color: var(--mut); margin: 4px 0 6px; }
-  input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--line); background: #11141a; color: var(--text); font-size: 16px; }
-  input:focus { outline: none; border-color: var(--green-line); }
-  button { width: 100%; margin-top: 12px; padding: 13px; border-radius: 6px; border: 1px solid var(--green-line); background: var(--green); color: #fff; font: 600 15px inherit; font-family: inherit; }
-  button:disabled { opacity: .6; }
+  .card ol { margin: 0; padding-left: 20px; color: var(--mut); font-size: 14px; }
+  button, label.btn { display: block; width: 100%; margin-top: 12px; padding: 13px; border-radius: 6px; border: 1px solid var(--green-line); background: var(--green);
+    color: #fff; font: 600 15px system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; text-align: center; }
+  .ghost { background: transparent; border-color: var(--line); }
+  input[type=file] { display: none; }
+  #cam { display: none; position: relative; margin-top: 12px; border-radius: 6px; overflow: hidden; background: #000; }
+  #cam video { width: 100%; display: block; }
+  #cam .frame { position: absolute; inset: 15%; border: 3px solid var(--green-line); border-radius: 8px; }
   #msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: var(--red); }
+  #msg.ok { color: #7bd389; }
 </style>
 </head>
 <body>
@@ -28,42 +32,94 @@
   <p class="sub">TAK client for Android – map, team positions, chat, video and Meshtastic.</p>
 
   <div class="card">
-    <h2>Invited?</h2>
-    <p>Open the invitation link or your access page from your admin and tap <b>“Open in the WebTAK app”</b>. Server and login are taken over automatically.</p>
+    <h2>Invited by your admin?</h2>
+    <ol>
+      <li>Open the invitation or your access page in the browser.</li>
+      <li>Tap <b>“Open in the WebTAK app”</b> – server and login are taken over automatically.</li>
+    </ol>
   </div>
 
   <div class="card">
-    <h2>Or enter your WebTAK server</h2>
-    <form id="f">
-      <label for="srv">Address</label>
-      <input id="srv" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="webtak.example.com">
-      <button type="submit" id="go">CONNECT</button>
-    </form>
+    <h2>Or scan the WebTAK QR code</h2>
+    <p>The code from your access page (tab WebTAK) or from your admin.</p>
+    <button type="button" id="scan">SCAN QR CODE</button>
+    <div id="cam"><video id="video" playsinline muted></video><div class="frame"></div></div>
+    <label class="btn ghost" for="img">QR CODE FROM A PHOTO</label>
+    <input type="file" id="img" accept="image/*">
     <div id="msg"></div>
   </div>
 </main>
+<script src="jsQR.js"></script>
 <script>
-  // first start (no server yet): the native part (WebTakPlugin) keeps the address and restarts the app on it
+  // first start (no server yet): only a scanned WebTAK code is taken; the native part (WebTakPlugin) checks that it
+  // really is a WebTAK server, keeps it and starts the app again on it. No free address entry – nothing else is possible.
   const $ = id => document.getElementById(id);
-  $('f').addEventListener('submit', async e => {
-    e.preventDefault();
-    let v = $('srv').value.trim();
-    if (!v) return;
-    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+  const msg = (t, ok) => { $('msg').textContent = t; $('msg').className = ok ? 'ok' : ''; };
+  let stream = null, busy = false;
+
+  function stop() {
+    if (stream) stream.getTracks().forEach(t => t.stop());
+    stream = null;
+    $('cam').style.display = 'none';
+    $('scan').textContent = 'SCAN QR CODE';
+  }
+
+  async function take(code) {
+    if (busy) return;
+    code = String(code || '').trim();
+    if (/^tak:\/\//i.test(code)) return msg('That is the ATAK code – scan the WebTAK code (access page, tab WebTAK).');
     let url;
-    try { url = new URL(v); } catch (err) { $('msg').textContent = 'That is not an address.'; return; }
-    if (url.protocol !== 'https:') { $('msg').textContent = 'Only https addresses are possible.'; return; }
-    $('go').disabled = true;
-    $('msg').textContent = '';
-    const target = url.origin + (url.pathname.startsWith('/eud') ? url.pathname : '/eud/') + url.hash;
+    try { url = new URL(code); } catch (e) { return msg('That is not a WebTAK code.'); }
+    if (url.protocol !== 'https:' || !/^\/(eud|access)\b/.test(url.pathname)) return msg('That is not a WebTAK code.');
+    if (url.pathname.startsWith('/access')) url = new URL(url.origin + '/eud/' + url.hash);
+    busy = true;
+    stop();
+    msg('Checking ' + url.host + ' …', true);
     try {
-      await fetch(url.origin + '/eud/manifest.webmanifest', { cache: 'no-store', mode: 'no-cors' }); // only "reachable?" (other origin)
-    } catch (err) {
-      $('go').disabled = false;
-      $('msg').textContent = 'No WebTAK server reachable at this address.';
-      return;
+      await window.Capacitor.Plugins.WebTak.setServer({ url: url.href }); // the app restarts on the server
+    } catch (e) {
+      busy = false;
+      msg(e.message || 'No WebTAK server at this address.');
     }
-    window.Capacitor.Plugins.WebTak.setServer({ url: target });
+  }
+
+  function decode(source, w, h) {
+    const c = document.createElement('canvas');
+    const k = Math.min(1, 1000 / Math.max(w, h));
+    c.width = Math.round(w * k); c.height = Math.round(h * k);
+    const x = c.getContext('2d', { willReadFrequently: true });
+    x.drawImage(source, 0, 0, c.width, c.height);
+    const d = x.getImageData(0, 0, c.width, c.height);
+    const r = jsQR(d.data, d.width, d.height, { inversionAttempts: 'attemptBoth' });
+    return r ? r.data : null;
+  }
+
+  $('scan').addEventListener('click', async () => {
+    if (stream) return stop();
+    msg('');
+    try {
+      stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'environment' } });
+    } catch (e) { return msg('The camera is not allowed – use "QR code from a photo" or allow the camera in the settings.'); }
+    const v = $('video');
+    v.srcObject = stream;
+    await v.play();
+    $('cam').style.display = 'block';
+    $('scan').textContent = 'STOP';
+    const tick = () => {
+      if (!stream) return;
+      if (v.videoWidth) { const code = decode(v, v.videoWidth, v.videoHeight); if (code) return take(code); }
+      requestAnimationFrame(tick);
+    };
+    tick();
+  });
+
+  $('img').addEventListener('change', () => {
+    const f = $('img').files[0];
+    if (!f) return;
+    const im = new Image();
+    im.onload = () => { const code = decode(im, im.naturalWidth, im.naturalHeight); URL.revokeObjectURL(im.src); code ? take(code) : msg('No QR code found in the photo.'); };
+    im.src = URL.createObjectURL(f);
+    $('img').value = '';
   });
 </script>
 </body>

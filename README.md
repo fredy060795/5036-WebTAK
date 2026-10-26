@@ -171,15 +171,19 @@ One app for every WebTAK server (`mobile/`, Capacitor): it opens the server from
 cannot – **the position keeps being sent with the screen locked** (notification "WebTAK"), no new permission prompts
 after every start.
 - **For users:** access page (or WebTAK → Settings on Android) → **1 · Download the app** → **2 · Open in the WebTAK app**
-  – server and login are taken over (`webtak://open?u=…`). Without an invitation: enter the server address in the app.
-  In the app: Settings → CHANGE SERVER. Android asks once to allow installing apps from the browser.
+  – server and login are taken over (`webtak://open?u=…`). Or in the app: **scan the WebTAK QR code** (camera or a photo of
+  it). There is no free address field. In the app: Settings → CHANGE SERVER. Android asks once to allow installing apps
+  from the browser.
+- **Safe:** the app only takes a real WebTAK server (it checks `/api/eud/app`), and a link to *another* server is only
+  followed after the user confirmed "Connect to this WebTAK server?" – any web page could offer a `webtak://` link.
+  Server not reachable → RETRY or OTHER SERVER, the app is never stuck on a wrong address.
+- **Meshtastic over Bluetooth** works in the app too (native Bluetooth instead of Web Bluetooth, `blenative.js`).
 - **Download:** `/download/webtak.apk` on the WebTAK server – a `webtak.apk` in the data folder (e.g. without internet in
   the field), otherwise the GitHub release (`WEBTAK_APK_URL`, default: release `android` of this repository).
 - **Build:** GitHub Actions (`.github/workflows/android.yml`) builds the APK for every change in `mobile/` and publishes it
   on `main` as release `android`. Sign every version with the same key – add the secrets `ANDROID_KEYSTORE_BASE64`,
   `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (Settings → Secrets → Actions); without them
   the APK is debug-signed and an update needs the old app uninstalled first.
-- **Not in the app (yet):** Meshtastic over Bluetooth – the Android WebView has no Web Bluetooth; use Chrome for the mesh.
 - **iPhone:** no app outside the App Store/TestFlight (Apple developer account needed) – WebTAK in Safari/Bluefy as before.
 
 ## WebTAK app (map + situational picture on the phone)
