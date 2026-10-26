@@ -646,7 +646,10 @@
   }
   async function droneReady() {
     fillDroneServers();
-    if (!(await droneFromAccess())) droneFromLogin();
+    if (await droneFromAccess()) return;
+    if (droneFromLogin()) return;
+    // registered user, connected with the certificate: WebTAK hands over the login – nothing to type
+    if (await window.eud.askDrone()) droneFromLogin();
   }
   $('droneBox').addEventListener('toggle', () => { if ($('droneBox').open) droneReady(); });
   $('droneSrv').addEventListener('change', droneFromLogin);

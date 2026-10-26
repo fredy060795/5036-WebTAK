@@ -838,6 +838,23 @@ function updateStatus() {
   if (popupSec === 'server') renderServers();
 }
 
+// drone/camera address: the login from WebTAK for a connected user (proved by the certificate) – kept like ATAK
+const droneWait = new Map(); // server id -> resolve
+function askDrone() {
+  const list = servers.filter(s => s.auto && isOpen(connOf(s)) && connOf(s).state === 'connected');
+  return Promise.all(list.map(srv => new Promise(resolve => {
+    droneWait.set(srv.id, resolve);
+    connOf(srv).ws.send(JSON.stringify({ type: 'drone' }));
+    setTimeout(() => { if (droneWait.get(srv.id) === resolve) { droneWait.delete(srv.id); resolve({}); } }, 4000);
+  }).then(r => {
+    if (!r.username || !r.password) return false;
+    srv.username = srv.username || r.username;
+    if (srv.username !== r.username) return false; // another user on this server: keep the own one
+    srv.password = r.password;
+    return true;
+  }))).then(ok => { if (ok.some(Boolean)) saveServers(); return ok.some(Boolean); });
+}
+
 // send to all connected servers; those not connected right now get it later (queue)
 function sendCot(xml, queue) {
   let sent = false;
@@ -895,6 +912,7 @@ function openConn(srv) {
     if (msg.type === 'cot') return handleCot(msg.xml, { srv });
     if (msg.type === 'assign') return applyAssignment(msg);
     if (msg.type === 'mapclear') return askMapClear(msg.request);
+    if (msg.type === 'drone') { const w = droneWait.get(srv.id); if (w) { droneWait.delete(srv.id); w(msg); } return; }
     if (msg.type !== 'status') return;
     const was = c.state;
     c.state = msg.state;
@@ -2653,7 +2671,7 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, askCompass, destPoint, serverOnline,
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, askCompass, askDrone, destPoint, serverOnline,
   sendCot, cotTime, saveProfile, closeSheets, setTool, setPitch, items, stopMeasure: () => { if (measuring) toggleMeasure(); }, getMe: () => me, battery: () => battery };
 
 loadPicture();

@@ -1017,6 +1017,44 @@ test('TAK access: mails – the user never gets an admin link, the admin notific
   }
 });
 
+// web EUD connected over SSL to a TAK server at the OTS address with a client certificate (CN = user) -> asks for the drone login
+async function droneLogin(otsUrl, cn, { connect = true } = {}) {
+  const forge = require('node-forge');
+  const tls = require('tls');
+  const mk = (name, pub, signKey, issuer, ext) => {
+    const c = forge.pki.createCertificate();
+    c.publicKey = pub; c.serialNumber = String(Date.now() % 1e9); c.validity.notBefore = new Date(Date.now() - 864e5); c.validity.notAfter = new Date(Date.now() + 864e5);
+    c.setSubject([{ shortName: 'CN', value: name }]); c.setIssuer(issuer || [{ shortName: 'CN', value: name }]); c.setExtensions(ext); c.sign(signKey, forge.md.sha256.create());
+    return c;
+  };
+  const ck = forge.pki.rsa.generateKeyPair(1024), sk = forge.pki.rsa.generateKeyPair(1024), uk = forge.pki.rsa.generateKeyPair(1024);
+  const ca = mk('CA', ck.publicKey, ck.privateKey, null, [{ name: 'basicConstraints', cA: true }, { name: 'keyUsage', keyCertSign: true }]);
+  const srv = mk('tak', sk.publicKey, ck.privateKey, ca.subject.attributes, [{ name: 'subjectAltName', altNames: [{ type: 7, ip: '127.0.0.1' }] }]);
+  const usr = mk(cn, uk.publicKey, ck.privateKey, ca.subject.attributes, [{ name: 'extKeyUsage', clientAuth: true }]);
+  const pem = forge.pki.certificateToPem;
+  const takSrv = tls.createServer({ key: forge.pki.privateKeyToPem(sk.privateKey), cert: pem(srv), ca: [pem(ca)], requestCert: true, rejectUnauthorized: true }, sock => sock.on('error', () => {}));
+  await new Promise(r => takSrv.listen(0, '127.0.0.1', r));
+  // a TAK port on this machine must be one set in the admin (preset)
+  await api('tak', { method: 'POST', body: { allowedHosts: '', preset: { host: '127.0.0.1', port: takSrv.address().port, proto: 'ssl' } } });
+  const ws = new WebSocket(base.replace('http', 'ws') + '/ws/tak');
+  const msgs = [];
+  ws.on('message', d => msgs.push(JSON.parse(d.toString())));
+  await new Promise(r => ws.on('open', r));
+  const wait = async fn => { for (let i = 0; i < 150; i++) { const m = msgs.find(fn); if (m) return m; await sleep(30); } throw new Error('missing: ' + JSON.stringify(msgs)); };
+  try {
+    if (connect) {
+      ws.send(JSON.stringify({ type: 'connect', host: new URL(otsUrl).hostname, port: takSrv.address().port, proto: 'ssl', certPem: pem(usr), keyPem: forge.pki.privateKeyToPem(uk.privateKey), caPems: [pem(ca)] }));
+      await wait(m => m.state === 'connected');
+    }
+    ws.send(JSON.stringify({ type: 'drone' }));
+    return await wait(m => m.type === 'drone');
+  } finally {
+    ws.close();
+    takSrv.close();
+    await api('tak', { method: 'POST', body: { allowedHosts: '', preset: null } });
+  }
+}
+
 test('TAK access: registration -> approval with callsign -> access page with QR and truststore -> block', async () => {
   const { createMockOts } = require('./ots-mock');
   const mock = createMockOts();
@@ -1080,6 +1118,14 @@ test('TAK access: registration -> approval with callsign -> access page with QR 
     assert.equal((await fetch(base + '/api/access/atak-package.zip?t=' + 'x'.repeat(48))).status, 404);
     assert.equal((await fetch(base + '/access/atak.html')).status, 200);
     assert.match((await pub('atak-link', { headers: { 'X-Access-Token': token } })).data.link, /^tak:\/\/com\.atakmap\.app\/enroll/);
+    // drone address in the web EUD without typing: connected to our OTS with the certificate of the user ->
+    // WebTAK hands over the login; another certificate / not connected -> nothing
+    const drone = await droneLogin(otsUrl, 'alpha_10');
+    assert.equal(drone.username, 'alpha_10');
+    assert.equal(drone.password, mock.state.users.alpha_10.password);
+    assert.equal(drone.host, 'tak.example.com');
+    assert.equal((await droneLogin(otsUrl, 'somebody')).error, 'unknown');
+    assert.equal((await droneLogin(otsUrl, 'alpha_10', { connect: false })).error, 'unknown');
     // block -> no more data
     await api(`takusers/user/${id}/block`, { method: 'POST', body: {} });
     assert.equal(mock.state.users.alpha_10.active, false);

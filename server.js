@@ -1485,6 +1485,8 @@ function handleTakSocket(ws, req) {
   let link = null;
   let assigned = null; // callsign/team/role set by the admin (managed TAK access)
   let eudUid = '';
+  let certUser = '';  // CN of the client certificate of this connection
+  let linkSsl = false; // SSL to our own OTS: the TLS handshake proved the certificate (key on the device)
   const entry = { ip, since: Date.now(), host: '', callsign: '', state: 'idle', info() {
     return { ip: this.ip, host: this.host, callsign: this.callsign, state: this.state, since: new Date(this.since).toISOString() };
   } };
@@ -1512,8 +1514,11 @@ function handleTakSocket(ws, req) {
       eudUid = String(msg.uid || '');
       // managed access? The username is in the client certificate (CN)
       assigned = null;
+      certUser = '';
+      linkSsl = msg.proto === 'ssl' && !!ownTak(host);
       try {
         const cn = msg.certPem ? (/(?:^|, )CN=([^,]+)/.exec(tak.certInfo(msg.certPem).subject) || [])[1] : '';
+        certUser = cn || '';
         assigned = takUsers.assignmentFor(cn);
       } catch (e) { /* no readable certificate */ }
       if (assigned) {
@@ -1529,6 +1534,12 @@ function handleTakSocket(ws, req) {
       log('EUD connecting', entry.callsign, '->', entry.host, msg.proto);
     } else if (msg.type === 'cot' && link && typeof msg.xml === 'string' && msg.xml.length < 256 * 1024) {
       if (/^\s*<event[\s>]/.test(msg.xml)) link.send(assigned ? enforceAssignment(msg.xml, eudUid, assigned) : msg.xml);
+    } else if (msg.type === 'drone') {
+      // drone/camera address without typing the password: whoever is connected to our OTS with the certificate
+      // of a user is that user (OTS checked the certificate in the TLS handshake) – we know the login of managed users
+      const login = linkSsl && entry.state === 'connected' ? takUsers.loginFor(certUser) : null;
+      if (ws.readyState === 1) ws.send(JSON.stringify(login ? { type: 'drone', host: takUsers.takHost() || entry.host.replace(/:\d+$/, ''), ...login } : { type: 'drone', error: 'unknown' }));
+      if (login) log('EUD: drone address for', certUser);
     } else if (msg.type === 'disconnect') {
       stop();
       say('closed', 'Disconnected.');
