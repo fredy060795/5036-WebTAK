@@ -1072,7 +1072,7 @@ function drawMeFov() {
 let camWatch = false;
 setInterval(() => {
   const want = !!window.eudVideoUrl && !!CAM_FOV[window.eudVideoSource];
-  if (want && !camWatch) { camWatch = true; startHeading(); }
+  if (want && !camWatch) { camWatch = true; startHeading(true); } // asked already with the tap on the stream button
   if (!want && camWatch) { camWatch = false; if (compassMode !== 'heading') stopHeading(); camHeading = null; }
   if (!me) return;
   const cam = camSensor();
@@ -2345,15 +2345,17 @@ function backHeading(e, h) {
   return (Math.atan2(vx, vy) / r + 360) % 360;
 }
 
-function startHeading() {
+// iPhone (and newer Chrome) allow the compass only after asking – and only during a tap. So it is asked
+// with the tap that starts a camera stream (video.js) too, not only with the compass button.
+let compassAllowed = !(window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function');
+function askCompass() {
+  if (compassAllowed) return Promise.resolve(true);
+  return DeviceOrientationEvent.requestPermission().then(r => (compassAllowed = r === 'granted')).catch(() => false);
+}
+function startHeading(quiet) {
   window.addEventListener('deviceorientationabsolute', onOrientation);
   window.addEventListener('deviceorientation', onOrientation);
-  // iPhone (and newer Chrome) ask for permission on tap – do not wait for it
-  if (window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
-    DeviceOrientationEvent.requestPermission()
-      .then(r => { if (r !== 'granted') throw new Error('denied'); })
-      .catch(() => toast('Compass not allowed – using GPS course while moving.'));
-  }
+  askCompass().then(ok => { if (!ok && !quiet) toast('Compass not allowed – using GPS course while moving.'); });
 }
 function stopHeading() {
   if (camWatch) return; // the own stream still needs the camera direction
@@ -2630,7 +2632,7 @@ function videoItems() {
     .filter(v => v.url && !v.stale).sort((a, b) => a.name.localeCompare(b.name));
 }
 
-window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, destPoint, serverOnline,
+window.eud = { videoItems, browserVideoUrl, $, store, profile, toast, setMsg, openPopup, closePopup, rnd, esc, map, handleCot, removeItem, askTrust, postJson, getServers: () => servers, saveServers, applyProfilePrefs, addTakMaps, forwardCot: xml => sendCot(xml, false), fmtDist, distance, bearing, askCompass, destPoint, serverOnline,
   sendCot, cotTime, saveProfile, closeSheets, setTool, setPitch, items, stopMeasure: () => { if (measuring) toggleMeasure(); }, getMe: () => me, battery: () => battery };
 
 loadPicture();

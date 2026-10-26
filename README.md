@@ -86,7 +86,8 @@ user (`drone-<callsign>`). The password is kept on the device only after the TAK
 - **Own stream:** while the phone or helmet camera is live, the own position carries the view direction, angle
   (60°/66°) and 100 m range – ATAK and WebTAK show the cone. Phone camera: direction of the back of the phone (compass,
   also in north-up mode); helmet camera: the GPS course while moving, standing still the phone's compass (fits when
-  the phone is carried facing forward). Cones are at least ~70 px long on the screen at any zoom.
+  the phone is carried facing forward). The compass is allowed with the tap on the stream button (iPhone asks once) –
+  no need to switch the compass on first. Cones are at least ~70 px long on the screen at any zoom.
 - **Drone telemetry (KLV, MISB ST 0601):** when a drone feed carries KLV (professional drones, ATAK UAS Tool, QGroundControl,
   STANAG 4609 encoders), WebTAK shows while watching it: **the drone** (position, height, view direction and cone),
   **the image area on the ground** (corners from KLV or computed from height, angle and field of view) and **the image

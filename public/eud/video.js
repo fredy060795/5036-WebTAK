@@ -600,8 +600,9 @@
   }
   document.addEventListener('eud-popup', e => { if (e.detail === 'video') renderStreams(); });
 
-  $('phoneBtn').addEventListener('click', () => start('phone'));
-  $('bleBtn').addEventListener('click', () => start('ble'));
+  // the compass for the view direction (cone on the map) must be allowed within this tap (iPhone)
+  $('phoneBtn').addEventListener('click', () => { window.eud.askCompass(); start('phone'); });
+  $('bleBtn').addEventListener('click', () => { window.eud.askCompass(); start('ble'); });
   $('screenBtn').addEventListener('click', () => start('screen'));
   // screen sharing only where the browser supports it (PC); no button on phones
   const canShare = !!(navigator.mediaDevices && navigator.mediaDevices.getDisplayMedia) && window.isSecureContext && !/Android|iPhone|iPad/i.test(navigator.userAgent);
