@@ -30,6 +30,7 @@ const { atakPackage } = require('./lib/datapackage');
 const { proxyMedia } = require('./lib/mediaproxy');
 const { KlvFeeds } = require('./lib/klvfeed');
 const { Federation } = require('./lib/federation');
+const raster = require('./lib/raster');
 
 const config = {
   port: process.env.PORT ? Number(process.env.PORT) : 5036,
@@ -928,7 +929,7 @@ async function handleEudApi(req, res, route) {
   if (route === 'extract') {
     // load an own file (KML/KMZ/data package) as an overlay
     const body = await readJson(req, 120 * 1024 * 1024);
-    return json(res, 200, tak.extractContent(String(body.name || ''), Buffer.from(String(body.data || ''), 'base64')));
+    return json(res, 200, await raster.prepare(tak.extractContent(String(body.name || ''), Buffer.from(String(body.data || ''), 'base64')), { ffmpeg: config.ffmpeg, log }));
   }
   if (route === 'marti') {
     const ip = clientIp(req);
@@ -943,7 +944,8 @@ async function handleEudApi(req, res, route) {
     const why = await takProblem(host, Number(conn.apiPort) || tak.API_PORT);
     if (why) return json(res, 403, { error: why });
     try {
-      return json(res, 200, await tak.marti({ ...conn, host, altHost: (ownTak(host) || {}).altHost || '' }, String(body.action || ''), body.args || {}));
+      const r = await tak.marti({ ...conn, host, altHost: (ownTak(host) || {}).altHost || '' }, String(body.action || ''), body.args || {});
+      return json(res, 200, await raster.prepare(r, { ffmpeg: config.ffmpeg, log })); // large map images in packages
     } catch (e) {
       log('EUD TAK-API', host, String(body.action || ''), 'error:', e.message);
       if (e.code === 'UNTRUSTED') return json(res, 409, { error: e.message, code: e.code, fingerprint: e.fingerprint, subject: e.subject });
