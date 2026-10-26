@@ -46,6 +46,8 @@ const config = {
   // Evaluate X-Forwarded-* only when a reverse proxy sits in front. With its own
   // certificate (TLS_CERT) the server runs directly on the network, then it is off by default.
   trustProxy: process.env.TRUST_PROXY !== undefined ? process.env.TRUST_PROXY !== '0' : !process.env.TLS_CERT,
+  // Android app: built by GitHub Actions (mobile/, .github/workflows/android.yml) – or an own build / fork
+  apkUrl: process.env.WEBTAK_APK_URL || 'https://github.com/fredy060795/5036-WebTAK/releases/download/android/WebTAK.apk',
 };
 
 const log = (...args) => console.log(new Date().toISOString(), ...args);
@@ -1408,6 +1410,15 @@ async function handle(req, res) {
     if (p === '/ca.crt' && config.testCa) {
       return send(res, 200, fs.readFileSync(config.testCa), 'application/x-x509-ca-cert',
         { 'Content-Disposition': 'attachment; filename="helm-camera-test-ca.crt"' });
+    }
+    // Android app: an APK in the data folder (e.g. without internet in the field), otherwise the GitHub release
+    if (p === '/download/webtak.apk') {
+      const local = path.join(config.dataDir, 'webtak.apk');
+      if (fs.existsSync(local)) {
+        res.writeHead(200, { 'Content-Type': 'application/vnd.android.package-archive', 'Content-Disposition': 'attachment; filename="WebTAK.apk"', 'Content-Length': fs.statSync(local).size });
+        return fs.createReadStream(local).pipe(res);
+      }
+      return send(res, 302, '', 'text/plain', { Location: config.apkUrl });
     }
     if (p === '/') {
       if (admin) return send(res, 302, '', 'text/plain', { Location: '/admin/' });

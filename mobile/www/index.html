@@ -1,0 +1,70 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>WebTAK</title>
+<style>
+  :root { --bg: #14161a; --card: #1e2229; --line: #333a44; --text: #fff; --mut: #9aa3ae; --green: #1f6f3a; --green-line: #2e8b4a; --red: #e5534b; }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text); font: 16px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; }
+  main { max-width: 440px; margin: 0 auto; padding: calc(32px + env(safe-area-inset-top)) 16px 24px; }
+  h1 { font-size: 26px; margin: 0 0 4px; letter-spacing: .5px; }
+  .sub { color: var(--mut); margin: 0 0 28px; font-size: 14px; }
+  .card { background: var(--card); border: 1px solid var(--line); border-radius: 8px; padding: 16px; margin-bottom: 16px; }
+  .card h2 { font-size: 15px; margin: 0 0 8px; }
+  .card p { margin: 0; color: var(--mut); font-size: 14px; }
+  label { display: block; font-size: 13px; color: var(--mut); margin: 4px 0 6px; }
+  input { width: 100%; padding: 12px; border-radius: 6px; border: 1px solid var(--line); background: #11141a; color: var(--text); font-size: 16px; }
+  input:focus { outline: none; border-color: var(--green-line); }
+  button { width: 100%; margin-top: 12px; padding: 13px; border-radius: 6px; border: 1px solid var(--green-line); background: var(--green); color: #fff; font: 600 15px inherit; font-family: inherit; }
+  button:disabled { opacity: .6; }
+  #msg { min-height: 20px; margin-top: 10px; font-size: 14px; color: var(--red); }
+</style>
+</head>
+<body>
+<main>
+  <h1>WebTAK</h1>
+  <p class="sub">TAK client for Android – map, team positions, chat, video and Meshtastic.</p>
+
+  <div class="card">
+    <h2>Invited?</h2>
+    <p>Open the invitation link or your access page from your admin and tap <b>“Open in the WebTAK app”</b>. Server and login are taken over automatically.</p>
+  </div>
+
+  <div class="card">
+    <h2>Or enter your WebTAK server</h2>
+    <form id="f">
+      <label for="srv">Address</label>
+      <input id="srv" inputmode="url" autocapitalize="off" autocorrect="off" spellcheck="false" placeholder="webtak.example.com">
+      <button type="submit" id="go">CONNECT</button>
+    </form>
+    <div id="msg"></div>
+  </div>
+</main>
+<script>
+  // first start (no server yet): the native part (WebTakPlugin) keeps the address and restarts the app on it
+  const $ = id => document.getElementById(id);
+  $('f').addEventListener('submit', async e => {
+    e.preventDefault();
+    let v = $('srv').value.trim();
+    if (!v) return;
+    if (!/^https?:\/\//i.test(v)) v = 'https://' + v;
+    let url;
+    try { url = new URL(v); } catch (err) { $('msg').textContent = 'That is not an address.'; return; }
+    if (url.protocol !== 'https:') { $('msg').textContent = 'Only https addresses are possible.'; return; }
+    $('go').disabled = true;
+    $('msg').textContent = '';
+    const target = url.origin + (url.pathname.startsWith('/eud') ? url.pathname : '/eud/') + url.hash;
+    try {
+      await fetch(url.origin + '/eud/manifest.webmanifest', { cache: 'no-store', mode: 'no-cors' }); // only "reachable?" (other origin)
+    } catch (err) {
+      $('go').disabled = false;
+      $('msg').textContent = 'No WebTAK server reachable at this address.';
+      return;
+    }
+    window.Capacitor.Plugins.WebTak.setServer({ url: target });
+  });
+</script>
+</body>
+</html>

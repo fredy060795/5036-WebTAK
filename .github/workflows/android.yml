@@ -1,0 +1,75 @@
+# Android app (mobile/): builds the APK. On main it is published as the release "android" –
+# the WebTAK server links to it (/download/webtak.apk → releases/download/android/WebTAK.apk).
+# Pull requests only build it (check that it compiles).
+name: Android app
+
+on:
+  push:
+    branches: [main]
+    paths: ['mobile/**', '.github/workflows/android.yml']
+  pull_request:
+    paths: ['mobile/**', '.github/workflows/android.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  apk:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: 21
+      - name: Web part and plugins
+        working-directory: mobile
+        run: npm ci && npx cap sync android
+      # the same key for every version, so an update installs over the old app (Settings → Secrets → Actions)
+      - name: Signing key
+        env:
+          KEYSTORE_B64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+        run: |
+          if [ -n "$KEYSTORE_B64" ]; then
+            echo "$KEYSTORE_B64" | base64 -d > "$RUNNER_TEMP/webtak.jks"
+            echo "WEBTAK_KEYSTORE_FILE=$RUNNER_TEMP/webtak.jks" >> "$GITHUB_ENV"
+          else
+            echo "::warning::No ANDROID_KEYSTORE_BASE64 secret – debug-signed APK; an update then needs the old app uninstalled first."
+          fi
+      - name: Build
+        working-directory: mobile/android
+        env:
+          WEBTAK_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          WEBTAK_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          WEBTAK_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          WEBTAK_VERSION_CODE: ${{ github.run_number }}
+          WEBTAK_VERSION_NAME: 1.0.${{ github.run_number }}
+        run: |
+          chmod +x gradlew
+          if [ -n "$WEBTAK_KEYSTORE_FILE" ]; then
+            ./gradlew --no-daemon assembleRelease
+            cp app/build/outputs/apk/release/app-release.apk "$GITHUB_WORKSPACE/WebTAK.apk"
+          else
+            ./gradlew --no-daemon assembleDebug
+            cp app/build/outputs/apk/debug/app-debug.apk "$GITHUB_WORKSPACE/WebTAK.apk"
+          fi
+      - uses: actions/upload-artifact@v4
+        with:
+          name: WebTAK-apk
+          path: WebTAK.apk
+      - name: Publish (release "android")
+        if: github.event_name != 'pull_request'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          notes="WebTAK for Android, version 1.0.${{ github.run_number }} (${GITHUB_SHA::7}). Install WebTAK.apk, then open the invitation link from your admin and tap 'Open in the WebTAK app'."
+          if gh release view android >/dev/null 2>&1; then
+            gh release edit android --notes "$notes"
+          else
+            gh release create android --title "WebTAK for Android" --notes "$notes" --latest=false
+          fi
+          gh release upload android WebTAK.apk --clobber

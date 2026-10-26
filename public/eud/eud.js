@@ -11,6 +11,7 @@ const store = {
 const esc = s => String(s == null ? '' : s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const xmlEsc = esc;
 const cotTime = d => d.toISOString().replace(/\.(\d{3})\d*Z$/, '.$1Z');
+const launchHash = location.hash; // invitation (#host=…&username=…): also handed to the Android app ("open in the app")
 const rnd = n => Array.from(crypto.getRandomValues(new Uint8Array(n)), b => b.toString(16).padStart(2, '0')).join('');
 
 const TEAMS = {
@@ -1232,17 +1233,34 @@ setInterval(() => {
 
 // position: started right away; refused (or the browser wants a tap) -> the permission bar asks again with one tap
 let geoWatch = null, geoDenied = false;
+// Android app (mobile/, Capacitor): the native plugins are in the page – the position keeps coming with the screen
+// locked (a notification shows it), in the browser only while WebTAK is in front
+const appPlugins = (window.Capacitor && window.Capacitor.Plugins) || {};
+const nativeApp = !!appPlugins.WebTak;
+const bgGeo = appPlugins.BackgroundGeolocation;
+function onPosition(c, t) {
+  if (geoDenied) { geoDenied = false; updatePermBar(); }
+  me = { lat: c.latitude, lon: c.longitude, alt: c.altitude, acc: c.accuracy, speed: c.speed, course: c.heading, t };
+  drawMe();
+  const moved = sentAt ? distance(sentAt, me) : Infinity;
+  if (Date.now() - lastSent > 30000 || (moved > 10 && Date.now() - lastSent > 3000)) sendSelf();
+}
 function startGeo() {
+  if (bgGeo) {
+    if (geoWatch != null) return;
+    geoWatch = 'bg';
+    bgGeo.addWatcher({ backgroundTitle: 'WebTAK', backgroundMessage: 'Your position is sent to your team.', requestPermissions: true, stale: false, distanceFilter: 0 }, (loc, err) => {
+      if (err) {
+        if (err.code === 'NOT_AUTHORIZED') { geoDenied = true; geoWatch = null; updatePermBar(); }
+        return;
+      }
+      onPosition({ latitude: loc.latitude, longitude: loc.longitude, altitude: loc.altitude, accuracy: loc.accuracy, speed: loc.speed, heading: loc.bearing }, loc.time);
+    });
+    return;
+  }
   if (!('geolocation' in navigator)) return;
   if (geoWatch != null) navigator.geolocation.clearWatch(geoWatch);
-  geoWatch = navigator.geolocation.watchPosition(pos => {
-    if (geoDenied) { geoDenied = false; updatePermBar(); }
-    const c = pos.coords;
-    me = { lat: c.latitude, lon: c.longitude, alt: c.altitude, acc: c.accuracy, speed: c.speed, course: c.heading, t: pos.timestamp };
-    drawMe();
-    const moved = sentAt ? distance(sentAt, me) : Infinity;
-    if (Date.now() - lastSent > 30000 || (moved > 10 && Date.now() - lastSent > 3000)) sendSelf();
-  }, err => {
+  geoWatch = navigator.geolocation.watchPosition(pos => onPosition(pos.coords, pos.timestamp), err => {
     if (err.code === 1) { geoDenied = true; updatePermBar(); }
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 }
@@ -1677,6 +1695,25 @@ function fillMe() {
   $('meLocked').classList.toggle('hidden', !locked);
   $('uidText').textContent = profile.uid;
 }
+// Android: the app (background location) – in the browser download / open in the app, in the app change the server
+(() => {
+  const android = /Android/i.test(navigator.userAgent);
+  if (!android && !nativeApp) return;
+  $('appBox').classList.remove('hidden');
+  if (nativeApp) {
+    $('appBtns').classList.add('hidden');
+    $('appServer').classList.remove('hidden');
+    $('appText').textContent = `WebTAK app · server ${location.host}. Your position is also sent with the screen locked (notification "WebTAK").`;
+    $('appServer').addEventListener('click', () => {
+      if (confirm('Choose another WebTAK server? The app starts again.')) appPlugins.WebTak.setServer({ url: '' });
+    });
+    return;
+  }
+  $('appText').textContent = 'The WebTAK app for Android keeps sending your position with the screen locked. Install it, then tap "Open in the app" – server and login are taken over.';
+  // the invitation this page was opened with (login included), otherwise just this server
+  $('appOpen').href = 'webtak://open?u=' + encodeURIComponent(location.origin + location.pathname + (/host=/.test(launchHash) ? launchHash : ''));
+})();
+
 $('meSave').addEventListener('click', () => {
   const call = $('fCallsign').value.trim();
   if (!call) { $('fCallsign').focus(); return; }
