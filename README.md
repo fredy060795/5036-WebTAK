@@ -215,7 +215,7 @@ Home Screen"). Laid out like ATAK:
    Per server: QR code (ATAK enrollment `tak://…/enroll?…`, iTAK `name,host,port,ssl`), data package (.zip),
    certificate (.p12), truststore or by hand (address, port, SSL/TCP/UDP, user + password →
    "Request certificate", port 8446). Unknown server certificates only after confirming the fingerprint.
-3. **Chat** – chat "All" (GeoChat); the window can be minimized and closed.
+3. **Chat** – chat "All" (GeoChat); the window can be minimized and closed. Messages are deleted automatically after 3 days.
 4. **Video stream** – tap "Phone camera" or "Helmet camera (Bluetooth, Android/Chrome)": the stream
    starts right away (also when "Admin puts streams live" is set in the admin – the admin gets a
    notification). The link is in the own position, ATAK users see it on the contact. The own preview can be
