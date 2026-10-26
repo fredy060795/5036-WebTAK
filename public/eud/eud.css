@@ -431,3 +431,11 @@ body:has(.tmenu:not(.hidden)) #toast { top: calc(190px + var(--top)); }
 #mcList .clr { padding: 7px 2px; }
 #mapClear #mcText { margin-top: 0; }
 #moveHint { border: 1px solid #ffd400; }
+
+/* permissions after start: location & compass (iPhone asks again each time) */
+#permBar { position: fixed; z-index: 6030; top: calc(54px + var(--top)); left: 8px; right: 8px; display: flex; align-items: center; gap: 8px;
+  background: rgba(20, 22, 26, 0.95); border: 1px solid #ffcc00; border-radius: 6px; padding: 8px 6px 8px 12px; font-size: 13px; line-height: 1.3; }
+#permBar.hidden { display: none; }
+#permBar span { flex: 1; }
+#permGo { background: #1f6f3a; border: 1px solid #2e8b4a; color: #fff; border-radius: 3px; padding: 8px 12px; font: 600 13px var(--font); }
+#permClose { background: none; border: none; color: #fff; font-size: 16px; padding: 4px 6px; }

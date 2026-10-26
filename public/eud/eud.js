@@ -1230,17 +1230,23 @@ setInterval(() => {
   if ((turned || (!cam && sentAz != null)) && Date.now() - lastSent > 3000) sendSelf();
 }, 1000);
 
-if ('geolocation' in navigator) {
-  navigator.geolocation.watchPosition(pos => {
+// position: started right away; refused (or the browser wants a tap) -> the permission bar asks again with one tap
+let geoWatch = null, geoDenied = false;
+function startGeo() {
+  if (!('geolocation' in navigator)) return;
+  if (geoWatch != null) navigator.geolocation.clearWatch(geoWatch);
+  geoWatch = navigator.geolocation.watchPosition(pos => {
+    if (geoDenied) { geoDenied = false; updatePermBar(); }
     const c = pos.coords;
     me = { lat: c.latitude, lon: c.longitude, alt: c.altitude, acc: c.accuracy, speed: c.speed, course: c.heading, t: pos.timestamp };
     drawMe();
     const moved = sentAt ? distance(sentAt, me) : Infinity;
     if (Date.now() - lastSent > 30000 || (moved > 10 && Date.now() - lastSent > 3000)) sendSelf();
   }, err => {
-    if (err.code === 1) toast('Location not allowed – your position is not sent.', 6000);
+    if (err.code === 1) { geoDenied = true; updatePermBar(); }
   }, { enableHighAccuracy: true, maximumAge: 5000, timeout: 30000 });
 }
+startGeo();
 setInterval(() => { if (Date.now() - lastSent > 30000) sendSelf(); }, 10000);
 
 map.on('dragstart', () => { follow = false; $('btnLocate').classList.remove('active'); });
@@ -2517,8 +2523,27 @@ function startHeading(quiet) {
 }
 // the compass always runs: the own arrow turns with the phone (the compass button only decides whether the map turns)
 startHeading(true);
-// iPhone: allowed only within a tap – with the first tap anywhere
-document.addEventListener('pointerup', () => askCompass(), { once: true, capture: true });
+// After every start (iPhone asks again each time WebTAK was closed): a bar right away "allow location & compass" –
+// one tap asks for both (the compass may only be asked within a tap). Shown only while something is missing.
+const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+let permAsked = false;
+function updatePermBar() {
+  const need = !compassAllowed || geoDenied;
+  $('permBar').classList.toggle('hidden', !need);
+  if (!need) return;
+  $('permText').textContent = !compassAllowed && geoDenied ? 'Allow location and compass – otherwise your position and direction are not shown or sent.'
+    : geoDenied ? 'Location is not allowed – your position is not sent.' : 'Allow the compass – for your direction and the view cone of your camera.';
+  if (permAsked && geoDenied) $('permText').textContent += isIOS ? ' Still refused: Settings → Privacy → Location Services → Safari Websites (or Bluefy) → "While Using".'
+    : ' Still refused: tap the lock icon next to the address → Permissions → Location.';
+}
+$('permGo').addEventListener('click', () => {
+  permAsked = true;
+  askCompass().then(updatePermBar); // must be called within the tap (iPhone)
+  if (geoDenied) startGeo();
+  setTimeout(updatePermBar, 1500);
+});
+$('permClose').addEventListener('click', () => $('permBar').classList.add('hidden'));
+updatePermBar();
 
 // tapping the compass: a map rotated by hand goes back to north; if already north up, heading up (HDG)
 $('compass').addEventListener('click', () => {
