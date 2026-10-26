@@ -397,10 +397,10 @@ details.drone summary { cursor: pointer; font-size: 14px; font-weight: 500; }
 #shapeBar { position: fixed; z-index: 7200; left: 0; right: 0; bottom: 0; padding: 8px 10px calc(8px + var(--bottom)); background: var(--sheet); border-top: 1px solid var(--line); }
 
 /* Bloodhound */
-#houndHint { position: fixed; z-index: 6008; top: calc(56px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
+#houndHint, #moveHint { position: fixed; z-index: 6008; top: calc(56px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
   background: rgba(0, 0, 0, 0.75); color: #fff; padding: 6px 8px 6px 12px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-#houndHint.hidden { display: none; }
-#houndHint button { background: none; border: none; color: #fff; font-size: 15px; padding: 0 4px; }
+#houndHint.hidden, #moveHint.hidden { display: none; }
+#houndHint button, #moveHint button { background: none; border: none; color: #fff; font-size: 15px; padding: 0 4px; }
 #houndBar { position: fixed; z-index: 6008; top: calc(54px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
   display: flex; align-items: center; gap: 10px; background: rgba(20, 22, 26, 0.92); border: 1px solid #ff3b30; border-radius: 6px; padding: 5px 6px 5px 10px; }
 #houndBar.hidden { display: none; }
@@ -430,3 +430,4 @@ body:has(.tmenu:not(.hidden)) #toast { top: calc(190px + var(--top)); }
 #mapClear .mbody { overflow-y: auto; }
 #mcList .clr { padding: 7px 2px; }
 #mapClear #mcText { margin-top: 0; }
+#moveHint { border: 1px solid #ffd400; }

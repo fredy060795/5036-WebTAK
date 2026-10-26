@@ -203,8 +203,8 @@ Home Screen"). Laid out like ATAK:
 
 **Core functions**
 
-1. Place **markers** (see above). **Drag & drop** own markers, **rename**
-   or delete them in the popup – the change goes to all servers with the same UID, like in ATAK.
+1. Place **markers** (see above). **Move** (like ATAK: tap the marker → MOVE, then drag it or tap the new position –
+   so zooming and panning never move a marker by accident), **rename** or delete them in the popup – the change goes to all servers with the same UID, like in ATAK.
 2. **Connect servers** – Menu → Servers. **Several TAK servers at once**, everything on one map.
    Per server: QR code (ATAK enrollment `tak://…/enroll?…`, iTAK `name,host,port,ssl`), data package (.zip),
    certificate (.p12), truststore or by hand (address, port, SSL/TCP/UDP, user + password →

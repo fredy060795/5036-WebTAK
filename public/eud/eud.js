@@ -380,8 +380,8 @@ function popupHtml(it) {
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
   if (c.type.startsWith('a-') && c.team && it.uid !== profile.uid) rows.push(`<button type="button" class="play" data-msg="${esc(c.uid)}">✉ MESSAGE</button>`);
   if (Number.isFinite(c.lat) && it.uid !== profile.uid && !isRb(c)) rows.push(`<button type="button" class="play" data-hound="${esc(c.uid)}">BLOODHOUND</button>`);
-  if (editable(it)) rows.push(`<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
-  if (editable(it) && isPoint(c)) rows.push('<div class="k">Drag the marker to move it.</div>');
+  if (editable(it)) rows.push((isPoint(c) ? `<button type="button" class="play" data-move="${esc(c.uid)}">MOVE</button> ` : '')
+    + `<button type="button" class="play" data-ren="${esc(c.uid)}">RENAME</button> <button type="button" data-del="${esc(c.uid)}">DELETE</button>`);
   return rows.join('');
 }
 
@@ -399,6 +399,33 @@ function shapeSize(c) {
 // like ATAK: every marker, point and drawing can be moved, renamed and deleted by anyone –
 // only the live position of other devices (contacts with a team) not, the device sends it again anyway
 function editable(it) { return !!it.own || !(it.c.type.startsWith('a-') && it.c.team); }
+
+// moving like ATAK: only after MOVE in the marker's window (no accidental moving while zooming/panning) –
+// then drag the marker or tap the new position
+let movingUid = null;
+const canDrag = it => editable(it) && movingUid === it.uid;
+function startMove(uid) {
+  const it = items.get(uid);
+  if (!it || !editable(it)) return;
+  endMove();
+  movingUid = uid;
+  if (it.layer && it.layer.dragging) it.layer.dragging.enable();
+  $('moveName').textContent = it.c.callsign || toolName(it.c.type) || uid;
+  $('moveHint').classList.remove('hidden');
+  if (window.view3d) view3d.dirty();
+}
+function endMove() {
+  const it = movingUid && items.get(movingUid);
+  movingUid = null;
+  if (it && it.layer && it.layer.dragging) it.layer.dragging.disable();
+  $('moveHint').classList.add('hidden');
+  if (window.view3d) view3d.dirty();
+}
+function moveTo(lat, lon) {
+  const it = movingUid && items.get(movingUid);
+  endMove();
+  if (it) updateOwn(it, { lat, lon });
+}
 
 const isPoint = c => !(c.linkPoints.length >= 2 && (c.type.startsWith('u-d') || c.type.startsWith('b-m-r'))) && c.type !== 'u-d-c-c' && !isRb(c);
 // R&B line (like ATAK, type u-rb-a): start point + range (m) + bearing (degrees)
@@ -436,6 +463,7 @@ function updateOwn(it, { lat, lon, name }) {
 function removeItem(uid) {
   const it = items.get(uid);
   if (!it) return;
+  if (movingUid === uid) endMove();
   if (it.layer) it.layer.remove();
   if (it.fov) it.fov.remove();
   items.delete(uid);
@@ -510,8 +538,8 @@ function drawItem(it) {
     it.layer = (closed ? L.polygon(pts, style) : L.polyline(pts, { ...style, fill: false })).addTo(shapesLayer);
   } else if (Number.isFinite(c.lat) && Number.isFinite(c.lon) && !(c.lat === 0 && c.lon === 0)) {
     // markers can be moved (drag & drop); the change goes out with the same UID like in ATAK
-    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: editable(it), autoPan: true }).addTo(pointsLayer);
-    if (editable(it)) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); updateOwn(it, { lat: ll.lat, lon: ll.lng }); });
+    it.layer = L.marker([c.lat, c.lon], { icon: iconFor(c, stale), zIndexOffset: c.team ? 500 : 0, draggable: canDrag(it), autoPan: true }).addTo(pointsLayer);
+    if (editable(it)) it.layer.on('dragend', e => { const ll = e.target.getLatLng(); moveTo(ll.lat, ll.lng); });
     const s = sensorOf(c);
     if (s) it.fov = fovLayer(c.lat, c.lon, s, stale).addTo(shapesLayer);
   }
@@ -1184,6 +1212,8 @@ function wirePopup(root, close) {
   if (msg) msg.addEventListener('click', () => { close(); openChat('dm:' + msg.getAttribute('data-msg')); });
   const hound = root.querySelector('[data-hound]');
   if (hound) hound.addEventListener('click', () => { close(); document.dispatchEvent(new CustomEvent('eud-hound', { detail: { uid: hound.getAttribute('data-hound') } })); });
+  const mv = root.querySelector('[data-move]');
+  if (mv) mv.addEventListener('click', () => { close(); startMove(mv.getAttribute('data-move')); });
   const ren = root.querySelector('[data-ren]');
   if (ren) ren.addEventListener('click', () => {
     const it = items.get(ren.getAttribute('data-ren'));
@@ -2142,6 +2172,7 @@ function drawCorridor() {
   ]).addTo(map);
 }
 map.on('click', e => {
+  if (movingUid) return moveTo(e.latlng.lat, e.latlng.lng); // MOVE: tap = new position
   if (window.eudMapTap && window.eudMapTap(e.latlng)) return; // drawing shapes, picking a Bloodhound target (tools.js)
   if (tool) return placeMarker(e.latlng); // symbol selected: a tap places the marker (like ATAK)
   if (measuring) return addMeasurePoint(e.latlng);
@@ -2151,6 +2182,7 @@ map.on('click', e => {
   $('drawHint').textContent = `${corridor.length} point(s) – keep tapping or DONE`;
 });
 map.on('zoomend', () => { if (corridor.length) drawCorridor(); });
+$('moveCancel').addEventListener('click', endMove);
 $('drawUndo').addEventListener('click', () => { corridor.pop(); drawCorridor(); });
 $('drawCancel').addEventListener('click', () => { drawing = false; map.getContainer().classList.remove('drawing'); corridor = []; drawCorridor(); $('drawBar').classList.add('hidden'); openPopup('map'); });
 $('drawDone').addEventListener('click', () => {

@@ -96,6 +96,7 @@
         ml.on('rotatestart', e => { if (e.originalEvent && typeof manualRotate === 'function') manualRotate(); });
         ml.on('click', e => {
           if (Date.now() - clickedMarker < 400) return;
+          if (movingUid) return moveTo(e.lngLat.lat, e.lngLat.lng); // MOVE: tap = new position
           if (tool) placeMarker(L.latLng(e.lngLat.lat, e.lngLat.lng)); // symbol selected: a tap places the marker
         });
         // elevation data unreachable (offline, blocked): 3D without terrain instead of holes in the map
@@ -202,7 +203,7 @@
       if (!Number.isFinite(it.c.lat) || !Number.isFinite(it.c.lon) || (it.c.lat === 0 && it.c.lon === 0)) continue;
       seen.add(it.uid);
       const stale = Date.now() > it.c.stale;
-      const key = it.xml + (stale ? 's' : '') + (it.c.team && it.c.speed > 0.5 ? Math.round(northAngle()) : '');
+      const key = it.xml + (stale ? 's' : '') + (canDrag(it) ? 'm' : '') + (it.c.team && it.c.speed > 0.5 ? Math.round(northAngle()) : '');
       let rec = marks.get(it.uid);
       if (rec && rec.key === key) continue;
       const { el, offset } = pointElement(it);
@@ -212,7 +213,7 @@
         mel.style.width = el.style.width;
         mel.style.height = el.style.height;
         mel.classList.toggle('stale', stale);
-        rec.m.setLngLat([it.c.lon, it.c.lat]).setOffset(offset).setDraggable(editable(it));
+        rec.m.setLngLat([it.c.lon, it.c.lat]).setOffset(offset).setDraggable(canDrag(it));
         rec.key = key;
         rec.it = it;
         continue;
@@ -220,7 +221,7 @@
       // Symbols stand upright facing the camera (like in WinTAK) but sit on the terrain.
       // They always stay fully visible (like WinTAK). MapLibre would dim markers whose ground
       // point is hidden by terrain to 20 % – at a steep tilt almost all of them.
-      const m = new lib.Marker({ element: el, offset, draggable: editable(it), pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
+      const m = new lib.Marker({ element: el, offset, draggable: canDrag(it), pitchAlignment: 'viewport', rotationAlignment: 'viewport', opacity: '1', opacityWhenCovered: '1' })
         .setLngLat([it.c.lon, it.c.lat]).addTo(ml);
       rec = { m, key, it };
       el.addEventListener('click', e => {
@@ -228,7 +229,7 @@
         clickedMarker = Date.now();
         openPopup(rec.it, m.getLngLat());
       });
-      m.on('dragend', () => { const ll = m.getLngLat(); updateOwn(rec.it, { lat: ll.lat, lon: ll.lng }); });
+      m.on('dragend', () => { const ll = m.getLngLat(); moveTo(ll.lat, ll.lng); });
       marks.set(it.uid, rec);
     }
     if (meFov) shapes.push(layerFeature(meFov)); // own camera while streaming
