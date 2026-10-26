@@ -1042,14 +1042,37 @@ function sendSelfTo(srv) {
 }
 window.eudSendSelf = sendSelf;
 
+// direction of the own arrow (like ATAK): GPS course while moving, otherwise the phone's compass –
+// independent of the compass button, which only turns the map (north up / heading up)
+let lastDir = 0;
+function myDir() {
+  if (me && Number.isFinite(me.course) && me.speed > 1) lastDir = me.course;
+  else if (heading != null) lastDir = heading;
+  return lastDir; // no compass, standing: keep the last direction instead of jumping to north
+}
+function meIcon() {
+  const col = TEAMS[profile.team] || '#00FFFF';
+  const rot = myDir() + northAngle();
+  const html = `<svg width="32" height="32" viewBox="0 0 32 32"><g transform="rotate(${Math.round(rot)} 16 16)">`
+    + `<path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></g></svg>`;
+  return L.divIcon({ className: 'cot-icon', html, iconSize: [32, 32], iconAnchor: [16, 16] });
+}
+// the compass turned the phone: only the arrow (no full redraw), at most ~6×/s and from 3°
+let arrowAt = 0, arrowDir = null;
+function turnArrow() {
+  if (!me || !meMarker) return;
+  const d = myDir(), now = Date.now();
+  if (now - arrowAt < 150 || (arrowDir != null && Math.abs(((d - arrowDir + 540) % 360) - 180) < 3)) return;
+  arrowAt = now;
+  arrowDir = d;
+  meMarker.setIcon(meIcon());
+  if (window.view3d && view3d.active) view3d.dirty();
+}
 function drawMe() {
   updateSelfInfo();
   const ll = [me.lat, me.lon];
-  const col = TEAMS[profile.team] || '#00FFFF';
-  const rot = (Number.isFinite(me.course) && me.speed > 0.5 ? me.course : (compassMode === 'heading' && heading != null ? heading : 0)) + northAngle();
-  const html = `<svg width="32" height="32" viewBox="0 0 32 32"><g transform="rotate(${rot} 16 16)">`
-    + `<path d="M16 2 L28 29 L16 22 L4 29 Z" fill="#007bff" stroke="${col}" stroke-width="2" stroke-linejoin="round"/></g></svg>`;
-  const icon = L.divIcon({ className: 'cot-icon', html, iconSize: [32, 32], iconAnchor: [16, 16] });
+  const icon = meIcon();
+  arrowDir = lastDir;
   if (!meMarker) {
     meCircle = L.circle(ll, { radius: me.acc || 0, color: '#007bff', weight: 1, fillOpacity: 0.08, interactive: false }).addTo(map);
     meMarker = L.marker(ll, { icon, zIndexOffset: 1000 }).addTo(map).bindPopup(() =>
@@ -1073,7 +1096,7 @@ let camWatch = false;
 setInterval(() => {
   const want = !!window.eudVideoUrl && !!CAM_FOV[window.eudVideoSource];
   if (want && !camWatch) { camWatch = true; startHeading(true); } // asked already with the tap on the stream button
-  if (!want && camWatch) { camWatch = false; if (compassMode !== 'heading') stopHeading(); camHeading = null; }
+  if (!want && camWatch) { camWatch = false; camHeading = null; }
   if (!me) return;
   const cam = camSensor();
   if ((cam ? cam.az : null) !== (meFov ? meFov._az : null)) { drawMeFov(); if (meFov) meFov._az = cam.az; if (window.view3d) view3d.dirty(); }
@@ -2326,6 +2349,7 @@ function onOrientation(e) {
   const sc = screen.orientation ? screen.orientation.angle || 0 : (window.orientation || 0);
   heading = (h + sc + 360) % 360;
   camHeading = backHeading(e, h);
+  turnArrow();
   if (compassMode !== 'heading') return;
   const now = Date.now();
   if (now - lastTurn < 120) return; // rotate smoothly, save battery
@@ -2357,11 +2381,10 @@ function startHeading(quiet) {
   window.addEventListener('deviceorientation', onOrientation);
   askCompass().then(ok => { if (!ok && !quiet) toast('Compass not allowed – using GPS course while moving.'); });
 }
-function stopHeading() {
-  if (camWatch) return; // the own stream still needs the camera direction
-  window.removeEventListener('deviceorientationabsolute', onOrientation);
-  window.removeEventListener('deviceorientation', onOrientation);
-}
+// the compass always runs: the own arrow turns with the phone (the compass button only decides whether the map turns)
+startHeading(true);
+// iPhone: allowed only within a tap – with the first tap anywhere
+document.addEventListener('pointerup', () => askCompass(), { once: true, capture: true });
 
 // tapping the compass: a map rotated by hand goes back to north; if already north up, heading up (HDG)
 $('compass').addEventListener('click', () => {
@@ -2376,7 +2399,6 @@ $('compass').addEventListener('click', () => {
     setTimeout(() => { if (compassMode === 'heading' && heading == null && !(me && me.speed > 0.5)) toast('No compass sensor – map turns with GPS course while moving.'); }, 2500);
   } else {
     compassMode = 'north';
-    stopHeading();
     resetNorth();
   }
   updateCompass();
@@ -2389,7 +2411,6 @@ function resetNorth() {
 function manualRotate() {
   if (compassMode !== 'heading') return;
   compassMode = 'north';
-  stopHeading();
   updateCompass();
 }
 // two fingers: only rotate after ~12° of deliberate rotation so the map does not wobble while zooming

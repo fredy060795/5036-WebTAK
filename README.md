@@ -184,7 +184,8 @@ Home Screen"). Laid out like ATAK:
   once, plus overlays and chat; optionally own markers are deleted on the TAK server too.
 - **Left:** compass – the needle always points north. Tap: a map rotated by hand goes back to north up;
   if it is north up, heading up "HDG" (without a sensor by GPS course), again = north up "N".
-  Below it "zoom to me".
+  The compass button only turns the map – the **own arrow always turns**: GPS course while moving, otherwise the
+  phone's compass (iPhone allows it with the first tap). Below it "zoom to me".
 - **Gestures like ATAK:** rotating two fingers = rotate the map (only after ~12° so zooming does not wobble; on a PC
   Shift + mouse wheel), pushing two fingers up/down together = tilt – also from the flat map.
 - **Right:** slider for tilting (double tap = flat). When tilted, WebTAK shows a **real 3D map** like
