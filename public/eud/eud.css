@@ -439,3 +439,4 @@ body:has(.tmenu:not(.hidden)) #toast { top: calc(190px + var(--top)); }
 #permBar span { flex: 1; }
 #permGo { background: #1f6f3a; border: 1px solid #2e8b4a; color: #fff; border-radius: 3px; padding: 8px 12px; font: 600 13px var(--font); }
 #permClose { background: none; border: none; color: #fff; font-size: 16px; padding: 4px 6px; }
+a.mbtn { color: #fff; text-decoration: none; box-sizing: border-box; }

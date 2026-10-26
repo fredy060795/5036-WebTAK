@@ -165,6 +165,23 @@ admin window is in the background.
 Whoever is deleted can sign up again with the general QR code – if that should not be possible, block
 self-registration. Optionally streams can still be created manually with their own QR code.
 
+## Android app (APK)
+
+One app for every WebTAK server (`mobile/`, Capacitor): it opens the server from the invitation and adds what a browser
+cannot – **the position keeps being sent with the screen locked** (notification "WebTAK"), no new permission prompts
+after every start.
+- **For users:** access page (or WebTAK → Settings on Android) → **1 · Download the app** → **2 · Open in the WebTAK app**
+  – server and login are taken over (`webtak://open?u=…`). Without an invitation: enter the server address in the app.
+  In the app: Settings → CHANGE SERVER. Android asks once to allow installing apps from the browser.
+- **Download:** `/download/webtak.apk` on the WebTAK server – a `webtak.apk` in the data folder (e.g. without internet in
+  the field), otherwise the GitHub release (`WEBTAK_APK_URL`, default: release `android` of this repository).
+- **Build:** GitHub Actions (`.github/workflows/android.yml`) builds the APK for every change in `mobile/` and publishes it
+  on `main` as release `android`. Sign every version with the same key – add the secrets `ANDROID_KEYSTORE_BASE64`,
+  `ANDROID_KEYSTORE_PASSWORD`, `ANDROID_KEY_ALIAS`, `ANDROID_KEY_PASSWORD` (Settings → Secrets → Actions); without them
+  the APK is debug-signed and an update needs the old app uninstalled first.
+- **Not in the app (yet):** Meshtastic over Bluetooth – the Android WebView has no Web Bluetooth; use Chrome for the mesh.
+- **iPhone:** no app outside the App Store/TestFlight (Apple developer account needed) – WebTAK in Safari/Bluefy as before.
+
 ## WebTAK app (map + situational picture on the phone)
 
 At `https://<server>/eud/` there is **WebTAK**, a lean TAK client as a web app (PWA) at ATAK CoT level,
@@ -518,6 +535,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 | `DATA_DIR` | data directory (admin, SMTP, streams) | `./data` |
 | `FFMPEG_PATH` | path to ffmpeg | `ffmpeg` |
 | `MAX_TAK_PER_IP` | WebTAK devices per public IP (players often share one field router / Starlink) | `40` |
+| `WEBTAK_APK_URL` | where `/download/webtak.apk` leads (own build / fork) – a `webtak.apk` in the data folder has priority | release `android` of this repository |
 | `TLS_CERT` / `TLS_KEY` | HTTPS directly in the server instead of a reverse proxy | – |
 | `TEST_CA_FILE` | test only: CA file offered for download at `/ca.crt` (set by start.bat) | – |
 | `TRUST_PROXY` | `1` = evaluate X-Forwarded headers from the reverse proxy | `1`, with `TLS_CERT` `0` |

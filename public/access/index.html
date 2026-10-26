@@ -56,6 +56,14 @@
       </div>
 
       <div data-pane="eud">
+        <div class="appbox" id="appBox">
+          <b>Android: WebTAK app</b> – keeps sending your position with the screen locked.
+          <div class="row" style="margin-top:8px">
+            <a class="btn" href="/download/webtak.apk">1 · Download the app</a>
+            <a class="btn blue" id="appOpen" href="#">2 · Open in the WebTAK app</a>
+          </div>
+          <p class="mut small">Installing: allow "install unknown apps" for your browser when Android asks. Then tap 2 – server and login are taken over.</p>
+        </div>
         <div class="qrbox">
           <img class="qr" id="qrEud" alt="WebTAK QR code">
           <div class="grow">
@@ -264,6 +272,8 @@ async function load() {
   } else $('droneCard').classList.add('hidden');
   p.set('t', token); // WebTAK remembers the access (e.g. for the drone address without typing the password)
   $('eudLink').href = '/eud/#' + p;
+  $('appOpen').href = 'webtak://open?u=' + encodeURIComponent(location.origin + '/eud/#' + p); // Android app (mobile/)
+  if (!/Android/i.test(navigator.userAgent)) $('appBox').classList.add('hidden'); // the app is for Android only
 
 }
 for (const b of document.querySelectorAll('#tabs button')) {
