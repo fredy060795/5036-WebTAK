@@ -267,8 +267,9 @@ see each other without internet. Players with only the Meshtastic app appear on 
 messages in the chat. **Markers, moving/renaming and deleting** go over LoRa as CoT on port 257 like the plugin
 (zlib; larger ones as fountain blocks with acknowledgement) – also markers from ATAK users arrive this way. Over LoRa go the chat to All (also as Meshtastic text, can be switched off) and direct
 messages; team and group chats stay on the TAK server (the TAK packets of the plugin have no rooms).
-- **Sending:** by default only while no TAK server is connected (offline) – online the TAK server carries everything.
-  "Always" sends over LoRa as well. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
+- **Sending:** by default **always – online and over LoRa**, so devices without internet (only on the mesh) also get
+  positions, chat and markers of online users. What arrives twice (server + mesh) is shown once (same UID / message ID).
+  "Only when offline" saves airtime when everybody has internet. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
 - **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
 - If the connection is lost, WebTAK keeps reconnecting; after reloading the page it reconnects by itself where the browser
   allows it, otherwise tap RECONNECT. The icon above the server status shows the state (green = connected, yellow = connecting or paused for
