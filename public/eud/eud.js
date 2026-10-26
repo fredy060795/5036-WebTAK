@@ -993,7 +993,10 @@ function openConn(srv) {
   sock.onmessage = ev => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.type === 'cot') { document.dispatchEvent(new CustomEvent('eud-cot-in', { detail: { xml: msg.xml } })); return handleCot(msg.xml, { srv }); } // mesh bridge (mesh.js)
+    if (msg.type === 'cot') { // mesh bridge (mesh.js): what the server sends right after connecting is its stored picture, not live
+      document.dispatchEvent(new CustomEvent('eud-cot-in', { detail: { xml: msg.xml, replay: !c.connectedAt || Date.now() - c.connectedAt < 15000 } }));
+      return handleCot(msg.xml, { srv });
+    }
     if (msg.type === 'assign') return applyAssignment(msg);
     if (msg.type === 'mapclear') return askMapClear(msg.request);
     if (msg.type === 'drone') { const w = droneWait.get(srv.id); if (w) { droneWait.delete(srv.id); w(msg); } return; }
@@ -1002,6 +1005,7 @@ function openConn(srv) {
     c.state = msg.state;
     c.message = msg.message || '';
     if (msg.state === 'connected' && was !== 'connected') {
+      c.connectedAt = Date.now();
       toast('Connected: ' + (srv.name || srv.host));
       sendSelfTo(srv);
       document.dispatchEvent(new CustomEvent('eud-connected', { detail: { srv } })); // device profile (data.js)
