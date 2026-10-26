@@ -446,7 +446,7 @@ function popupHtml(it) {
   if (me && Number.isFinite(c.lat)) rows.push(`<div class="k">${fmtDist(distance(me, c))} · ${Math.round(bearing(me, c))}°</div>`);
   if (c.speed > 0.5) rows.push(`<div class="k">${(c.speed * 3.6).toFixed(0)} km/h</div>`);
   if (c.battery) rows.push(`<div class="k">Battery ${esc(c.battery)} %</div>`);
-  rows.push(`<div class="k">${ago(c.time)}${Date.now() > c.stale ? ' · stale' : ''}</div>`);
+  rows.push(`<div class="k">${ago(c.time)}${it.offline ? ' · connection lost – last position' : Date.now() > c.stale ? ' · stale' : ''}</div>`);
   if (c.remarks) rows.push(`<div>${esc(c.remarks)}</div>`);
   const v = videoUrl(c);
   if (v) rows.push(`<button type="button" class="play" data-play="${esc(v)}" data-name="${esc(c.callsign || c.uid)}">▶ VIDEO</button>`);
@@ -530,6 +530,18 @@ function updateOwn(it, { lat, lon, name }) {
   persistSoon();
   const sent = sendCot(xml, true);
   toast((name != null ? 'Renamed' : 'Moved') + (sent ? ' – sent.' : ' – will be sent once connected.'));
+}
+
+// user lost the connection: grey at the last position (stale now), kept for 60 min like a contact without updates
+function markOffline(it) {
+  const now = Date.now() - 1; // stale from now on (drawItem greys what is past its stale time)
+  if (it.c.stale <= now) return;
+  it.c.stale = now;
+  it.offline = true;
+  it.xml = it.xml.replace(/(<event\b[^>]*\sstale=")[^"]*(")/, `$1${cotTime(new Date(now))}$2`);
+  drawItem(it);
+  persistSoon();
+  if (popupSec === 'contacts') renderList();
 }
 
 function removeItem(uid) {
@@ -625,7 +637,14 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
   if (!c || !c.uid) return;
   if (c.type.startsWith('t-x-c-t')) return; // Ping/Pong
   if (c.type === 't-x-d-d') {
-    for (const l of c.links) if (l.uid) removeItem(l.uid);
+    // the TAK server sends this too when a device loses its connection (OpenTAKServer: send_disconnect_cot).
+    // Like ATAK, a user is then only greyed out at the last position – removed by the sweep after 60 min.
+    // A deliberate deletion (<__forcedelete/>, markers) removes it right away.
+    const force = !!(c.detail && c.detail.querySelector('__forcedelete'));
+    for (const l of c.links) {
+      const it = l.uid && items.get(l.uid);
+      if (it && it.c.team && !force) markOffline(it); else if (l.uid) removeItem(l.uid);
+    }
     return;
   }
   if (c.type === 'b-t-f') return receiveChat(c, local);
@@ -641,6 +660,7 @@ function handleCot(xml, { local = false, own = false, srv = null } = {}) {
   const it = prev || { uid: c.uid };
   it.c = c;
   it.xml = xml;
+  it.offline = false; // a new position: back online
   it.own = own || (prev && prev.own) || c.links.some(l => l.uid === profile.uid && l.relation === 'p-p');
   items.set(c.uid, it);
   drawItem(it);
