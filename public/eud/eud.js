@@ -993,7 +993,7 @@ function openConn(srv) {
   sock.onmessage = ev => {
     let msg;
     try { msg = JSON.parse(ev.data); } catch (e) { return; }
-    if (msg.type === 'cot') return handleCot(msg.xml, { srv });
+    if (msg.type === 'cot') { document.dispatchEvent(new CustomEvent('eud-cot-in', { detail: { xml: msg.xml } })); return handleCot(msg.xml, { srv }); } // mesh bridge (mesh.js)
     if (msg.type === 'assign') return applyAssignment(msg);
     if (msg.type === 'mapclear') return askMapClear(msg.request);
     if (msg.type === 'drone') { const w = droneWait.get(srv.id); if (w) { droneWait.delete(srv.id); w(msg); } return; }

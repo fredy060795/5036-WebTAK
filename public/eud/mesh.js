@@ -19,7 +19,7 @@
   const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 
   const cfg = Object.assign({
-    enabled: false, id: '', name: '', send: 'always', interval: 60, channel: 0, nodes: true, text: true,
+    enabled: false, id: '', name: '', send: 'always', interval: 60, channel: 0, nodes: true, text: true, bridge: true,
   }, store.get('eud.mesh', {}));
   // default: always also over the mesh – otherwise devices without internet miss what online users send.
   // The old default "offline" is switched over unless the user chose it himself.
@@ -65,6 +65,7 @@
     $('meshInterval').value = String(cfg.interval);
     $('meshShowNodes').checked = cfg.nodes;
     $('meshText').checked = cfg.text;
+    $('meshBridge').checked = cfg.bridge;
     const sel = $('meshChannel');
     const list = channels.length ? channels : [{ index: cfg.channel, name: '' }];
     sel.textContent = '';
@@ -254,9 +255,9 @@
         n.takUid = tak.uid;
         removeItem('MESH-' + P.nodeId(p.from)); // now shown as a TAK contact
       }
-      if (tak.pli) handleCot(P.pliCot(tak, p.from));
+      if (tak.pli) fromMesh(P.pliCot(tak, p.from));
       else if (tak.chat && (tak.chat.to === P.ALL_CHAT || tak.chat.to === profile.uid)) {
-        handleCot(P.chatCot({
+        fromMesh(P.chatCot({
           senderUid: tak.uid || 'MESH-' + P.nodeId(p.from), senderCallsign: tak.callsign || P.nodeId(p.from),
           msgId: tak.msgId || String(p.id), text: tak.chat.message, toUid: tak.chat.to === P.ALL_CHAT ? '' : profile.uid,
         }));
@@ -370,9 +371,10 @@
     sendCotMesh(e.detail.xml).catch(err => toast('Mesh: sending failed – ' + err.message));
   });
 
-  async function sendCotMesh(xml) {
+  async function sendCotMesh(xml, { directOnly = false } = {}) {
     const z = await zlib(P.utf8.encode(xml));
     if (z.length <= MAX_DIRECT) return send(P.PORT.FORWARDER, z);
+    if (directOnly) return null; // bridge: larger (long routes, big drawings) would block LoRa for minutes – stays on the server
     const data = new Uint8Array(z.length + 1); // transfer type byte (0 = CoT) + zlib data
     data[0] = P.FOUNTAIN.TYPE_COT;
     data.set(z, 1);
@@ -435,7 +437,121 @@
   function showCot(bytes) {
     const xml = new TextDecoder().decode(bytes).trim();
     if (!xml.startsWith('<')) return;
-    try { handleCot(xml); } catch (e) { /* not CoT */ }
+    try { fromMesh(xml); } catch (e) { /* not CoT */ }
+  }
+
+  // ---------------- Bridge: mesh <-> TAK server ----------------
+  // A WebTAK device with a radio AND a TAK server is a gateway: what only came over LoRa goes to the TAK server,
+  // what only came from the server goes over LoRa – everybody ends up with the same picture.
+  // No duplicates, no loops, no collisions with several gateways:
+  // - every gateway waits a random 2–8 s and skips what has meanwhile arrived on the other side,
+  // - what a gateway passes on carries <__webtakmesh/> and never goes back,
+  // - only TAK content: plain Meshtastic nodes/texts (strangers on a public channel) stay off the TAK server,
+  // - only live content (< 2 min): what a server sends again on connecting stays off LoRa,
+  // - towards LoRa: positions of a contact at most every 5 min, one packet every 3 s (airtime).
+  const MARK = '__webtakmesh';
+  const SEEN_MS = 10 * 60000, PLI_SAME_MS = 90000, PLI_DOWN_MS = 5 * 60000;
+  const seenServer = new Map(), seenMesh = new Map(), pliDown = new Map();
+  const pendingUp = new Set(), pendingDown = new Set(); // waiting right now (an update arriving meanwhile is not scheduled twice)
+  const attr = (xml, a) => { const m = new RegExp(`\\s${a}="([^"]*)"`).exec(xml.slice(0, xml.indexOf('>') + 1)); return m ? m[1] : ''; };
+  const isPli = (type, xml) => type.startsWith('a-') && xml.includes('<__group');
+  // chat: same UID on both ways (GeoChat.<sender>.<room>.<messageId>); position: only "recently" (the mesh copy has a new time);
+  // everything else: UID + time (a change has a new time)
+  function bridgeKey(xml) {
+    const type = attr(xml, 'type'), uid = attr(xml, 'uid');
+    if (!type || !uid) return null;
+    if (type === 'b-t-f') return { type, uid, key: 'c|' + uid, pli: false };
+    if (isPli(type, xml)) return { type, uid, key: 'p|' + uid, pli: true };
+    return { type, uid, key: uid + '|' + attr(xml, 'time'), pli: false };
+  }
+  // only live content: a server sends its whole picture again on every (re)connection – that must not flood LoRa
+  const LIVE_MS = 2 * 60000;
+  const live = xml => { const t = Date.parse(attr(xml, 'time')); return !t || Math.abs(Date.now() - t) < LIVE_MS; };
+  const seenIn = (map, k) => { const t = map.get(k.key); return t != null && Date.now() - t < (k.pli ? PLI_SAME_MS : SEEN_MS); };
+  // random wait: the server is fast (1–6 s), LoRa is slow and shared (2–12 s) – the first gateway passes it on,
+  // the others hear it meanwhile and stay quiet
+  const jitter = (min, max) => sleep(min + Math.random() * (max - min));
+  const marked = xml => (/<detail\s*\/>/.test(xml) ? xml.replace(/<detail\s*\/>/, `<detail><${MARK}/></detail>`)
+    : xml.includes('</detail>') ? xml.replace(/<\/detail>(?![\s\S]*<\/detail>)/, `<${MARK}/></detail>`) : xml.replace(/<\/event>\s*$/, `<detail><${MARK}/></detail></event>`));
+
+  function fromMesh(xml) {
+    handleCot(xml);
+    const k = bridgeKey(xml);
+    if (!k) return;
+    seenMesh.set(k.key, Date.now());
+    bridgeUp(xml, k).catch(() => {});
+  }
+  document.addEventListener('eud-cot-in', e => {
+    const k = bridgeKey(e.detail.xml);
+    if (!k) return;
+    seenServer.set(k.key, Date.now());
+    bridgeDown(e.detail.xml, k).catch(() => {});
+  });
+
+  async function bridgeUp(xml, k) {
+    if (!cfg.bridge || xml.includes('<' + MARK) || !live(xml)) return; // came from the server through another gateway / old
+    if (k.type === 'a-f-G-E-S' || k.uid.startsWith('MESH-')) return; // plain Meshtastic, not TAK
+    if (k.type === 'b-t-f' && !xml.includes('.' + P.ALL_CHAT + '.')) return; // direct message to us: not for the server
+    if (pendingUp.has(k.key)) return;
+    pendingUp.add(k.key);
+    await jitter(1000, 6000);
+    pendingUp.delete(k.key);
+    if (!window.eud.serverOnline() || seenIn(seenServer, k)) return; // the TAK server has it already
+    seenServer.set(k.key, Date.now());
+    window.eud.forwardCot(marked(xml));
+  }
+
+  let downChain = Promise.resolve(), downQueued = 0;
+  async function bridgeDown(xml, k) {
+    if (!cfg.bridge || xml.includes('<' + MARK) || !live(xml)) return; // came from the mesh through a gateway / old
+    if (k.uid === profile.uid || k.uid.startsWith('GeoChat.' + profile.uid + '.')) return; // own: sent over LoRa already
+    const chat = k.type === 'b-t-f';
+    if (chat && !xml.includes('.' + P.ALL_CHAT + '.')) return; // team/group/direct chat: not over LoRa (like the plugin)
+    if (!chat && !k.pli && !/^(a-|b-m-|u-d-|u-rb-a|t-x-d-d)/.test(k.type)) return; // pings, missions, files …
+    if (k.pli) {
+      if (Date.parse(attr(xml, 'stale')) < Date.now()) return;
+      const last = pliDown.get(k.uid);
+      if (last && Date.now() - last < PLI_DOWN_MS) return;
+    }
+    if (pendingDown.has(k.key)) return;
+    pendingDown.add(k.key);
+    await jitter(2000, 12000);
+    if (state !== 'connected' || seenIn(seenMesh, k) || downQueued > 20) { pendingDown.delete(k.key); return; } // the mesh has it already / LoRa full
+    if (k.pli) pliDown.set(k.uid, Date.now());
+    downQueued++;
+    downChain = downChain.then(() => {
+      pendingDown.delete(k.key);
+      if (seenIn(seenMesh, k)) return null; // another gateway was quicker while this waited in the queue
+      seenMesh.set(k.key, Date.now());
+      return sendDown(xml, k);
+    }).catch(() => {}).then(() => { downQueued--; return sleep(3000); });
+  }
+
+  function sendDown(xml, k) {
+    if (state !== 'connected') return null;
+    if (window.__meshTest) { (window.__meshTest.down = window.__meshTest.down || []).push(k.uid); (window.__meshTest.air = window.__meshTest.air || []).push(k.pli || k.type === 'b-t-f' ? xml : marked(xml)); }
+    if (!k.pli && k.type !== 'b-t-f') return sendCotMesh(marked(xml), { directOnly: true }); // markers, drawings, deletions: port 257 like the plugin
+    const doc = new DOMParser().parseFromString(xml, 'application/xml');
+    const q = sel => doc.querySelector(sel);
+    const a = (sel, n) => (q(sel) ? q(sel).getAttribute(n) : null);
+    if (k.type === 'b-t-f') {
+      const sender = a('__chat', 'senderCallsign') || '';
+      const senderUid = a('link', 'uid') || k.uid.split('.')[1] || '';
+      return send(P.PORT.ATAK, P.takChat({ callsign: sender, uid: senderUid, msgId: a('__chat', 'messageId') || k.uid.split('.').pop(), message: fit(q('remarks') ? q('remarks').textContent : ''), to: P.ALL_CHAT }));
+    }
+    const num = n => (Number.isFinite(Number(n)) ? Number(n) : null);
+    return send(P.PORT.ATAK, P.takPli({
+      callsign: a('contact', 'callsign') || k.uid, uid: k.uid, team: a('__group', 'name'), role: a('__group', 'role'), battery: num(a('status', 'battery')),
+      lat: num(a('point', 'lat')), lon: num(a('point', 'lon')), alt: num(a('point', 'hae')) < 9e6 ? num(a('point', 'hae')) : null,
+      speed: num(a('track', 'speed')), course: num(a('track', 'course')),
+    }));
+  }
+  setInterval(() => { const t = Date.now() - SEEN_MS; for (const m of [seenServer, seenMesh]) for (const [k, v] of m) if (v < t) m.delete(k); }, 60000);
+  // automated tests only (set before the page loads): a fake radio
+  if (window.__meshTest) {
+    window.__meshTest.api = {
+      fromMesh, connect(sent) { toRadio = { writeValue: async b => { sent.push(b); } }; state = 'connected'; },
+    };
   }
 
   setInterval(() => { for (const [k, st] of receiving) if (Date.now() - st.t > 300000) receiving.delete(k); }, 60000);
@@ -487,6 +603,7 @@
     else for (const num of nodes.keys()) removeItem('MESH-' + P.nodeId(num));
   });
   $('meshText').addEventListener('change', () => { cfg.text = $('meshText').checked; save(); });
+  $('meshBridge').addEventListener('change', () => { cfg.bridge = $('meshBridge').checked; save(); });
   $('meshBluefy').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText(location.href); toast('Link copied – open it in Bluefy.'); } catch (e) { toast(location.href, 8000); }
   });

@@ -272,6 +272,12 @@ messages; team and group chats stay on the TAK server (the TAK packets of the pl
 - **Sending:** by default **always – online and over LoRa**, so devices without internet (only on the mesh) also get
   positions, chat and markers of online users. What arrives twice (server + mesh) is shown once (same UID / message ID).
   "Only when offline" saves airtime when everybody has internet. Position every 30 s / 1 / 2 / 5 min (earlier after moving 50 m), channel selectable.
+- **Bridge mesh ↔ TAK server** (on by default): a device with radio and TAK server passes on what only one side has –
+  from the mesh to the server positions of TAK users, chat "All", markers, drawings and deletions; from the server over
+  LoRa the same (positions of a contact at most every 5 min, only what fits one LoRa packet). Only live content (< 2 min)
+  – what a server sends again on connecting stays off LoRa. Several gateways do not collide: each waits a random moment
+  and skips what another one already passed on; passed-on content carries a mark and never goes back (no loops).
+  Plain Meshtastic nodes and texts (e.g. strangers on a public channel) are not passed to the TAK server.
 - **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
 - If the connection is lost, WebTAK keeps reconnecting; after reloading the page it reconnects by itself where the browser
   allows it, otherwise tap RECONNECT. The icon above the server status shows the state (green = connected, yellow = connecting or paused for
