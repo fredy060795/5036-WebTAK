@@ -192,7 +192,10 @@ Home Screen"). Laid out like ATAK:
 - **Left:** compass – the needle always points north. Tap: a map rotated by hand goes back to north up;
   if it is north up, heading up "HDG" (without a sensor by GPS course), again = north up "N".
   The compass button only turns the map – the **own arrow always turns**: GPS course while moving, otherwise the
-  phone's compass (iPhone allows it with the first tap). Below it "zoom to me".
+  phone's compass. Below it "zoom to me".
+- **Permissions after every start:** if location or compass are missing (the iPhone asks again each time WebTAK was
+  closed and allows the compass only with a tap), a bar appears right away – **ALLOW** asks for both with one tap; if
+  still refused it says where to switch it on in the settings.
 - **Gestures like ATAK:** rotating two fingers = rotate the map (only after ~12° so zooming does not wobble; on a PC
   Shift + mouse wheel), pushing two fingers up/down together = tilt – also from the flat map.
 - **Right:** slider for tilting (double tap = flat). When tilted, WebTAK shows a **real 3D map** like
