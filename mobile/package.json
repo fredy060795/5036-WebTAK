@@ -4,13 +4,15 @@
   "private": true,
   "description": "WebTAK for Android: opens the WebTAK server from the invitation link, with background location",
   "scripts": {
-    "sync": "cap sync android"
+    "sync": "cp node_modules/jsqr/dist/jsQR.js www/jsQR.js && cap sync android"
   },
   "dependencies": {
     "@capacitor-community/background-geolocation": "1.2.26",
+    "@capacitor-community/bluetooth-le": "7.3.2",
     "@capacitor/android": "7.6.9",
     "@capacitor/app": "7.1.2",
-    "@capacitor/core": "7.6.9"
+    "@capacitor/core": "7.6.9",
+    "jsqr": "1.4.0"
   },
   "devDependencies": {
     "@capacitor/cli": "7.6.9"
