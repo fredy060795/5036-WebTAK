@@ -371,21 +371,21 @@
     sendCotMesh(e.detail.xml).catch(err => toast('Mesh: sending failed – ' + err.message));
   });
 
-  async function sendCotMesh(xml, { directOnly = false } = {}) {
+  async function sendCotMesh(xml, { quick = false } = {}) {
     const z = await zlib(P.utf8.encode(xml));
     if (z.length <= MAX_DIRECT) return send(P.PORT.FORWARDER, z);
-    if (directOnly) return null; // bridge: larger (long routes, big drawings) would block LoRa for minutes – stays on the server
     const data = new Uint8Array(z.length + 1); // transfer type byte (0 = CoT) + zlib data
     data[0] = P.FOUNTAIN.TYPE_COT;
     data.set(z, 1);
     const K = Math.ceil(data.length / P.FOUNTAIN.BLOCK);
-    if (K > MAX_SOURCE_BLOCKS) { toast('Mesh: too large for LoRa – it is sent once the TAK server is back.', 5000); return; }
+    if (K > MAX_SOURCE_BLOCKS) { if (!quick) toast('Mesh: too large for LoRa – it is sent once the TAK server is back.', 5000); return; }
     const transferId = 1 + Math.floor(Math.random() * 0xfffffe);
     const st = { hash: await sha8(data), done: false, more: 0 };
     sending.set(transferId, st);
     // like the plugin: blocks + ACK wait, up to 3 rounds; a further round sends NEW blocks (new seeds)
     let next = 0, count = P.fountainBlockCount(K);
-    for (let round = 0; round < 3 && !st.done && state === 'connected'; round++) {
+    // bridge (quick): one round and a short wait – a gateway must not block LoRa for minutes
+    for (let round = 0; round < (quick ? 1 : 3) && !st.done && state === 'connected'; round++) {
       const blocks = P.fountainEncode(data, next + count, transferId).slice(next);
       next += count;
       for (const b of blocks) {
@@ -393,7 +393,7 @@
         await send(P.PORT.FORWARDER, b);
         await sleep(BLOCK_GAP);
       }
-      const until = Date.now() + Math.min(300000, 10000 + count * 6400 + 12800);
+      const until = Date.now() + (quick ? 8000 : Math.min(300000, 10000 + count * 6400 + 12800));
       while (!st.done && !st.more && Date.now() < until && state === 'connected') await sleep(250);
       count = st.more || Math.max(5, Math.ceil(K / 5));
       st.more = 0;
@@ -447,13 +447,14 @@
   // - every gateway waits a random 2–8 s and skips what has meanwhile arrived on the other side,
   // - what a gateway passes on carries <__webtakmesh/> and never goes back,
   // - only TAK content: plain Meshtastic nodes/texts (strangers on a public channel) stay off the TAK server,
-  // - only live content (< 2 min): what a server sends again on connecting stays off LoRa,
+  // - only live content: what a server sends again on connecting stays off LoRa,
   // - towards LoRa: positions of a contact at most every 5 min, one packet every 3 s (airtime).
   const MARK = '__webtakmesh';
   const SEEN_MS = 10 * 60000, PLI_SAME_MS = 90000, PLI_DOWN_MS = 5 * 60000;
   const seenServer = new Map(), seenMesh = new Map(), pliDown = new Map();
   const pendingUp = new Set(), pendingDown = new Set(); // waiting right now (an update arriving meanwhile is not scheduled twice)
-  const attr = (xml, a) => { const m = new RegExp(`\\s${a}="([^"]*)"`).exec(xml.slice(0, xml.indexOf('>') + 1)); return m ? m[1] : ''; };
+  // attribute of the <event> tag – WinTAK puts <?xml …?> in front, so not simply the first tag
+  const attr = (xml, a) => { const i = Math.max(0, xml.indexOf('<event')); const m = new RegExp(`\\s${a}="([^"]*)"`).exec(xml.slice(i, xml.indexOf('>', i) + 1)); return m ? m[1] : ''; };
   const isPli = (type, xml) => type.startsWith('a-') && xml.includes('<__group');
   // chat: same UID on both ways (GeoChat.<sender>.<room>.<messageId>); position: only "recently" (the mesh copy has a new time);
   // everything else: UID + time (a change has a new time)
@@ -464,8 +465,10 @@
     if (isPli(type, xml)) return { type, uid, key: 'p|' + uid, pli: true };
     return { type, uid, key: uid + '|' + attr(xml, 'time'), pli: false };
   }
-  // only live content: a server sends its whole picture again on every (re)connection – that must not flood LoRa
-  const LIVE_MS = 2 * 60000;
+  // only live content: a server sends its whole picture again on every (re)connection – that must not flood LoRa.
+  // Recognised by the moment it arrives (first seconds after connecting, eud.js) – not by the time in the CoT, the clock of a
+  // WinTAK PC may be off by minutes; only really old content (> 15 min) is left out by its time.
+  const LIVE_MS = 15 * 60000;
   const live = xml => { const t = Date.parse(attr(xml, 'time')); return !t || Math.abs(Date.now() - t) < LIVE_MS; };
   const seenIn = (map, k) => { const t = map.get(k.key); return t != null && Date.now() - t < (k.pli ? PLI_SAME_MS : SEEN_MS); };
   // random wait: the server is fast (1–6 s), LoRa is slow and shared (2–12 s) – the first gateway passes it on,
@@ -485,7 +488,7 @@
     const k = bridgeKey(e.detail.xml);
     if (!k) return;
     seenServer.set(k.key, Date.now());
-    bridgeDown(e.detail.xml, k).catch(() => {});
+    if (!e.detail.replay) bridgeDown(e.detail.xml, k).catch(() => {});
   });
 
   async function bridgeUp(xml, k) {
@@ -527,10 +530,34 @@
     }).catch(() => {}).then(() => { downQueued--; return sleep(3000); });
   }
 
+  // for LoRa only what a TAK client needs to show the item: WinTAK/ATAK and the TAK server add a lot
+  // (flow tags, creator copy, precision, status …) – a WinTAK marker shrinks from ~585 to ~250 bytes (zlib)
+  const KEEP = new Set(['contact', 'link', 'remarks', 'color', 'usericon', '__milsym', 'archive', 'strokeColor', 'strokeWeight', 'fillColor',
+    'shape', 'labels_on', 'closed', 'height', 'height_unit', 'range', 'bearing', 'inclination', 'rangeUnits', 'bearingUnits', 'northRef', '__group', 'track']);
+  function slimCot(xml) {
+    const doc = new DOMParser().parseFromString(xml.replace(/^<\?xml[^>]*>\s*/, ''), 'application/xml');
+    const ev = doc.documentElement;
+    if (!ev || ev.nodeName !== 'event') return xml;
+    ev.removeAttribute('access');
+    const pt = ev.querySelector(':scope > point');
+    if (pt) for (const a of ['lat', 'lon']) pt.setAttribute(a, Number(pt.getAttribute(a)).toFixed(6));
+    if (pt && Number(pt.getAttribute('hae')) < 9e6) pt.setAttribute('hae', String(Math.round(Number(pt.getAttribute('hae')))));
+    const det = ev.querySelector(':scope > detail');
+    if (det) {
+      for (const c of [...det.children]) if (!KEEP.has(c.nodeName)) c.remove();
+      for (const l of det.querySelectorAll(':scope > link[relation="p-p"]')) l.removeAttribute('production_time');
+      const r = det.querySelector(':scope > remarks');
+      if (r) { for (const a of [...r.attributes]) r.removeAttribute(a.name); if (r.textContent.length > 200) r.textContent = r.textContent.slice(0, 200); }
+      const arch = det.querySelectorAll(':scope > archive');
+      for (let i = 1; i < arch.length; i++) arch[i].remove();
+    }
+    return new XMLSerializer().serializeToString(ev);
+  }
+
   function sendDown(xml, k) {
     if (state !== 'connected') return null;
     if (window.__meshTest) { (window.__meshTest.down = window.__meshTest.down || []).push(k.uid); (window.__meshTest.air = window.__meshTest.air || []).push(k.pli || k.type === 'b-t-f' ? xml : marked(xml)); }
-    if (!k.pli && k.type !== 'b-t-f') return sendCotMesh(marked(xml), { directOnly: true }); // markers, drawings, deletions: port 257 like the plugin
+    if (!k.pli && k.type !== 'b-t-f') return sendCotMesh(marked(slimCot(xml)), { quick: true }); // markers, drawings, deletions: port 257 like the plugin
     const doc = new DOMParser().parseFromString(xml, 'application/xml');
     const q = sel => doc.querySelector(sel);
     const a = (sel, n) => (q(sel) ? q(sel).getAttribute(n) : null);
@@ -550,7 +577,7 @@
   // automated tests only (set before the page loads): a fake radio
   if (window.__meshTest) {
     window.__meshTest.api = {
-      fromMesh, connect(sent) { toRadio = { writeValue: async b => { sent.push(b); } }; state = 'connected'; },
+      fromMesh, slimCot, connect(sent) { toRadio = { writeValue: async b => { sent.push(b); } }; state = 'connected'; },
     };
   }
 
