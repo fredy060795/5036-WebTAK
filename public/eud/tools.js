@@ -1,5 +1,5 @@
 // WebTAK EUD – tools like ATAK: drawing (line, rectangle, polygon, circle), Bloodhound (line to a target
-// with distance), screen rotation only via the tool, and a top bar the user puts together himself.
+// with distance) and a top bar the user puts together himself.
 // Settings are stored in the profile (localStorage), like the map tiles they survive every update.
 'use strict';
 
@@ -259,73 +259,25 @@
   };
   window.eudTools = { capturing: () => !!shape };
 
-  // ======================================================================
-  // Screen rotation: not automatic, only via the tool (portrait / landscape / auto)
-  // Android: lock works in the installed app, in the browser only in full screen. iPhone: not possible for web apps.
-  // ======================================================================
-
-  const ROT = { auto: 'Auto rotate', portrait: 'Portrait', landscape: 'Landscape' };
-  async function lockRotation(mode, quiet) {
-    const so = screen.orientation;
-    if (mode === 'auto') { try { if (so && so.unlock) so.unlock(); } catch { /* not locked */ } return true; }
-    if (!so || !so.lock) {
-      if (!quiet) toast('This browser cannot lock the rotation – on the iPhone use the rotation lock in the Control Center.', 7000);
-      return false;
-    }
-    try { await so.lock(mode); return true; } catch { /* needs full screen in the browser */ }
-    const el = document.documentElement;
-    if (!document.fullscreenElement && el.requestFullscreen) {
-      try { await el.requestFullscreen({ navigationUI: 'hide' }); await so.lock(mode); return true; } catch { /* no gesture / not allowed */ }
-    }
-    if (!quiet) toast(/iPhone|iPad/.test(navigator.userAgent) ? 'iPhone/iPad: web apps cannot lock the rotation – use the rotation lock in the Control Center.'
-      : 'Rotation lock not possible here – install WebTAK as an app (menu → Add to Home screen).', 7000);
-    return false;
-  }
-  async function setRotation(mode) {
-    closeMenus();
-    profile.rotation = mode;
-    E.saveProfile();
-    const ok = await lockRotation(mode);
-    if (ok) toast(mode === 'auto' ? 'Screen rotates automatically.' : `Screen locked: ${ROT[mode]}.`);
-    renderRotMenu();
-  }
-  function renderRotMenu() {
-    const cur = profile.rotation || 'auto';
-    for (const b of document.querySelectorAll('#rotMenu [data-rot]')) b.classList.toggle('active', b.dataset.rot === cur);
-    markActive();
-  }
-  for (const b of document.querySelectorAll('#rotMenu [data-rot]')) b.addEventListener('click', () => setRotation(b.dataset.rot));
-  function toggleRotMenu() {
-    const on = $('rotMenu').classList.contains('hidden');
-    if (on) { E.closeSheets(); closeMenus(); renderRotMenu(); }
-    $('rotMenu').classList.toggle('hidden', !on);
-  }
-  // the saved lock again after a restart (full screen needs a tap: then with the first one)
-  if (profile.rotation && profile.rotation !== 'auto') {
-    lockRotation(profile.rotation, true).then(ok => {
-      if (!ok) document.addEventListener('pointerup', () => lockRotation(profile.rotation, true), { once: true, capture: true });
-    });
-  }
+  delete profile.rotation; // the rotation tool was removed again (every phone does it itself)
 
   function closeMenus() {
     $('drawMenu').classList.add('hidden');
-    $('rotMenu').classList.add('hidden');
     markActive();
   }
   // a tap on the map closes the drop-down menus
-  map.on('mousedown touchstart', () => { if (!$('drawMenu').classList.contains('hidden') || !$('rotMenu').classList.contains('hidden')) closeMenus(); });
+  map.on('mousedown touchstart', () => { if (!$('drawMenu').classList.contains('hidden')) closeMenus(); });
 
   // ======================================================================
   // Top bar like ATAK: the user chooses which tools sit on top (sidebar → ✎); stored in the profile
   // ======================================================================
 
   const DEFAULT_BAR = ['map', 'markers', 'draw', 'chat', 'video'];
-  const MAX_BAR = 8;
+  const MAX_BAR = 5; // + menu: more do not fit on a phone in portrait
   const FIXED = { map: 'btnLayers', markers: 'btnPin', chat: 'btnChat', video: 'btnVideo' }; // already in the top bar
   const ACTIONS = {
     draw: () => { E.closeSheets(); toggleDrawMenu(); },
     hound: () => { if (hound) stopHound(); else if (picking) stopPick(); else startPick(); },
-    rotate: () => { E.closeSheets(); toggleRotMenu(); },
     markers: () => $('btnPin').click(),
   };
   const tiles = () => [...document.querySelectorAll('.sb-grid .tile[data-tb]')];
@@ -368,7 +320,6 @@
     const act = {
       draw: !!shape || !$('drawMenu').classList.contains('hidden'),
       hound: !!hound || picking,
-      rotate: !$('rotMenu').classList.contains('hidden') || (profile.rotation && profile.rotation !== 'auto'),
       rb: $('btnMeasure').classList.contains('active'),
     };
     for (const [id, on] of Object.entries(act)) {
@@ -416,5 +367,5 @@
 
   renderBar();
 
-  window.eudToolsApi = { startShape, finishShape, startHound, stopHound, setRotation, renderBar, shapeXml };
+  window.eudToolsApi = { startShape, finishShape, startHound, stopHound, renderBar, shapeXml };
 })();

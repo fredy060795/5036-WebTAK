@@ -278,8 +278,11 @@
   function showNode(num) {
     const n = nodes.get(num);
     if (!cfg.nodes || !n || num === myNode || n.takUid || !n.position) return;
-    if (Date.now() / 1000 - (n.lastHeard || n.position.time || 0) > NODE_MAX_AGE) return;
-    handleCot(P.nodeCot({ num, user: n.user, position: n.position }));
+    const heard = Math.max(n.lastHeard || 0, n.position.time || 0);
+    if (!heard || Date.now() / 1000 - heard > NODE_MAX_AGE) return; // no time known: not shown as current
+    const it = window.eud.items.get('MESH-' + P.nodeId(num));
+    if (it && it.c.time > heard * 1000) return; // nothing newer than what the map has
+    handleCot(P.nodeCot({ num, user: n.user, position: n.position, heard }));
   }
 
   // ---------------- Sending ----------------

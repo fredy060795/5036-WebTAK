@@ -168,8 +168,8 @@ Home Screen"). Laid out like ATAK:
 
 - **Top bar like ATAK, put together by the user:** by default maps, markers, draw, chat and video, plus the menu
   (tile grid: Servers, Contacts & Markers, Clear Content, Data Packages, Maps, Overlays, Data Sync, Video, Meshtastic,
-  R&B Line, Draw, Bloodhound, Markers, Screen Rotation, Chat, Settings). Menu → **✎**: tap tools to put them on top
-  (★, up to 8, in the order tapped), DEFAULT resets. Stored on the device in the profile – survives every update.
+  R&B Line, Draw, Bloodhound, Markers, Chat, Settings). Menu → **✎**: tap tools to put them on top
+  (★, up to 5 plus the menu – more do not fit in portrait – in the order tapped), DEFAULT resets. Stored on the device in the profile – survives every update.
 - **Draw** (top bar, circle-and-square icon like ATAK): opens **Line, Rectangle, Polygon, Circle** and 9 colors.
   Line/polygon: tap the points, then DONE; rectangle: two opposite corners; circle: center and a point on the edge.
   The shapes are ATAK CoT (`u-d-f`, `u-d-r`, `u-d-c-c` with stroke/fill colors) – they show in ATAK/WinTAK/iTAK,
@@ -177,9 +177,6 @@ Home Screen"). Laid out like ATAK:
 - **Bloodhound:** in the window of a marker, user or drawing → BLOODHOUND, or the Bloodhound tool and tap a target
   (marker, user or a point on the map). A line from the own position to the target with distance, bearing and – while
   moving – time of arrival, updated every second (red, < 500 m yellow, < 100 m green). STOP ends it.
-- **Screen rotation:** tool **Screen Rotation** – portrait or landscape locked (the screen then no longer tips over when the phone is turned), or auto. Stored.
-  Android: works in the installed app; in the browser WebTAK switches to full screen for it. iPhone/iPad do not allow
-  web apps to lock it – use the rotation lock in the Control Center there.
 - **Contacts & Markers** split by type like the ATAK overlay manager: **Contacts** (users), markers
   **Friendly / Hostile / Neutral / Unknown** (by 2525 affiliation), other points, drawings & routes –
   every group can be expanded and collapsed and cleared on its own with 🗑. **Clear Content** clears several groups at
@@ -206,8 +203,8 @@ Home Screen"). Laid out like ATAK:
 
 **Core functions**
 
-1. Place **markers** (see above). **Drag & drop** own markers, **rename**
-   or delete them in the popup – the change goes to all servers with the same UID, like in ATAK.
+1. Place **markers** (see above). **Move** (like ATAK: tap the marker → MOVE, then drag it or tap the new position –
+   so zooming and panning never move a marker by accident), **rename** or delete them in the popup – the change goes to all servers with the same UID, like in ATAK.
 2. **Connect servers** – Menu → Servers. **Several TAK servers at once**, everything on one map.
    Per server: QR code (ATAK enrollment `tak://…/enroll?…`, iTAK `name,host,port,ssl`), data package (.zip),
    certificate (.p12), truststore or by hand (address, port, SSL/TCP/UDP, user + password →
@@ -319,8 +316,10 @@ Users request real TAK access here; after approval the app creates the account o
 **Overriding callsign, team and role:** the app sets OTS device profiles for every device of the user
 (`locationCallsign`, `locationTeam`, `atakRoleType`). **ATAK** applies them on its (next) connection to
 the server; new devices are detected every 2 minutes ("Sync with OTS" forces it right away). In the
-**web EUD** the assignment applies immediately and is locked; the relay also enforces it in the sent
-position. **iTAK** does not apply server profiles – there the user sets callsign/team as shown on the access page.
+**web EUD** team and role apply immediately and are locked (the relay also enforces them in the sent position);
+the **callsign is only a suggestion and stays editable** – several players can share one login (quick game), each with
+their own callsign. After a login by QR code/link WebTAK asks once to check the callsign; a later change by the admin
+is only taken over if the user kept the previous one. **iTAK** does not apply server profiles – there the user sets callsign/team as shown on the access page.
 
 **ATAK without typing:** the ATAK QR code on the access page is a normal https link – scan it with the phone camera,
 the page opens, download the **ATAK setup package** (`.zip`) and open it with ATAK. The package contains server,
@@ -353,6 +352,14 @@ in the admin without choosing groups therefore gets **all** groups; missions wit
 **Security:** the passwords of the TAK accounts and the OTS admin password are stored in `DATA_DIR/db.json`
 (file mode 600) so the access page can show the data; the access link is secret (48 characters) and
 worthless after blocking/deleting. Registrations are limited to 5 per hour and IP.
+
+## Clear map on all devices (after a mission)
+
+Admin → **Clear map (all devices)**: choose what to remove (markers by affiliation, other points, drawings & routes,
+overlays, contacts, chat) and an optional note. Every WebTAK device asks its user right away (or when it connects next):
+**CLEAR NOW** removes it, **LATER** asks again at the next connection. Only content from before the request is removed –
+new markers stay – and cleared content does not come back when a TAK server sends it again. A new request replaces the
+old one; "Withdraw request" ends it. ATAK/iTAK/WinTAK are not affected.
 
 ## Federation (TAK servers exchange data)
 
@@ -488,6 +495,7 @@ sudo systemctl daemon-reload && sudo systemctl enable --now helm-camera
 | `PORT` / `BIND` | port and address of the server | `5036` / `0.0.0.0` |
 | `DATA_DIR` | data directory (admin, SMTP, streams) | `./data` |
 | `FFMPEG_PATH` | path to ffmpeg | `ffmpeg` |
+| `MAX_TAK_PER_IP` | WebTAK devices per public IP (players often share one field router / Starlink) | `40` |
 | `TLS_CERT` / `TLS_KEY` | HTTPS directly in the server instead of a reverse proxy | – |
 | `TEST_CA_FILE` | test only: CA file offered for download at `/ca.crt` (set by start.bat) | – |
 | `TRUST_PROXY` | `1` = evaluate X-Forwarded headers from the reverse proxy | `1`, with `TLS_CERT` `0` |

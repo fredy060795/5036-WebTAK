@@ -92,6 +92,7 @@
     <a href="#users" data-nav="users"><span class="ic">👥</span>Users &amp; requests <span class="badge nb" id="navPending"></span></a>
     <a href="#teams" data-nav="teams" class="admin-only"><span class="ic">⬢</span>Teams &amp; visibility</a>
     <a href="#links" data-nav="links"><span class="ic">🔗</span>Links &amp; QR codes</a>
+    <a href="#mapclear" data-nav="mapclear" class="admin-only"><span class="ic">🧹</span>Clear map (all devices)</a>
     <div class="side-h">TAK server</div>
     <a href="#otsusers" data-nav="otsusers"><span class="ic">🪪</span>OTS users</a>
     <a href="#otsgroups" data-nav="otsgroups" class="admin-only"><span class="ic">◫</span>Groups</a>
@@ -386,6 +387,23 @@
       <p class="msg" id="omeMsg"></p>
       <div class="table-wrap"><table class="streams" id="omeTable"><thead><tr><th>Channel</th><th>Radio</th><th>Up/Down</th><th>Link</th><th></th></tr></thead><tbody></tbody></table></div>
     </section>
+    <section class="card" data-view="mapclear">
+      <div class="row between"><h2>Clear map <span class="mut small">(on all WebTAK devices – e.g. after a mission)</span></h2><button id="mcReload" type="button">⟳</button></div>
+      <p class="mut small">Choose what to remove. Every WebTAK device shows a request when it connects (devices online right now
+        at once) and clears after the user confirms – nobody has to delete everything by hand. Only content from <b>before</b> the
+        request is removed, new markers stay. A new request replaces the old one; devices that cleared are not asked again.
+        ATAK/iTAK/WinTAK are not affected.</p>
+      <div id="mcCats" class="mc-cats"></div>
+      <label>Note for the users (optional)</label>
+      <input id="mcNoteIn" maxlength="200" placeholder="e.g. End of mission 1 – map is cleared for mission 2">
+      <div class="row" style="margin-top:8px">
+        <button type="button" class="pri" id="mcSend">🧹 Request map clear</button>
+        <button type="button" class="danger" id="mcWithdraw">Withdraw request</button>
+      </div>
+      <p class="msg" id="mcMsg"></p>
+      <p class="mut small" id="mcState"></p>
+    </section>
+
     <section class="card" data-view="federation">
       <div class="row between"><h2>Federation <span class="mut small">(TAK servers exchange data)</span></h2><button id="fdReload" type="button">⟳</button></div>
       <p class="mut small">WebTAK connects to every server below with its own certificate and passes data on in <b>all directions</b>: live data
@@ -502,5 +520,6 @@
 <script src="takusers.js"></script>
 <script src="ots.js"></script>
 <script src="federation.js"></script>
+<script src="mapclear.js"></script>
 </body>
 </html>

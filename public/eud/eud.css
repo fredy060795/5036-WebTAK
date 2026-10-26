@@ -162,9 +162,9 @@ svg { display: block; }
 /* Menu items (same sheet) */
 .modal { position: fixed; inset: auto 0 0 0; z-index: 7100; }
 .modal .backdrop { display: none; }
-#trust { inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; }
-#trust .backdrop { display: block; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); }
-#trust .mbox { position: relative; left: auto; right: auto; bottom: auto; top: auto; width: 92%; max-width: 420px; max-height: 85vh; border: 1px solid var(--line); }
+#trust, #mapClear { inset: 0; z-index: 9000; display: flex; align-items: center; justify-content: center; }
+#trust .backdrop, #mapClear .backdrop { display: block; position: absolute; inset: 0; background: rgba(0, 0, 0, 0.6); }
+#trust .mbox, #mapClear .mbox { position: relative; left: auto; right: auto; bottom: auto; top: auto; width: 92%; max-width: 420px; max-height: 85vh; border: 1px solid var(--line); }
 .mbody { padding: 10px 14px 14px; overflow-y: auto; }
 .mbody section { display: none; }
 .mbody section.on { display: block; }
@@ -393,17 +393,14 @@ details.drone summary { cursor: pointer; font-size: 14px; font-weight: 500; }
 .dm-colors { grid-template-columns: repeat(9, 1fr); margin-top: 6px; }
 .dm-color { height: 28px; border: 2px solid #555; border-radius: 50%; padding: 0; aspect-ratio: 1; justify-self: center; }
 .dm-color.active { border-color: #fff; box-shadow: 0 0 0 2px var(--blue); }
-.dm-title { font-size: 13px; color: var(--mut); padding: 4px 6px 6px; }
-.dm-item { display: block; width: 100%; text-align: left; padding: 11px 12px; background: none; border: none; border-top: 1px solid var(--line); color: #fff; font: 15px var(--font); }
-.dm-item.active::after { content: '✓'; float: right; color: var(--blue); }
 
 #shapeBar { position: fixed; z-index: 7200; left: 0; right: 0; bottom: 0; padding: 8px 10px calc(8px + var(--bottom)); background: var(--sheet); border-top: 1px solid var(--line); }
 
 /* Bloodhound */
-#houndHint { position: fixed; z-index: 6008; top: calc(56px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
+#houndHint, #moveHint { position: fixed; z-index: 6008; top: calc(56px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
   background: rgba(0, 0, 0, 0.75); color: #fff; padding: 6px 8px 6px 12px; border-radius: 16px; font-size: 13px; display: flex; align-items: center; gap: 8px; }
-#houndHint.hidden { display: none; }
-#houndHint button { background: none; border: none; color: #fff; font-size: 15px; padding: 0 4px; }
+#houndHint.hidden, #moveHint.hidden { display: none; }
+#houndHint button, #moveHint button { background: none; border: none; color: #fff; font-size: 15px; padding: 0 4px; }
 #houndBar { position: fixed; z-index: 6008; top: calc(54px + var(--top)); left: 50%; transform: translateX(-50%); width: max-content; max-width: calc(100vw - 16px);
   display: flex; align-items: center; gap: 10px; background: rgba(20, 22, 26, 0.92); border: 1px solid #ff3b30; border-radius: 6px; padding: 5px 6px 5px 10px; }
 #houndBar.hidden { display: none; }
@@ -414,3 +411,23 @@ details.drone summary { cursor: pointer; font-size: 14px; font-weight: 500; }
 .hound-label { color: #fff !important; border-color: #ff3b30 !important; }
 body:has(#houndBar:not(.hidden)) #toast, body:has(#houndHint:not(.hidden)) #toast { top: calc(108px + var(--top)); }
 body:has(.tmenu:not(.hidden)) #toast { top: calc(190px + var(--top)); }
+
+/* real visible height (Android: address bar shown, keyboard open) – the window head with ✕ always stays on screen */
+@supports (height: 1dvh) {
+  .sheet, .modal .mbox, #chatWin { max-height: 58dvh; }
+  #chatWin { height: 58dvh; }
+  #dock { max-height: calc(100dvh - 56px - var(--top)); }
+  #dock > #chatWin { max-height: 58dvh; }
+  #trust .mbox, #mapClear .mbox { max-height: 85dvh; }
+  .vw-body img, .vw-body video { max-height: 34dvh; }
+}
+@media (orientation: landscape) and (min-width: 640px) {
+  .sheet, .modal .mbox, #chatWin, #dock { max-height: none; }
+  #chatWin, #dock > #chatWin { max-height: none; height: auto; }
+  .vw-body img, .vw-body video { max-height: 45vh; }
+}
+.chat-head > span:first-child { min-width: 0; } /* a long channel name never pushes ✕ off the screen */
+#mapClear .mbody { overflow-y: auto; }
+#mcList .clr { padding: 7px 2px; }
+#mapClear #mcText { margin-top: 0; }
+#moveHint { border: 1px solid #ffd400; }
