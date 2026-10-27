@@ -178,6 +178,7 @@ after every start.
   followed after the user confirmed "Connect to this WebTAK server?" – any web page could offer a `webtak://` link.
   Server not reachable → RETRY or OTHER SERVER, the app is never stuck on a wrong address.
 - **Meshtastic over Bluetooth** works in the app too (native Bluetooth instead of Web Bluetooth, `blenative.js`).
+- **Permissions in the app:** Android keeps the app's permissions – no permission bar after every start like in the browser. Only when location was really refused does a bar appear; ALLOW opens the app settings.
 - **Download:** `/download/webtak.apk` on the WebTAK server – a `webtak.apk` in the data folder (e.g. without internet in
   the field), otherwise the GitHub release (`WEBTAK_APK_URL`, default: release `android` of this repository).
 - **Build:** GitHub Actions (`.github/workflows/android.yml`) builds the APK for every change in `mobile/` and publishes it

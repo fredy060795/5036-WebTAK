@@ -2565,15 +2565,27 @@ startHeading(true);
 const isIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
 let permAsked = false;
 function updatePermBar() {
-  const need = !compassAllowed || geoDenied;
+  // Android app: Android keeps the app's permissions – no bar after the start, only when location was really refused
+  const need = (!compassAllowed && !nativeApp) || geoDenied;
   $('permBar').classList.toggle('hidden', !need);
   if (!need) return;
+  if (nativeApp) {
+    $('permText').textContent = 'Location is not allowed for the WebTAK app – your position is not sent. ALLOW opens the app settings (Permissions → Location → "Allow all the time").';
+    return;
+  }
   $('permText').textContent = !compassAllowed && geoDenied ? 'Allow location and compass – otherwise your position and direction are not shown or sent.'
     : geoDenied ? 'Location is not allowed – your position is not sent.' : 'Allow the compass – for your direction and the view cone of your camera.';
   if (permAsked && geoDenied) $('permText').textContent += isIOS ? ' Still refused: Settings → Privacy → Location Services → Safari Websites (or Bluefy) → "While Using".'
     : ' Still refused: tap the lock icon next to the address → Permissions → Location.';
 }
 $('permGo').addEventListener('click', () => {
+  if (nativeApp) {
+    if (bgGeo && bgGeo.openSettings) bgGeo.openSettings();
+    // back from the settings: try again
+    const back = () => { if (document.hidden) return; document.removeEventListener('visibilitychange', back); geoWatch = null; startGeo(); };
+    document.addEventListener('visibilitychange', back);
+    return;
+  }
   permAsked = true;
   askCompass().then(updatePermBar); // must be called within the tap (iPhone)
   if (geoDenied) startGeo();
@@ -2581,6 +2593,8 @@ $('permGo').addEventListener('click', () => {
 });
 $('permClose').addEventListener('click', () => $('permBar').classList.add('hidden'));
 updatePermBar();
+// app: should the WebView still want the compass allowed, quietly with the first tap (no bar)
+if (nativeApp && !compassAllowed) document.addEventListener('pointerup', () => askCompass(), { once: true, capture: true });
 
 // tapping the compass: a map rotated by hand goes back to north; if already north up, heading up (HDG)
 $('compass').addEventListener('click', () => {
