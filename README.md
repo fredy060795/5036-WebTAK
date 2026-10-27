@@ -310,6 +310,9 @@ messages; team and group chats stay on the TAK server (the TAK packets of the pl
   again right after connecting stays off LoRa (independent of the clocks of WinTAK PCs). Several gateways do not collide: each waits a random moment
   and skips what another one already passed on; passed-on content carries a mark and never goes back (no loops).
   Plain Meshtastic nodes and texts (e.g. strangers on a public channel) are not passed to the TAK server.
+  **Direct messages** from the mesh to another device (e.g. one only online, or whose radio is off) go to the TAK server
+  addressed to that device alone, and only the recipient shows them. The other way (online sender → mesh-only device)
+  only works when the sender has a radio itself: the TAK server delivers a direct message only to its recipient.
 - **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
 - If the connection is lost, WebTAK keeps reconnecting; after reloading the page it reconnects by itself where the browser
   allows it, otherwise tap RECONNECT. The icon above the server status shows the state (green = connected, yellow = connecting or paused for
