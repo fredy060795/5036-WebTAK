@@ -178,6 +178,7 @@ after every start.
   followed after the user confirmed "Connect to this WebTAK server?" – any web page could offer a `webtak://` link.
   Server not reachable → RETRY or OTHER SERVER, the app is never stuck on a wrong address.
 - **Meshtastic over Bluetooth** works in the app too (native Bluetooth instead of Web Bluetooth, `blenative.js`).
+- **Permissions in the app:** Android keeps the app's permissions – no permission bar after every start like in the browser. Only when location was really refused does a bar appear; ALLOW opens the app settings.
 - **Download:** `/download/webtak.apk` on the WebTAK server – a `webtak.apk` in the data folder (e.g. without internet in
   the field), otherwise the GitHub release (`WEBTAK_APK_URL`, default: release `android` of this repository).
 - **Build:** GitHub Actions (`.github/workflows/android.yml`) builds the APK for every change in `mobile/` and publishes it
@@ -309,6 +310,9 @@ messages; team and group chats stay on the TAK server (the TAK packets of the pl
   again right after connecting stays off LoRa (independent of the clocks of WinTAK PCs). Several gateways do not collide: each waits a random moment
   and skips what another one already passed on; passed-on content carries a mark and never goes back (no loops).
   Plain Meshtastic nodes and texts (e.g. strangers on a public channel) are not passed to the TAK server.
+  **Direct messages** from the mesh to another device (e.g. one only online, or whose radio is off) go to the TAK server
+  addressed to that device alone, and only the recipient shows them. The other way (online sender → mesh-only device)
+  only works when the sender has a radio itself: the TAK server delivers a direct message only to its recipient.
 - **Video:** while a video stream runs (phone or helmet camera) the radio is released and reconnected when the stream ends.
 - If the connection is lost, WebTAK keeps reconnecting; after reloading the page it reconnects by itself where the browser
   allows it, otherwise tap RECONNECT. The icon above the server status shows the state (green = connected, yellow = connecting or paused for

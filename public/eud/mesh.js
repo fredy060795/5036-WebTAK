@@ -256,11 +256,14 @@
         removeItem('MESH-' + P.nodeId(p.from)); // now shown as a TAK contact
       }
       if (tak.pli) fromMesh(P.pliCot(tak, p.from));
-      else if (tak.chat && (tak.chat.to === P.ALL_CHAT || tak.chat.to === profile.uid)) {
-        fromMesh(P.chatCot({
+      else if (tak.chat && tak.chat.to) {
+        const all = tak.chat.to === P.ALL_CHAT;
+        const xml = P.chatCot({
           senderUid: tak.uid || 'MESH-' + P.nodeId(p.from), senderCallsign: tak.callsign || P.nodeId(p.from),
-          msgId: tak.msgId || String(p.id), text: tak.chat.message, toUid: tak.chat.to === P.ALL_CHAT ? '' : profile.uid,
-        }));
+          msgId: tak.msgId || String(p.id), text: tak.chat.message, toUid: all ? '' : tak.chat.to,
+        });
+        if (all || tak.chat.to === profile.uid) fromMesh(xml);
+        else directUp(xml, tak.chat.to); // direct message for someone else: not shown here, only passed on to the TAK server
       }
     } else if (p.portnum === P.PORT.FORWARDER) {
       receiveForwarder(p).catch(() => {});
@@ -491,10 +494,22 @@
     if (!e.detail.replay) bridgeDown(e.detail.xml, k).catch(() => {});
   });
 
-  async function bridgeUp(xml, k) {
+  // a direct message over LoRa for another device (e.g. one that is only online, or whose radio is off): to the TAK
+  // server, addressed to that device alone (<marti><dest>) – the recipient drops copies by the message UID
+  function directUp(xml, to) {
+    const k = bridgeKey(xml);
+    if (!k) return;
+    seenMesh.set(k.key, Date.now());
+    const it = window.eud.items.get(to);
+    const call = it && it.c && it.c.callsign;
+    const dest = `<marti><dest ${call ? `callsign="${window.eud.esc(call)}"` : `uid="${window.eud.esc(to)}"`}/></marti>`;
+    bridgeUp(xml.replace('</detail>', dest + '</detail>'), k, true).catch(() => {});
+  }
+
+  async function bridgeUp(xml, k, direct = false) {
     if (!cfg.bridge || xml.includes('<' + MARK) || !live(xml)) return; // came from the server through another gateway / old
     if (k.type === 'a-f-G-E-S' || k.uid.startsWith('MESH-')) return; // plain Meshtastic, not TAK
-    if (k.type === 'b-t-f' && !xml.includes('.' + P.ALL_CHAT + '.')) return; // direct message to us: not for the server
+    if (k.type === 'b-t-f' && !direct && !xml.includes('.' + P.ALL_CHAT + '.')) return; // direct message to us: not for the server
     if (pendingUp.has(k.key)) return;
     pendingUp.add(k.key);
     await jitter(1000, 6000);
@@ -577,7 +592,7 @@
   // automated tests only (set before the page loads): a fake radio
   if (window.__meshTest) {
     window.__meshTest.api = {
-      fromMesh, slimCot, connect(sent) { toRadio = { writeValue: async b => { sent.push(b); } }; state = 'connected'; },
+      fromMesh, slimCot, handle, connect(sent) { toRadio = { writeValue: async b => { sent.push(b); } }; state = 'connected'; },
     };
   }
 
